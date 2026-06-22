@@ -3,50 +3,20 @@
 {% block nav_workflow %}active{% endblock %}
 {% block content %}
 <style>
-.wb-wrap{display:flex;gap:1.5rem;min-height:calc(100vh - 6rem)}
-.wb-palette{width:240px;flex-shrink:0}
-.wb-palette .card{padding:1rem}
-.wb-palette h3{font-size:.85rem;margin-bottom:.75rem;color:var(--text-bright)}
-.wb-block{padding:.55rem .8rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:.4rem;cursor:grab;font-size:.8rem;display:flex;align-items:center;gap:.5rem;transition:all .2s}
-.wb-block:hover{border-color:var(--accent);background:rgba(59,130,246,.05)}
-.wb-block svg{width:14px;height:14px;opacity:.5;flex-shrink:0}
-.wb-block .wb-hint{font-size:.62rem;color:var(--muted);margin-left:auto;white-space:nowrap}
-.wb-canvas-wrap{flex:1;min-width:0}
-.wb-canvas-wrap h2{font-size:1.1rem;margin-bottom:.75rem}
-.wb-canvas{min-height:200px;background:var(--surface);border:2px dashed var(--border);border-radius:var(--radius);padding:1rem;transition:border-color .2s}
-.wb-canvas.drag-over{border-color:var(--accent);background:rgba(59,130,246,.03)}
-.wb-step{display:flex;align-items:center;gap:.7rem;padding:.6rem .9rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:.35rem;cursor:grab;font-size:.82rem}
-.wb-step:hover{border-color:var(--accent)}
-.wb-step .wb-num{width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;flex-shrink:0}
-.wb-step .wb-label{flex:1}
-.wb-step .wb-detail{font-size:.68rem;color:var(--muted);font-family:'Space Mono',monospace;display:block;margin-top:.15rem}
-.wb-step .wb-rm{cursor:pointer;opacity:.4;font-size:.9rem;transition:opacity .2s;flex-shrink:0}
-.wb-step .wb-rm:hover{opacity:1;color:var(--danger)}
-.wb-empty{text-align:center;color:var(--muted);padding:2rem;font-size:.82rem}
-.wb-actions{display:flex;gap:.7rem;margin-top:1rem;align-items:center;flex-wrap:wrap}
-.wb-wf-select{display:flex;gap:.7rem;margin-bottom:1rem;align-items:center}
-.wb-wf-select select{flex:1}
-.wb-test-result{margin-top:1rem}
-.wb-test-row{display:flex;justify-content:space-between;font-size:.8rem;padding:.25rem 0}
-.wb-test-total{display:flex;justify-content:space-between;align-items:center;padding-top:.5rem;border-top:1px solid var(--border);margin-top:.3rem;font-weight:600}
-.wb-test-total .wb-val{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--green)}
-.wb-guide{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.75rem;margin-top:.75rem}
-.wb-guide summary{font-size:.78rem;color:var(--accent);cursor:pointer;font-weight:600}
-.wb-guide .wb-guide-body{font-size:.72rem;color:var(--muted);line-height:1.7;margin-top:.5rem}
-.wb-guide .wb-guide-body code{background:var(--card);padding:.1rem .3rem;border-radius:3px;font-size:.68rem}
-.wb-guide .wb-guide-body strong{color:var(--text)}
-
-/* Tabs für Komponenten-Verwaltung */
-.wb-comp-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-top:2rem;margin-bottom:0}
-.wb-comp-tab{padding:.5rem 1rem;font-size:.78rem;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;transition:all .2s}
-.wb-comp-tab:hover{color:var(--text)}
-.wb-comp-tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
-.wb-comp-panel{display:none;padding:1rem 0}
-.wb-comp-panel.active{display:block}
-.wb-comp-row{display:flex;align-items:center;gap:.75rem;padding:.5rem .6rem;border-bottom:1px solid var(--border);font-size:.8rem}
-.wb-comp-row:last-child{border-bottom:none}
-.wb-comp-empty{padding:1rem;text-align:center;color:var(--muted);font-size:.82rem}
-.wb-add-form{margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius-sm);display:none}
+/* Responsive layout — mobile-first */
+.wb-wrap { display:flex; flex-direction:column; gap:1.5rem; min-height:calc(100vh - 6rem); }
+@media(min-width:1024px){ .wb-wrap { flex-direction:row; } }
+.wb-palette { width:100%; }
+@media(min-width:1024px){ .wb-palette { width:240px; flex-shrink:0; } }
+.wb-palette .card { padding:1rem; }
+.wb-palette h3 { font-size:.85rem; margin-bottom:.75rem; }
+.wb-canvas-wrap { flex:1; min-width:0; }
+.wb-canvas-wrap h2 { font-size:1.1rem; margin-bottom:.75rem; }
+/* Palette accordion: always open on lg+ */
+@media(min-width:1024px){
+  details.wb-palette-acc > summary { display:none; }
+  details.wb-palette-acc > * { display:block !important; }
+}
 </style>
 
 <div class="page-header"><h2>Preiskalkulation</h2></div>
@@ -54,6 +24,8 @@
 <div class="wb-wrap">
   <!-- Linke Spalte: Blöcke + Anleitung -->
   <div class="wb-palette">
+    <details class="wb-palette-acc" open>
+    <summary class="btn btn-ghost btn-sm mb-2 lg:hidden">Berechnungs-Blöcke &amp; Anleitung ▾</summary>
     <div class="card">
       <h3>Berechnungs-Blöcke</h3>
       <div class="wb-block" draggable="true" data-type="package">
@@ -88,7 +60,7 @@
 
     <!-- Kurzanleitung -->
     <div class="wb-guide">
-      <details>
+      <details open>
         <summary>Kurzanleitung</summary>
         <div class="wb-guide-body">
           <strong>So funktioniert der Preis-Workflow:</strong><br><br>
@@ -110,6 +82,7 @@
         </div>
       </details>
     </div>
+    </details>
   </div>
 
   <!-- Rechte Spalte: Workflow Canvas + Komponenten-Verwaltung -->
@@ -541,6 +514,12 @@ function getStepDetail(type){
 
 function addStep(type){steps.push({type:type,label:LABELS[type]||type,config:{}});renderSteps()}
 function removeStep(i){steps.splice(i,1);renderSteps()}
+function moveStep(i,dir){
+  var j=i+dir;
+  if(j<0||j>=steps.length)return;
+  var tmp=steps[i];steps[i]=steps[j];steps[j]=tmp;
+  renderSteps();
+}
 
 function renderSteps(){
   var empty=document.getElementById('wf-empty');
@@ -584,14 +563,23 @@ function renderSteps(){
       });
       configHtml+='</select></div>';
     }
-    el.innerHTML='<span class="wb-num">'+(i+1)+'</span><span class="wb-label">'+s.label+detailHtml+configHtml+'</span><span class="wb-rm" onclick="removeStep('+i+')">&times;</span>';
-    // Prevent drag on interactive elements (select, input)
-    el.querySelectorAll('select,input').forEach(function(inp){
+    var upDis=i===0?' disabled':'';
+    var dnDis=i===steps.length-1?' disabled':'';
+    el.innerHTML=
+      '<span class="wb-step-move">'
+      +'<button class="wb-move-btn" aria-label="Schritt nach oben" onclick="moveStep('+i+',-1)"'+upDis+'><span aria-hidden="true">&#9650;</span></button>'
+      +'<button class="wb-move-btn" aria-label="Schritt nach unten" onclick="moveStep('+i+',1)"'+dnDis+'><span aria-hidden="true">&#9660;</span></button>'
+      +'</span>'
+      +'<span class="wb-num">'+(i+1)+'</span>'
+      +'<span class="wb-label">'+s.label+detailHtml+configHtml+'</span>'
+      +'<span class="wb-rm" onclick="removeStep('+i+')">&times;</span>';
+    // Prevent drag on interactive elements (select, input, buttons)
+    el.querySelectorAll('select,input,.wb-move-btn,.wb-rm').forEach(function(inp){
       inp.addEventListener('mousedown',function(e){e.stopPropagation()});
       inp.addEventListener('dragstart',function(e){e.preventDefault();e.stopPropagation()});
     });
     el.addEventListener('dragstart',function(e){
-      if(e.target.tagName==='SELECT'||e.target.tagName==='INPUT'){e.preventDefault();return}
+      if(e.target.closest('.wb-move-btn,.wb-rm,select,input')){e.preventDefault();return}
       e.dataTransfer.setData('application/x-step-idx',String(i));e.dataTransfer.effectAllowed='move';
     });
     el.addEventListener('dragover',function(e){e.preventDefault();e.dataTransfer.dropEffect='move'});

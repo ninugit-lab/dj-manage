@@ -18,4 +18,70 @@
   .dt-row { @apply border-t border-border max-md:block max-md:border max-md:rounded max-md:mb-2 max-md:p-2; }
   .dt-cell { @apply py-2 px-3 max-md:flex max-md:justify-between; }
   .dt-cell::before { content: attr(data-label); @apply hidden max-md:inline text-muted font-mono; }
+
+  /* Workflow Builder */
+  .wb-step {
+    @apply flex items-center gap-3 px-3 py-2 bg-bg border border-border rounded-sm mb-1 cursor-grab text-sm;
+  }
+  .wb-step:hover { @apply border-accent; }
+  .wb-step .wb-num {
+    @apply w-[22px] h-[22px] rounded-full bg-accent text-white flex items-center justify-center text-[0.65rem] font-bold flex-shrink-0;
+  }
+  .wb-step .wb-label { @apply flex-1; }
+  .wb-step .wb-detail {
+    @apply text-[0.68rem] text-muted font-mono block mt-[0.15rem];
+  }
+  .wb-step .wb-rm {
+    @apply cursor-pointer opacity-40 text-sm transition-opacity flex-shrink-0 hover:opacity-100 hover:text-danger;
+  }
+  .wb-block {
+    @apply flex items-center gap-2 px-3 py-2 bg-surface border border-border rounded-sm mb-1 cursor-grab text-[0.8rem] transition-all;
+  }
+  .wb-block:hover { @apply border-accent bg-accent/5; }
+  .wb-block svg { @apply w-[14px] h-[14px] opacity-50 flex-shrink-0; }
+  .wb-block .wb-hint { @apply text-[0.62rem] text-muted ml-auto whitespace-nowrap; }
+  .wb-canvas {
+    @apply min-h-[200px] bg-surface border-2 border-dashed border-border rounded p-4 transition-colors;
+  }
+  .wb-canvas.drag-over { @apply border-accent bg-accent/[0.03]; }
+  .wb-empty { @apply text-center text-muted py-8 text-[0.82rem]; }
+  .wb-guide {
+    @apply bg-surface border border-border rounded-sm p-3 mt-3;
+  }
+  .wb-guide summary { @apply text-[0.78rem] text-accent cursor-pointer font-semibold; }
+  .wb-guide .wb-guide-body { @apply text-[0.72rem] text-muted leading-7 mt-2; }
+  .wb-guide .wb-guide-body code { @apply bg-card px-1 rounded text-[0.68rem]; }
+  .wb-guide .wb-guide-body strong { @apply text-text; }
+  .wb-comp-tabs {
+    @apply flex border-b border-border mt-8 mb-0;
+  }
+  .wb-comp-tab {
+    @apply px-4 py-2 text-[0.78rem] bg-transparent border-0 border-b-2 border-transparent text-muted cursor-pointer transition-all hover:text-text;
+  }
+  .wb-comp-tab.active { @apply text-accent border-b-accent font-semibold; }
+  .wb-comp-panel { @apply hidden; }
+  .wb-comp-panel.active { @apply block; }
+  .wb-comp-row {
+    @apply flex items-center gap-3 px-2 py-2 border-b border-border text-sm last:border-b-0;
+  }
+  .wb-comp-empty { @apply p-4 text-center text-muted text-[0.82rem]; }
+  .wb-add-form {
+    @apply mb-4 p-4 bg-surface rounded-sm hidden;
+  }
+  .wb-actions { @apply flex gap-3 mt-4 items-center flex-wrap; }
+  .wb-wf-select { @apply flex gap-3 mb-4 items-center; }
+  .wb-wf-select select { @apply flex-1; }
+  .wb-test-result { @apply mt-4; }
+  .wb-test-row { @apply flex justify-between text-[0.8rem] py-1; }
+  .wb-test-total {
+    @apply flex justify-between items-center pt-2 border-t border-border mt-1 font-semibold;
+  }
+  .wb-test-total .wb-val { @apply font-display text-[1.4rem] text-success; }
+  .wb-step-move {
+    @apply flex-shrink-0 flex flex-row;
+  }
+  .wb-move-btn {
+    @apply flex items-center justify-center min-w-[44px] min-h-[44px] bg-transparent border-0 text-muted cursor-pointer rounded transition-colors hover:text-text hover:bg-surface p-0 leading-none;
+  }
+  .wb-move-btn:disabled { @apply opacity-20 cursor-not-allowed; }
 }
