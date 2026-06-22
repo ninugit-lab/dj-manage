@@ -1,0 +1,29 @@
+{% comment %}
+data_table.html — Responsive Tabelle (Desktop: <table>, Mobil: Card-Stack)
+
+Parameter:
+  columns   — Liste von Dicts {label} für den thead
+  caption   — (optional) Tabellenüberschrift (screenreader-only)
+  rows_html — Safe-HTML mit <tr>/<td>-Markup (per |safe gerendert)
+
+Aufrufende Templates sollen verwenden:
+  <tr class="dt-row">
+  <td class="dt-cell" data-label="Spaltenname">...</td>
+
+CSS-Klassen werden in styles.css (@layer components) definiert:
+  .dt-row  — Desktop: border-top; Mobil: block, border, rounded, mb-2, p-2
+  .dt-cell — Desktop: py-2 px-3; Mobil: flex justify-between
+  .dt-cell::before — Mobil: zeigt data-label als Label links an
+
+Beispiel-Aufruf:
+  {% include "components/data_table.html" with columns=columns caption="Gästeliste" rows_html=rows_html %}
+{% endcomment %}
+<table class="w-full text-sm">
+  {% if caption %}<caption class="sr-only">{{ caption }}</caption>{% endif %}
+  <thead class="max-md:hidden">
+    <tr class="text-left text-muted font-mono text-xs">
+      {% for c in columns %}<th class="py-2 px-3">{{ c.label }}</th>{% endfor %}
+    </tr>
+  </thead>
+  <tbody>{{ rows_html|safe }}</tbody>
+</table>

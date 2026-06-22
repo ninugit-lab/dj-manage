@@ -15,4 +15,7 @@
   .btn-ghost   { @apply btn bg-transparent text-text border border-border hover:border-border-hover; }
   .field-label { @apply block text-sm text-muted mb-1 font-mono; }
   .field-input { @apply w-full min-h-[44px] px-3 bg-card-solid border border-border rounded-sm text-text focus:border-accent focus:ring-4 focus:ring-accent-glow outline-none; }
+  .dt-row { @apply border-t border-border max-md:block max-md:border max-md:rounded max-md:mb-2 max-md:p-2; }
+  .dt-cell { @apply py-2 px-3 max-md:flex max-md:justify-between; }
+  .dt-cell::before { content: attr(data-label); @apply hidden max-md:inline text-muted font-mono; }
 }
