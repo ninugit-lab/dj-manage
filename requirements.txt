@@ -4,3 +4,4 @@ gunicorn>=21.2
 pyngrok>=7.0
 whitenoise
 pillow
+django-tailwind>=3.8
