@@ -31,14 +31,14 @@
   <a href="{% url 'dj_admin:event_create' %}" class="btn btn-primary">+ Neues Event</a>
 </div>
 
-<div class="calendar-legend">
+<div class="calendar-legend flex flex-wrap gap-4 mb-4">
   <div class="legend-item"><div class="legend-dot" style="background:#1db954"></div> Bestätigt</div>
   <div class="legend-item"><div class="legend-dot" style="background:#a855f7"></div> Angefragt</div>
   <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div> Google Kalender</div>
 </div>
 
 <div id="cal-loading">Kalender wird geladen...</div>
-<div id="calendar" style="display:none"></div>
+<div id="calendar" class="hidden"></div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -48,14 +48,17 @@ function initCalendar() {
   if (!el || el.dataset.init) return;
   el.dataset.init = '1';
 
+  var isMobile = window.innerWidth < 768;
   fetch('/dj-admin/api/calendar-events/')
     .then(function(r) { return r.json(); })
     .then(function(events) {
       var cal = new FullCalendar.Calendar(el, {
-        initialView: 'dayGridMonth',
+        initialView: isMobile ? 'listWeek' : 'dayGridMonth',
         locale: 'de',
         firstDay: 1,
-        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,dayGridWeek' },
+        headerToolbar: isMobile
+          ? { left: 'prev,next', center: 'title', right: 'dayGridMonth,listWeek' }
+          : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,dayGridWeek' },
         events: events,
         eventClick: function(info) {
           if (info.event.url) { info.jsEvent.preventDefault(); window.location.href = info.event.url; }
@@ -64,7 +67,7 @@ function initCalendar() {
       });
       cal.render();
       document.getElementById('cal-loading').style.display = 'none';
-      el.style.display = 'block';
+      el.classList.remove('hidden');
     })
     .catch(function(e) {
       document.getElementById('cal-loading').textContent = 'Kalender konnte nicht geladen werden.';
