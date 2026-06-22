@@ -6,7 +6,7 @@
 <div class="page-header">
   <h2>🎵 Live Event</h2>
   {% if active_event %}
-  <div style="display:flex;align-items:center;gap:.75rem">
+  <div class="flex items-center gap-3">
     <span class="badge badge-confirmed">{{ active_event.name }}</span>
     <a href="{% url 'dj_admin:event_edit' pk=active_event.pk %}" class="btn btn-ghost btn-sm">Event bearbeiten</a>
   </div>
@@ -14,116 +14,196 @@
 </div>
 
 {% if active_event %}
-<div class="grid-2">
-  <!-- Left: Live Wishlist -->
-  <div>
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Aktuelle Wünsche</div>
-        <button class="btn btn-ghost btn-sm" onclick="refreshWishlist()">↻</button>
-      </div>
-      <turbo-frame id="event-wishlist" src="{% url 'dj_admin:wishlist_frame' pk=active_event.pk %}">
-        <div style="text-align:center;padding:1rem;color:var(--muted)">Lade...</div>
-      </turbo-frame>
-    </div>
-  </div>
+{#
+  Layout-Strategie: EINMALIGER DOM — kein Content doppelt.
+  Mobil (<lg): ARIA-Tabs steuern Sichtbarkeit via panel.hidden (tabs.js).
+  Desktop (lg+): lg:!block auf jedem Panel überschreibt panel.hidden.
+                 2-Spalten-Layout via data-layout-container + CSS-Grid.
+  Turbo-Frames (id=event-wishlist, id=blocked-clients) existieren je EINMAL.
+  IDs block-ip, manual-block-reason, block-wish-id etc. je EINMAL.
+  Keine ID-Duplikate.
+#}
 
-  <!-- Right: Settings + Blocking -->
-  <div>
-    <!-- Now Playing (compact) -->
-    <div class="card" style="margin-bottom:1rem;padding:.85rem">
-      <div style="font-size:.62rem;font-family:'Space Mono',monospace;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.5rem">Jetzt läuft</div>
-      <div id="np-live" style="display:flex;align-items:center;gap:.7rem">
-        <div style="font-size:.72rem;color:var(--muted)">Lade…</div>
-      </div>
-    </div>
-
-    <!-- Quick Wishlist Settings -->
-    <div class="card">
-      <div class="card-title" style="margin-bottom:.75rem">⚙ Live Event Einstellungen</div>
-      <form method="post" action="{% url 'dj_admin:event_edit' pk=active_event.pk %}" style="margin:0">
-        {% csrf_token %}
-        <!-- Hidden fields to preserve all event data -->
-        <input type="hidden" name="name" value="{{ active_event.name }}">
-        <input type="hidden" name="date" value="{{ active_event.date|date:'Y-m-d' }}">
-        <input type="hidden" name="location" value="{{ active_event.location }}">
-        <input type="hidden" name="status" value="{{ active_event.status }}">
-        <input type="hidden" name="is_active" value="on">
-        <input type="hidden" name="spotify_playlist_id" value="{{ active_event.spotify_playlist_id }}">
-
-        <div class="form-group">
-          <label class="form-label">Max. Wünsche pro Session</label>
-          <input type="number" name="max_wishes_per_session" class="form-input" value="{{ active_event.max_wishes_per_session }}" style="max-width:100px" min="1">
-        </div>
-        <div class="form-check"><input type="checkbox" name="wishlist_show_cover" id="qs_cover" {% if active_event.wishlist_show_cover %}checked{% endif %}><label for="qs_cover">Cover</label></div>
-        <div class="form-check"><input type="checkbox" name="wishlist_show_artist" id="qs_artist" {% if active_event.wishlist_show_artist %}checked{% endif %}><label for="qs_artist">Künstler</label></div>
-        <div class="form-check"><input type="checkbox" name="wishlist_show_preview" id="qs_preview" {% if active_event.wishlist_show_preview %}checked{% endif %}><label for="qs_preview">Preview</label></div>
-        <div class="form-check"><input type="checkbox" name="wishlist_show_duration" id="qs_dur" {% if active_event.wishlist_show_duration %}checked{% endif %}><label for="qs_dur">Dauer</label></div>
-        <div class="form-check"><input type="checkbox" name="wishlist_require_name" id="qs_name" {% if active_event.wishlist_require_name %}checked{% endif %}><label for="qs_name">Name Pflicht</label></div>
-        <div class="form-check"><input type="checkbox" name="wishlist_show_played" id="qs_played" {% if active_event.wishlist_show_played %}checked{% endif %}><label for="qs_played">Gespielte zeigen</label></div>
-        <div class="form-check"><input type="checkbox" name="spotify_remove_on_played" id="qs_spotify_rm" {% if active_event.spotify_remove_on_played %}checked{% endif %}><label for="qs_spotify_rm">Gespielt → aus Spotify entfernen</label></div>
-        <button type="submit" class="btn btn-ghost btn-sm" style="margin-top:.5rem">💾 Speichern</button>
-      </form>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">🚫 Blockierte Clients</div>
-      </div>
-      <turbo-frame id="blocked-clients" src="{% url 'dj_admin:blocked_frame' %}">
-        <div style="text-align:center;padding:1rem;color:var(--muted)">Lade...</div>
-      </turbo-frame>
-    </div>
-
-    <!-- Manual Block -->
-    <div class="card">
-      <div class="card-title" style="margin-bottom:1rem">Client manuell blockieren</div>
-      <div class="form-group">
-        <label class="form-label">IP-Adresse</label>
-        <input type="text" id="block-ip" class="form-input" placeholder="z.B. 192.168.1.1">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Grund (intern)</label>
-        <input type="text" id="manual-block-reason" class="form-input" value="Vom Admin blockiert">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Nachricht an den User</label>
-        <input type="text" id="manual-block-msg" class="form-input" value="Du wurdest für diese Wishlist gesperrt.">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Sperrdauer</label>
-        <select id="manual-block-hours" class="form-input" style="appearance:auto">
-          <option value="0">Permanent</option>
-          <option value="1">1 Stunde</option>
-          <option value="2">2 Stunden</option>
-          <option value="6">6 Stunden</option>
-          <option value="12">12 Stunden</option>
-          <option value="24" selected>24 Stunden</option>
-          <option value="48">2 Tage</option>
-          <option value="168">1 Woche</option>
-        </select>
-      </div>
-      <button class="btn btn-danger btn-sm" onclick="manualBlock()">🚫 Blockieren</button>
-    </div>
+{# ── Tab-Navigation: nur sichtbar auf Mobil ── #}
+<div class="lg:hidden mb-4">
+  <div class="flex gap-1 border-b border-border" role="tablist" data-tabs="live">
+    <button role="tab" id="tab-live-wishes"
+            aria-controls="panel-live-wishes"
+            aria-selected="true" tabindex="0"
+            class="min-h-[44px] px-4 font-mono text-sm border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">
+      Wünsche
+    </button>
+    <button role="tab" id="tab-live-nowplaying"
+            aria-controls="panel-live-nowplaying"
+            aria-selected="false" tabindex="-1"
+            class="min-h-[44px] px-4 font-mono text-sm border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">
+      Now Playing
+    </button>
+    <button role="tab" id="tab-live-settings"
+            aria-controls="panel-live-settings"
+            aria-selected="false" tabindex="-1"
+            class="min-h-[44px] px-4 font-mono text-sm border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">
+      Einstellungen
+    </button>
+    <button role="tab" id="tab-live-block"
+            aria-controls="panel-live-block"
+            aria-selected="false" tabindex="-1"
+            class="min-h-[44px] px-4 font-mono text-sm border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">
+      Blockieren
+    </button>
   </div>
 </div>
 
-<!-- Block Dialog (OUTSIDE turbo-frames, won't be destroyed by refresh) -->
-<div id="block-dialog" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.7);align-items:center;justify-content:center">
-  <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.5rem;max-width:400px;width:90%">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;margin-bottom:1rem">🚫 Client blockieren</div>
+{#
+  Desktop-Layout-Container: 2-Spalten-Grid.
+  Panels 1+2 → linke Spalte; Panels 3+4 → rechte Spalte.
+  Auf Mobil: kein Grid, Panels gestapelt, tabs.js steuert hidden.
+#}
+<div class="lg:grid lg:grid-cols-2 lg:gap-6">
+
+  {# ── Linke Spalte (Desktop) ── #}
+  <div class="lg:flex lg:flex-col lg:gap-4">
+
+    {# ════ PANEL 1 — Now Playing (Desktop: linke Spalte oben; Mobil: Tab 2) ════ #}
+    <div id="panel-live-nowplaying"
+         role="tabpanel"
+         aria-labelledby="tab-live-nowplaying"
+         class="lg:!block">
+      <div class="card" style="padding:.85rem">
+        <div style="font-size:.62rem;font-family:'Space Mono',monospace;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.5rem">
+          Jetzt läuft
+        </div>
+        <div id="np-live" style="display:flex;align-items:center;gap:.7rem">
+          <div style="font-size:.72rem;color:var(--muted)">Lade…</div>
+        </div>
+      </div>
+    </div>
+
+    {# ════ PANEL 2 — Wünsche (Desktop: linke Spalte; Mobil: Tab 1 = default) ════ #}
+    <div id="panel-live-wishes"
+         role="tabpanel"
+         aria-labelledby="tab-live-wishes"
+         class="lg:!block">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Aktuelle Wünsche</div>
+          {% include "components/icon_button.html" with icon="↻" aria_label="Liste aktualisieren" variant="ghost" onclick="refreshWishlist()" extra="btn-sm" %}
+        </div>
+        <turbo-frame id="event-wishlist"
+                     src="{% url 'dj_admin:wishlist_frame' pk=active_event.pk %}"
+                     aria-live="polite">
+          <div style="text-align:center;padding:1rem;color:var(--muted)">Lade...</div>
+        </turbo-frame>
+      </div>
+    </div>
+
+  </div>{# end left column #}
+
+  {# ── Rechte Spalte (Desktop) ── #}
+  <div class="lg:flex lg:flex-col lg:gap-4">
+
+    {# ════ PANEL 3 — Einstellungen (Desktop: rechte Spalte, details-Accordion; Mobil: Tab 3) ════ #}
+    <div id="panel-live-settings"
+         role="tabpanel"
+         aria-labelledby="tab-live-settings"
+         class="lg:!block">
+      {# Desktop: <details> eingeklappt; Mobil: Panel direkt sichtbar wenn Tab aktiv #}
+      <details class="hidden lg:block">
+        <summary class="card cursor-pointer select-none mb-2 list-none">
+          <div class="card-title flex items-center justify-between">
+            <span>⚙ Live Event Einstellungen</span>
+            <svg class="w-4 h-4 text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </div>
+        </summary>
+        <div class="card">
+          {% include "dj_admin/_settings_form.html" %}
+        </div>
+      </details>
+      {# Mobil: dieselbe Form, direkt (kein details) #}
+      <div class="card lg:hidden">
+        <div class="card-title mb-3">⚙ Live Event Einstellungen</div>
+        {% include "dj_admin/_settings_form.html" %}
+      </div>
+    </div>
+
+    {# ════ PANEL 4 — Blockieren (Desktop: rechte Spalte, details-Accordion; Mobil: Tab 4) ════ #}
+    <div id="panel-live-block"
+         role="tabpanel"
+         aria-labelledby="tab-live-block"
+         class="lg:!block">
+
+      {# Blocked Clients #}
+      <div class="card mb-4">
+        <div class="card-header">
+          <div class="card-title">🚫 Blockierte Clients</div>
+        </div>
+        <turbo-frame id="blocked-clients"
+                     src="{% url 'dj_admin:blocked_frame' %}"
+                     aria-live="polite">
+          <div style="text-align:center;padding:1rem;color:var(--muted)">Lade...</div>
+        </turbo-frame>
+      </div>
+
+      {# Manual Block #}
+      <div class="card">
+        <div class="card-title mb-4">Client manuell blockieren</div>
+        <div class="form-group">
+          <label class="form-label" for="block-ip">IP-Adresse</label>
+          <input type="text" id="block-ip" class="form-input" placeholder="z.B. 192.168.1.1">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="manual-block-reason">Grund (intern)</label>
+          <input type="text" id="manual-block-reason" class="form-input" value="Vom Admin blockiert">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="manual-block-msg">Nachricht an den User</label>
+          <input type="text" id="manual-block-msg" class="form-input" value="Du wurdest für diese Wishlist gesperrt.">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="manual-block-hours">Sperrdauer</label>
+          <select id="manual-block-hours" class="form-input" style="appearance:auto">
+            <option value="0">Permanent</option>
+            <option value="1">1 Stunde</option>
+            <option value="2">2 Stunden</option>
+            <option value="6">6 Stunden</option>
+            <option value="12">12 Stunden</option>
+            <option value="24" selected>24 Stunden</option>
+            <option value="48">2 Tage</option>
+            <option value="168">1 Woche</option>
+          </select>
+        </div>
+        <button class="btn btn-danger btn-sm min-h-[44px] w-full sm:w-auto" onclick="manualBlock()">
+          <span aria-hidden="true">🚫</span> Blockieren
+        </button>
+      </div>
+
+    </div>
+
+  </div>{# end right column #}
+</div>{# end main grid #}
+
+{# ════ Block-Dialog (außerhalb Turbo-Frames) ════ #}
+<div id="block-dialog"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="block-dialog-title"
+     style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.7);align-items:center;justify-content:center">
+  <div class="w-[90%] max-w-[400px]" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.5rem">
+    <div id="block-dialog-title" style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;margin-bottom:1rem">🚫 Client blockieren</div>
     <input type="hidden" id="block-wish-id">
     <div style="margin-bottom:.75rem">
-      <label style="display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem">Grund (nur für dich sichtbar)</label>
-      <input type="text" id="block-reason" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .7rem;color:var(--text);font-size:.85rem;outline:none" value="{{ active_event.default_block_reason|default:"Unangemessene Eingaben" }}">
+      <label for="block-reason" style="display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem">Grund (nur für dich sichtbar)</label>
+      <input type="text" id="block-reason" class="form-input" value="{{ active_event.default_block_reason|default:"Unangemessene Eingaben" }}">
     </div>
     <div style="margin-bottom:.75rem">
-      <label style="display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem">Nachricht an den User</label>
-      <input type="text" id="block-message" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .7rem;color:var(--text);font-size:.85rem;outline:none" value="{{ active_event.default_block_message|default:"Du wurdest für diese Wishlist gesperrt." }}">
+      <label for="block-message" style="display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem">Nachricht an den User</label>
+      <input type="text" id="block-message" class="form-input" value="{{ active_event.default_block_message|default:"Du wurdest für diese Wishlist gesperrt." }}">
     </div>
     <div style="margin-bottom:1rem">
-      <label style="display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem">Sperrdauer</label>
-      <select id="block-hours" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .7rem;color:var(--text);font-size:.85rem;outline:none;appearance:auto">
+      <label for="block-hours" style="display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem">Sperrdauer</label>
+      <select id="block-hours" class="form-input" style="appearance:auto">
         <option value="0">Permanent</option>
         <option value="1">1 Stunde</option>
         <option value="2">2 Stunden</option>
@@ -134,9 +214,9 @@
         <option value="168">1 Woche</option>
       </select>
     </div>
-    <div style="display:flex;gap:.5rem">
-      <button type="button" class="btn btn-danger btn-sm" onclick="submitBlock()" style="flex:1" data-turbo="false">🚫 Blockieren</button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="closeBlockDialog()" style="flex:1" data-turbo="false">Abbrechen</button>
+    <div class="flex flex-col sm:flex-row gap-2">
+      <button type="button" class="btn btn-danger btn-sm flex-1 min-h-[44px]" onclick="submitBlock()" data-turbo="false">🚫 Blockieren</button>
+      <button type="button" class="btn btn-ghost btn-sm flex-1 min-h-[44px]" onclick="closeBlockDialog()" data-turbo="false">Abbrechen</button>
     </div>
   </div>
 </div>
@@ -152,7 +232,6 @@
 {% block extra_scripts %}
 <script>
 {% if active_event %}
-// Use var to survive Turbo page re-renders (let would throw "already declared")
 var dialogOpen = false;
 
 if (typeof _refreshInterval !== 'undefined') clearInterval(_refreshInterval);
@@ -241,7 +320,8 @@ async function manualBlock() {
     if (bf) bf.src = '{% url "dj_admin:blocked_frame" %}';
   }
 }
-// ── Now Playing (compact) ────────────────────────────────────────────────────
+
+// ── Now Playing (compact) ──
 (function() {
   var npEl = document.getElementById('np-live');
   if (!npEl) return;

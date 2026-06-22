@@ -8,7 +8,7 @@
   {% if wish.album_cover_url %}
   <img src="{{ wish.album_cover_url }}" alt="">
   {% else %}
-  <div style="width:40px;height:40px;background:var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center">🎵</div>
+  <div style="width:40px;height:40px;background:var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center" aria-hidden="true">🎵</div>
   {% endif %}
   <div class="wish-item-info">
     <div class="wish-item-title">{{ wish.track_name }}</div>
@@ -19,10 +19,26 @@
     {% if wish.ip_address %}<br><span style="font-size:.6rem;opacity:.5">{{ wish.ip_address }}</span>{% endif %}
   </div>
   <div class="wish-item-actions">
-    <button type="button" class="btn btn-ghost btn-sm" data-turbo="false" onclick="showAudioFeatures({{ wish.pk }})" title="Audio Features" style="font-size:.75rem">📊</button>
-    <button type="button" class="btn btn-primary btn-sm" data-turbo="false" onclick="(async function(b){b.disabled=true;try{await fetch('/dj-admin/wishes/{{ wish.pk }}/toggle/',{method:'POST',headers:{'X-CSRFToken':csrfToken()}});if(typeof refreshWishlist==='function')refreshWishlist();}catch(e){console.error(e)}b.disabled=false})(this)" title="Gespielt">✓</button>
-    <button type="button" class="btn btn-danger btn-sm" data-turbo="false" onclick="if(typeof openBlockDialog==='function')openBlockDialog({{ wish.pk }});else alert('Block-Dialog nicht verfügbar auf dieser Seite')" title="Blockieren">🚫</button>
-    <button type="button" class="btn btn-ghost btn-sm" data-turbo="false" onclick="(async function(b){if(!confirm('Löschen?'))return;b.disabled=true;await fetch('/dj-admin/wishes/{{ wish.pk }}/delete/',{method:'POST',headers:{'X-CSRFToken':csrfToken()}});if(typeof refreshWishlist==='function')refreshWishlist();})(this)" title="Löschen" style="font-size:.7rem">✕</button>
+    <button type="button" class="btn btn-ghost btn-sm !min-w-[44px] !px-2" data-turbo="false"
+            aria-label="Audio-Features anzeigen"
+            onclick="showAudioFeatures({{ wish.pk }})">
+      <span aria-hidden="true">📊</span>
+    </button>
+    <button type="button" class="btn btn-primary btn-sm !min-w-[44px] !px-2" data-turbo="false"
+            aria-label="Als gespielt markieren"
+            onclick="(async function(b){b.disabled=true;try{await fetch('/dj-admin/wishes/{{ wish.pk }}/toggle/',{method:'POST',headers:{'X-CSRFToken':csrfToken()}});if(typeof refreshWishlist==='function')refreshWishlist();}catch(e){console.error(e)}b.disabled=false})(this)">
+      <span aria-hidden="true">✓</span>
+    </button>
+    <button type="button" class="btn btn-danger btn-sm !min-w-[44px] !px-2" data-turbo="false"
+            aria-label="Blockieren"
+            onclick="if(typeof openBlockDialog==='function')openBlockDialog({{ wish.pk }});else alert('Block-Dialog nicht verfügbar auf dieser Seite')">
+      <span aria-hidden="true">🚫</span>
+    </button>
+    <button type="button" class="btn btn-ghost btn-sm !min-w-[44px] !px-2" data-turbo="false"
+            aria-label="Wunsch löschen"
+            onclick="(async function(b){if(!confirm('Löschen?'))return;b.disabled=true;await fetch('/dj-admin/wishes/{{ wish.pk }}/delete/',{method:'POST',headers:{'X-CSRFToken':csrfToken()}});if(typeof refreshWishlist==='function')refreshWishlist();})(this)">
+      <span aria-hidden="true">✕</span>
+    </button>
   </div>
 </div>
 {% endfor %}
@@ -33,14 +49,18 @@
 {% for wish in wishes_played %}
 <div class="wish-item" style="opacity:.5" id="wish-{{ wish.pk }}">
   {% if wish.album_cover_url %}<img src="{{ wish.album_cover_url }}" alt="">{% else %}
-  <div style="width:40px;height:40px;background:var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center">🎵</div>{% endif %}
+  <div style="width:40px;height:40px;background:var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center" aria-hidden="true">🎵</div>{% endif %}
   <div class="wish-item-info">
     <div class="wish-item-title">{{ wish.track_name }}</div>
     <div class="wish-item-artist">{{ wish.artist_name }}</div>
   </div>
   <div class="wish-item-meta">{% if wish.guest_name %}{{ wish.guest_name }} · {% endif %}{{ wish.created_at|time:"H:i" }}</div>
   <div class="wish-item-actions">
-    <button type="button" class="btn btn-ghost btn-sm" data-turbo="false" onclick="(async function(b){b.disabled=true;await fetch('/dj-admin/wishes/{{ wish.pk }}/toggle/',{method:'POST',headers:{'X-CSRFToken':csrfToken()}});if(typeof refreshWishlist==='function')refreshWishlist();b.disabled=false})(this)" title="Zurücksetzen">↩</button>
+    <button type="button" class="btn btn-ghost btn-sm !min-w-[44px] !px-2" data-turbo="false"
+            aria-label="Als ungespielt markieren"
+            onclick="(async function(b){b.disabled=true;await fetch('/dj-admin/wishes/{{ wish.pk }}/toggle/',{method:'POST',headers:{'X-CSRFToken':csrfToken()}});if(typeof refreshWishlist==='function')refreshWishlist();b.disabled=false})(this)">
+      <span aria-hidden="true">↩</span>
+    </button>
   </div>
 </div>
 {% endfor %}
@@ -53,7 +73,9 @@
 <!-- Audio Features Modal -->
 <div id="af-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
   <div style="background:var(--card-solid);border:1px solid var(--border);border-radius:12px;padding:1.5rem;max-width:340px;width:calc(100% - 2rem);position:relative">
-    <button onclick="closeAF()" style="position:absolute;top:.75rem;right:.75rem;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer">✕</button>
+    <button onclick="closeAF()" style="position:absolute;top:.75rem;right:.75rem;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;min-width:44px;min-height:44px" aria-label="Audio-Features schließen">
+      <span aria-hidden="true">✕</span>
+    </button>
     <div id="af-content"></div>
   </div>
 </div>
