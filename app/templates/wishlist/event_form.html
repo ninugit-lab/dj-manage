@@ -1,306 +1,537 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="turbo-visit-control" content="reload">
-  <title>Event buchen — {{ config.dj_name }}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=Space+Mono&display=swap" rel="stylesheet">
-  <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{--bg:#080810;--surface:#0f0f1a;--card:#14141f;--border:#1e1e30;--accent:#3b82f6;--accent2:#a855f7;--red:#ff3b5c;--text:#e8e8f0;--muted:#5a5a7a}
-    body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh}
-    body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.04'/%3E%3C/svg%3E");pointer-events:none;z-index:0}
-    .container{max-width:720px;margin:0 auto;padding:2rem 1.5rem 4rem;position:relative;z-index:1}
-    .brand{text-align:center;margin-bottom:2rem}
-    .brand h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(2.5rem,8vw,4.5rem);letter-spacing:.04em;background:linear-gradient(135deg,#fff 30%,var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-    .brand p{color:var(--muted);font-size:.9rem;margin-top:.5rem;line-height:1.6;max-width:480px;margin-left:auto;margin-right:auto}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}
-    .card-title{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:.04em;margin-bottom:1rem}
-    .form-group{margin-bottom:1rem}.form-label{display:block;margin-bottom:.3rem;font-size:.78rem;font-weight:500;color:var(--muted)}
-    .form-input,.form-textarea{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.65rem .8rem;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.88rem;outline:none;transition:border-color .2s}
-    .form-input:focus,.form-textarea:focus{border-color:var(--accent2)}.form-textarea{min-height:80px;resize:vertical}
-    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
-    .form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
-    @media(max-width:600px){.form-row,.form-row-3{grid-template-columns:1fr}}
-    .date-status{margin-top:.5rem;font-size:.82rem;font-family:'Space Mono',monospace;padding:.5rem .8rem;border-radius:6px;display:none}
-    .date-status.available{display:block;background:rgba(29,185,84,.1);color:var(--accent);border:1px solid rgba(29,185,84,.2)}
-    .date-status.unavailable{display:block;background:rgba(255,59,92,.1);color:var(--red);border:1px solid rgba(255,59,92,.2)}
-    .date-status.checking{display:block;color:var(--muted)}
-    .rest-form{display:none}.rest-form.visible{display:block}
-    .price-section{display:none}.price-section.visible{display:block}
-    .price-category{margin-bottom:1rem}
-    .price-category-title{font-family:'Space Mono',monospace;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:.5rem}
-    .price-item{display:flex;align-items:center;gap:.75rem;padding:.5rem;border-radius:6px;transition:background .15s;cursor:pointer}
-    .price-item:hover{background:rgba(168,85,247,.05)}
-    .price-item input[type="checkbox"]{accent-color:var(--accent);width:16px;height:16px;cursor:pointer}
-    .price-item-info{flex:1}.price-item-name{font-size:.88rem;font-weight:500}.price-item-desc{font-size:.72rem;color:var(--muted)}
-    .price-item-price{font-family:'Space Mono',monospace;font-size:.85rem;color:var(--accent)}
-    .price-total{display:flex;justify-content:space-between;align-items:center;padding:1rem;background:var(--surface);border-radius:8px;margin-top:1rem}
-    .price-total-label{font-family:'Bebas Neue',sans-serif;font-size:1.3rem}.price-total-value{font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--accent)}
-    .btn{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;padding:.7rem 1.5rem;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:.9rem;font-weight:600;border:none;cursor:pointer;transition:transform .1s,box-shadow .2s;width:100%}
-    .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{box-shadow:0 4px 20px rgba(59,130,246,.3);transform:translateY(-1px)}
-    .btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
-    .success-msg{text-align:center;padding:3rem 1rem}.success-msg .icon{font-size:4rem;margin-bottom:1rem}
-    .success-msg h2{font-family:'Bebas Neue',sans-serif;font-size:2.5rem;color:var(--accent)}.success-msg p{color:var(--muted);margin-top:.5rem}
-    #toast{position:fixed;bottom:2rem;left:50%;transform:translateX(-50%) translateY(100px);background:var(--surface);border:1px solid var(--accent);border-radius:8px;padding:.8rem 1.5rem;font-size:.85rem;color:var(--accent);z-index:999;transition:transform .3s cubic-bezier(.34,1.56,.64,1);box-shadow:0 8px 30px rgba(0,0,0,.5)}
-    #toast.show{transform:translateX(-50%) translateY(0)}#toast.error{border-color:var(--red);color:var(--red)}
-    input[type="date"]{appearance:none;-webkit-appearance:none}
-    input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1);cursor:pointer}
-    .date-prompt{text-align:center;color:var(--muted);font-size:.88rem;padding:1rem 0}
-  </style>
-</head>
-<body>
-<div class="container">
-  <div class="brand"><h1>{{ config.dj_name }}</h1><p>{{ config.event_form_intro }}</p></div>
+{% extends "wishlist/base.html" %}
+{% load static %}
+
+{% block title %}Event buchen — {{ config.dj_name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* Step visibility */
+  .step-panel { display: none; }
+  .step-panel.active { display: block; }
+
+  /* Progress dots */
+  .progress-step-dot[aria-current="step"] { background-color: rgb(var(--color-accent)); }
+  .progress-step-dot.done { background-color: rgb(var(--color-accent2)); }
+
+  /* Date input */
+  input[type="date"] { appearance: none; -webkit-appearance: none; }
+  input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
+
+  /* Autocomplete dropdown */
+  #f-addr-results { display: none; position: absolute; z-index: 50; left: 0; right: 0; top: 100%;
+    max-height: 200px; overflow-y: auto; max-width: calc(100vw - 2rem);
+    background: #14141f; border: 1px solid #1e1e30; border-radius: 0 0 6px 6px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+
+  /* Radio package cards */
+  .pkg-label { display: flex; align-items: center; gap: .75rem; padding: .75rem;
+    border: 1.5px solid #1e1e30; border-radius: 8px; cursor: pointer;
+    transition: border-color .2s; min-height: 44px; }
+  .pkg-label:has(input:checked) { border-color: rgb(var(--color-accent2)); }
+
+  /* Checkbox add-on items */
+  .addon-label { display: flex; align-items: center; gap: .75rem; padding: .5rem;
+    border-radius: 6px; transition: background .15s; cursor: pointer; min-height: 44px; }
+  .addon-label:hover { background: rgba(168,85,247,.05); }
+  .addon-label input[type="checkbox"] { accent-color: rgb(var(--color-accent)); width: 18px; height: 18px;
+    flex-shrink: 0; cursor: pointer; }
+
+  /* Sticky price bar */
+  #sticky-price { position: sticky; bottom: 0; z-index: 40; }
+
+  /* Date status */
+  .date-status { margin-top: .5rem; font-size: .82rem; font-family: 'Space Mono', monospace;
+    padding: .5rem .8rem; border-radius: 6px; display: none; }
+  .date-status.available { display: block; background: rgba(29,185,84,.1); color: #3b82f6; border: 1px solid rgba(29,185,84,.2); }
+  .date-status.unavailable { display: block; background: rgba(255,59,92,.1); color: #ff3b5c; border: 1px solid rgba(255,59,92,.2); }
+  .date-status.checking { display: block; color: #5a5a7a; }
+
+  /* Toast */
+  #toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(100px);
+    background: #0f0f1a; border: 1px solid #3b82f6; border-radius: 8px; padding: .8rem 1.5rem;
+    font-size: .85rem; color: #3b82f6; z-index: 999;
+    transition: transform .3s cubic-bezier(.34,1.56,.64,1); box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.error { border-color: #ff3b5c; color: #ff3b5c; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="relative z-10 max-w-xl mx-auto px-4 py-8 pb-32">
+
+  {# Brand #}
+  <div class="text-center mb-8">
+    <h1 class="font-display text-[clamp(2.5rem,8vw,4rem)] tracking-wide bg-gradient-to-br from-white/90 to-purple-400 bg-clip-text text-transparent">{{ config.dj_name }}</h1>
+    <p class="text-subtle text-sm mt-2 leading-relaxed max-w-sm mx-auto">{{ config.event_form_intro }}</p>
+  </div>
+
+  {# ── Progress Indicator ── #}
+  <nav aria-label="Buchungsschritte" class="mb-8">
+    <ol class="flex items-center justify-between gap-1" id="progress-list">
+      <li class="flex-1 flex flex-col items-center gap-1" id="prog-1">
+        <div class="progress-step-dot w-3 h-3 rounded-full bg-surface border border-border transition-colors"></div>
+        <span class="text-[0.6rem] text-subtle hidden sm:block">Datum</span>
+      </li>
+      <li class="flex-1 h-px bg-border self-start mt-[5px]" aria-hidden="true"></li>
+      <li class="flex-1 flex flex-col items-center gap-1" id="prog-2">
+        <div class="progress-step-dot w-3 h-3 rounded-full bg-surface border border-border transition-colors"></div>
+        <span class="text-[0.6rem] text-subtle hidden sm:block">Kontakt</span>
+      </li>
+      <li class="flex-1 h-px bg-border self-start mt-[5px]" aria-hidden="true"></li>
+      <li class="flex-1 flex flex-col items-center gap-1" id="prog-3">
+        <div class="progress-step-dot w-3 h-3 rounded-full bg-surface border border-border transition-colors"></div>
+        <span class="text-[0.6rem] text-subtle hidden sm:block">Event</span>
+      </li>
+      <li class="flex-1 h-px bg-border self-start mt-[5px]" aria-hidden="true"></li>
+      <li class="flex-1 flex flex-col items-center gap-1" id="prog-4">
+        <div class="progress-step-dot w-3 h-3 rounded-full bg-surface border border-border transition-colors"></div>
+        <span class="text-[0.6rem] text-subtle hidden sm:block">Paket</span>
+      </li>
+      <li class="flex-1 h-px bg-border self-start mt-[5px]" aria-hidden="true"></li>
+      <li class="flex-1 flex flex-col items-center gap-1" id="prog-5">
+        <div class="progress-step-dot w-3 h-3 rounded-full bg-surface border border-border transition-colors"></div>
+        <span class="text-[0.6rem] text-subtle hidden sm:block">Abschluss</span>
+      </li>
+    </ol>
+    <p class="text-center text-subtle text-xs mt-2" id="step-counter" aria-live="polite">Schritt 1 von 5</p>
+  </nav>
 
   <div id="booking-form">
-    <!-- Step 1: Datum -->
-    <div class="card">
-      <div class="card-title">📅 Datum wählen</div>
-      <p class="date-prompt">{{ config.event_form_date_prompt|default:"Wähle zuerst dein Wunschdatum." }}</p>
-      <div class="form-group" style="max-width:300px;margin:1rem auto">
-        <input type="date" id="f-date" class="form-input" style="text-align:center;font-size:1.1rem;padding:.8rem" required>
+
+    {# ══ STEP 1: Datum ══ #}
+    <div class="step-panel active glass rounded-xl p-6" id="step-1" role="group" aria-labelledby="step1-title">
+      <h2 id="step1-title" class="font-display text-2xl tracking-wide mb-1">Datum wählen</h2>
+      <p class="text-subtle text-sm mb-5">{{ config.event_form_date_prompt|default:"Wähle zuerst dein Wunschdatum." }}</p>
+      <div class="max-w-xs mx-auto">
+        <label for="f-date" class="field-label">Datum <span aria-hidden="true">*</span></label>
+        <input type="date" id="f-date" class="field-input text-center text-lg py-3" required aria-required="true">
+        <div class="date-status" id="date-status" role="status" aria-live="polite"></div>
       </div>
-      <div class="date-status" id="date-status"></div>
+      <div class="mt-6 flex justify-end">
+        <button type="button" id="btn-next-1" onclick="goStep(2)"
+          class="btn-primary min-h-[44px] px-6 opacity-40 cursor-not-allowed"
+          disabled aria-disabled="true">Weiter &rsaquo;</button>
+      </div>
     </div>
 
-    <!-- Step 2: Rest (hidden until date available) -->
-    <div class="rest-form" id="rest-form">
-      <!-- Kontaktdaten -->
-      <div class="card">
-        <div class="card-title">📋 Deine Daten</div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">Name *</label><input type="text" id="f-client-name" class="form-input" required></div>
-          <div class="form-group"><label class="form-label">E-Mail *</label><input type="email" id="f-client-email" class="form-input" required></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">Telefon</label><input type="tel" id="f-client-phone" class="form-input"></div>
-          <div class="form-group"><label class="form-label">Firma</label><input type="text" id="f-client-company" class="form-input"></div>
+    {# ══ STEP 2: Kontakt ══ #}
+    <div class="step-panel glass rounded-xl p-6" id="step-2" role="group" aria-labelledby="step2-title">
+      <h2 id="step2-title" class="font-display text-2xl tracking-wide mb-5">Deine Kontaktdaten</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+        {% include "components/form_field.html" with id="f-client-name" label="Name" name="f-client-name" type="text" required=True placeholder="Vor- und Nachname" %}
+        {% include "components/form_field.html" with id="f-client-email" label="E-Mail" name="f-client-email" type="email" required=True placeholder="deine@email.de" %}
+        {% include "components/form_field.html" with id="f-client-phone" label="Telefon" name="f-client-phone" type="tel" placeholder="+49 …" %}
+        {% include "components/form_field.html" with id="f-client-company" label="Firma" name="f-client-company" type="text" placeholder="Optional" %}
+      </div>
+      <div class="mt-6 flex justify-between">
+        <button type="button" onclick="goStep(1)" class="btn-ghost min-h-[44px] px-5">&lsaquo; Zurück</button>
+        <button type="button" id="btn-next-2" onclick="stepValidate(2)"
+          class="btn-primary min-h-[44px] px-6">Weiter &rsaquo;</button>
+      </div>
+    </div>
+
+    {# ══ STEP 3: Event Details ══ #}
+    <div class="step-panel glass rounded-xl p-6" id="step-3" role="group" aria-labelledby="step3-title">
+      <h2 id="step3-title" class="font-display text-2xl tracking-wide mb-5">Event Details</h2>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+        {% include "components/form_field.html" with id="f-name" label="Event Name" name="f-name" type="text" required=True placeholder="z.B. Hochzeit Meyer" %}
+        <div class="mb-4">
+          <label for="f-event-type" class="field-label">Art des Events</label>
+          <select id="f-event-type" name="f-event-type" class="field-input">
+            <option value="">— Auswählen —</option>
+            <option value="Hochzeit">Hochzeit</option>
+            <option value="Firmenfeier">Firmenfeier</option>
+            <option value="Geburtstag">Geburtstag</option>
+            <option value="Club">Club</option>
+            <option value="Festival">Festival</option>
+            <option value="Privatfeier">Privatfeier</option>
+            <option value="Sonstige">Sonstige</option>
+          </select>
         </div>
       </div>
 
-      <!-- Event Details -->
-      <div class="card">
-        <div class="card-title">🎧 Event Details</div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">Event Name *</label><input type="text" id="f-name" class="form-input" placeholder="z.B. Hochzeit Meyer" required></div>
-          <div class="form-group"><label class="form-label">Art des Events</label>
-            <select id="f-event-type" class="form-input" style="appearance:auto"><option value="">— Auswählen —</option><option value="Hochzeit">Hochzeit</option><option value="Firmenfeier">Firmenfeier</option><option value="Geburtstag">Geburtstag</option><option value="Club">Club</option><option value="Festival">Festival</option><option value="Privatfeier">Privatfeier</option><option value="Sonstige">Sonstige</option></select>
-          </div>
+      {# Adresse Autocomplete #}
+      <div class="mb-4" style="position:relative">
+        <label for="f-addr-search" class="field-label">Adresse suchen</label>
+        <input type="text" id="f-addr-search" class="field-input" placeholder="Adresse oder Ort eingeben…" autocomplete="off">
+        <div id="f-addr-results"></div>
+      </div>
+
+      {% include "components/form_field.html" with id="f-location" label="Veranstaltungsort" name="f-location" type="text" required=True placeholder="z.B. Schloss Heidelberg, Festsaal Mayer" %}
+
+      <div class="grid grid-cols-2 gap-x-4">
+        <div class="col-span-2 sm:col-span-1 mb-4">
+          <label for="f-street" class="field-label">Straße + Nr.</label>
+          <input type="text" id="f-street" name="f-street" class="field-input" placeholder="z.B. Schlosshof 1">
         </div>
-        <div class="form-group" style="position:relative">
-          <label class="form-label">Adresse suchen</label>
-          <input type="text" id="f-addr-search" class="form-input" placeholder="Adresse oder Ort eingeben..." autocomplete="off">
-          <div id="f-addr-results" style="display:none;position:absolute;z-index:50;left:0;right:0;top:100%;max-height:200px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:0 0 6px 6px;box-shadow:0 8px 30px rgba(0,0,0,.5)"></div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Veranstaltungsort</label>
-          <input type="text" id="f-location" class="form-input" placeholder="z.B. Schloss Heidelberg, Festsaal Mayer">
-        </div>
-        <div class="form-row-3">
-          <div class="form-group" style="grid-column:1/3">
-            <label class="form-label">Straße + Nr.</label>
-            <input type="text" id="f-street" class="form-input" placeholder="z.B. Schlosshof 1">
-          </div>
-          <div class="form-group">
-            <label class="form-label">PLZ</label>
-            <input type="text" id="f-zip" class="form-input" placeholder="z.B. 69117" maxlength="10">
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Stadt</label>
-          <input type="text" id="f-city" class="form-input" placeholder="z.B. Heidelberg">
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">Gästeanzahl</label><input type="number" id="f-guest-count" class="form-input" placeholder="ca."></div>
-          <div class="form-group"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">Beginn</label><input type="time" id="f-time-start" class="form-input"></div>
-          <div class="form-group"><label class="form-label">Ende</label><input type="time" id="f-time-end" class="form-input"></div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Beschreibung / Sonderwünsche</label>
-          <textarea id="f-description" class="form-textarea" placeholder="Erzähle etwas über dein Event..."></textarea>
+        <div class="mb-4">
+          <label for="f-zip" class="field-label">PLZ</label>
+          <input type="text" id="f-zip" name="f-zip" class="field-input" placeholder="69117" maxlength="10">
         </div>
       </div>
 
-      <!-- Pakete -->
+      {% include "components/form_field.html" with id="f-city" label="Stadt" name="f-city" type="text" placeholder="z.B. Heidelberg" %}
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+        <div class="mb-4">
+          <label for="f-guest-count" class="field-label">Gästeanzahl</label>
+          <input type="number" id="f-guest-count" name="f-guest-count" class="field-input" placeholder="ca." min="1">
+        </div>
+        <div class="mb-4">
+          <p class="field-label">Uhrzeit</p>
+          <div class="flex gap-2">
+            <input type="time" id="f-time-start" name="f-time-start" class="field-input" aria-label="Beginn">
+            <input type="time" id="f-time-end" name="f-time-end" class="field-input" aria-label="Ende">
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label for="f-description" class="field-label">Beschreibung / Sonderwünsche</label>
+        <textarea id="f-description" name="f-description" class="field-input min-h-[80px] resize-y" placeholder="Erzähle etwas über dein Event…"></textarea>
+      </div>
+
+      <div class="mt-6 flex justify-between">
+        <button type="button" onclick="goStep(2)" class="btn-ghost min-h-[44px] px-5">&lsaquo; Zurück</button>
+        <button type="button" id="btn-next-3" onclick="stepValidate(3)"
+          class="btn-primary min-h-[44px] px-6">Weiter &rsaquo;</button>
+      </div>
+    </div>
+
+    {# ══ STEP 4: Paket ══ #}
+    <div class="step-panel glass rounded-xl p-6" id="step-4" role="group" aria-labelledby="step4-title">
+      <h2 id="step4-title" class="font-display text-2xl tracking-wide mb-5">Paket wählen</h2>
+
       {% if pricing_packages %}
-      <div class="price-section visible">
-        <div class="card">
-          <div class="card-title">📦 Paket wählen</div>
-          <div style="display:grid;gap:.75rem;margin-bottom:.5rem">
-            <label style="display:flex;align-items:center;gap:.75rem;padding:.75rem;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .2s" onclick="this.querySelector('input').checked=true;updatePrice()">
-              <input type="radio" name="f-package" value="" checked style="accent-color:var(--accent2);width:16px;height:16px">
-              <div><div style="font-weight:500;font-size:.9rem">Kein Paket</div><div style="font-size:.74rem;color:var(--muted)">Einzelne Posten wählen</div></div>
-            </label>
-            {% for pkg in pricing_packages %}
-            <label style="display:flex;align-items:center;gap:.75rem;padding:.75rem;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .2s;position:relative" onclick="this.querySelector('input').checked=true;updatePrice()">
-              <input type="radio" name="f-package" value="{{ pkg.pk }}" style="accent-color:var(--accent2);width:16px;height:16px">
-              <div style="flex:1"><div style="font-weight:500;font-size:.9rem">{{ pkg.name }}{% if pkg.badge_label %} <span style="background:rgba(168,85,247,.15);color:var(--accent2);font-size:.62rem;padding:.15rem .5rem;border-radius:100px;margin-left:.3rem">{{ pkg.badge_label }}</span>{% endif %}</div>{% if pkg.description %}<div style="font-size:.74rem;color:var(--muted);margin-top:.15rem">{{ pkg.description|truncatewords:15 }}</div>{% endif %}</div>
-              <div style="font-family:'Space Mono',monospace;font-size:1rem;color:var(--accent2);flex-shrink:0">{{ pkg.base_price }} €</div>
-            </label>
-            {% endfor %}
+      <div class="flex flex-col gap-3 mb-2">
+        <label class="pkg-label">
+          <input type="radio" name="f-package" value="" checked class="accent-purple-500 w-4 h-4 flex-shrink-0" onchange="updatePrice()">
+          <div>
+            <div class="font-medium text-sm">Kein Paket</div>
+            <div class="text-xs text-subtle">Einzelne Posten wählen</div>
           </div>
-        </div>
+        </label>
+        {% for pkg in pricing_packages %}
+        <label class="pkg-label">
+          <input type="radio" name="f-package" value="{{ pkg.pk }}" class="accent-purple-500 w-4 h-4 flex-shrink-0" onchange="updatePrice()">
+          <div class="flex-1">
+            <div class="font-medium text-sm">{{ pkg.name }}{% if pkg.badge_label %} <span class="ml-1 text-[0.6rem] bg-purple-500/15 text-purple-300 px-2 py-0.5 rounded-full">{{ pkg.badge_label }}</span>{% endif %}</div>
+            {% if pkg.description %}<div class="text-xs text-subtle mt-0.5">{{ pkg.description|truncatewords:15 }}</div>{% endif %}
+          </div>
+          <div class="font-mono text-sm text-purple-300 flex-shrink-0">{{ pkg.base_price }} €</div>
+        </label>
+        {% endfor %}
       </div>
+      {% else %}
+      <p class="text-subtle text-sm">Keine Pakete konfiguriert.</p>
       {% endif %}
 
-      <!-- Price Calculator Items -->
-      {% if price_items %}
-      <div class="price-section visible" id="price-section">
-        <div class="card">
-          <div class="card-title">💰 Zusatzoptionen</div>
-          <div id="price-items-container">
-            {% regroup price_items by get_category_display as categories %}
-            {% for cat in categories %}
-            <div class="price-category"><div class="price-category-title">{{ cat.grouper }}</div>
-              {% for item in cat.list %}
-              <label class="price-item"><input type="checkbox" value="{{ item.pk }}" data-price="{{ item.price }}" {% if item.is_required %}checked disabled{% elif item.is_default %}checked{% endif %} onchange="updatePrice()" class="price-checkbox"><div class="price-item-info"><div class="price-item-name">{{ item.name }}</div>{% if item.description %}<div class="price-item-desc">{{ item.description }}</div>{% endif %}</div><div class="price-item-price">{{ item.price }} €</div></label>
-              {% endfor %}
-            </div>
-            {% endfor %}
-          </div>
-        </div>
+      <div class="mt-6 flex justify-between">
+        <button type="button" onclick="goStep(3)" class="btn-ghost min-h-[44px] px-5">&lsaquo; Zurück</button>
+        <button type="button" onclick="goStep(5)" class="btn-primary min-h-[44px] px-6">Weiter &rsaquo;</button>
       </div>
-      {% endif %}
-
-      <!-- Unified Price Display -->
-      <div class="price-section visible">
-        <div class="card">
-          <div id="price-breakdown" style="font-size:.82rem"></div>
-          <div class="price-total"><div class="price-total-label">Gesamt</div><div class="price-total-value" id="price-total">0 €</div></div>
-          <div id="rules-info" style="margin-top:.5rem;font-size:.74rem;color:var(--muted)"></div>
-        </div>
-      </div>
-
-      <button class="btn btn-primary" id="submit-btn" onclick="submitForm()" disabled>📩 Anfrage senden</button>
     </div>
+
+    {# ══ STEP 5: Add-Ons + Preis + Absenden ══ #}
+    <div class="step-panel glass rounded-xl p-6" id="step-5" role="group" aria-labelledby="step5-title">
+      <h2 id="step5-title" class="font-display text-2xl tracking-wide mb-5">Zusatzoptionen</h2>
+
+      {% if price_items %}
+      <div id="price-section">
+        <div id="price-items-container" class="mb-6">
+          {% regroup price_items by get_category_display as categories %}
+          {% for cat in categories %}
+          <div class="mb-4">
+            <div class="text-[0.65rem] font-mono tracking-widest uppercase text-subtle mb-2">{{ cat.grouper }}</div>
+            {% for item in cat.list %}
+            <label class="addon-label">
+              <input type="checkbox" value="{{ item.pk }}" data-price="{{ item.price }}"
+                {% if item.is_required %}checked disabled{% elif item.is_default %}checked{% endif %}
+                onchange="updatePrice()" class="price-checkbox">
+              <div class="flex-1">
+                <div class="text-sm font-medium">{{ item.name }}</div>
+                {% if item.description %}<div class="text-xs text-subtle">{{ item.description }}</div>{% endif %}
+              </div>
+              <div class="font-mono text-sm text-accent flex-shrink-0">{{ item.price }} €</div>
+            </label>
+            {% endfor %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# Price breakdown #}
+      <div class="glass rounded-lg p-4 mb-4">
+        <div id="price-breakdown" class="text-sm mb-3 space-y-1"></div>
+        <div id="rules-info" class="text-xs text-subtle mb-2"></div>
+        <div class="flex justify-between items-center pt-2 border-t border-border">
+          <span class="font-display text-xl tracking-wide">Gesamt</span>
+          <span class="font-display text-3xl text-accent" id="price-total" aria-live="polite">0 €</span>
+        </div>
+      </div>
+
+      <div class="mt-6 flex justify-between">
+        <button type="button" onclick="goStep(4)" class="btn-ghost min-h-[44px] px-5">&lsaquo; Zurück</button>
+        <button type="button" id="submit-btn" onclick="submitForm()"
+          class="btn-primary min-h-[44px] px-6 opacity-40 cursor-not-allowed" disabled aria-disabled="true">
+          Anfrage senden
+        </button>
+      </div>
+    </div>
+
+  </div>{# /booking-form #}
+
+  {# Success #}
+  <div id="success-view" style="display:none" class="text-center py-16 px-4">
+    <div class="text-6xl mb-4">🎉</div>
+    <h2 class="font-display text-4xl text-accent mb-2">Anfrage gesendet!</h2>
+    <p class="text-subtle">Wir haben dir eine Bestätigung per E-Mail geschickt.</p>
   </div>
-  <div id="success-view" style="display:none"><div class="success-msg"><div class="icon">🎉</div><h2>Anfrage gesendet!</h2><p>Wir haben dir eine Bestätigung per E-Mail geschickt.</p></div></div></div>
+
 </div>
+
+{# ── Sticky price bar (mobile) ── #}
+<div id="sticky-price" class="bg-surface/90 backdrop-blur border-t border-border px-4 py-2 sm:hidden" style="display:none!important" aria-hidden="true">
+  <div class="flex justify-between items-center max-w-xl mx-auto">
+    <span class="text-xs text-subtle">Gesamt</span>
+    <span class="font-mono text-accent font-semibold" id="sticky-total">0 €</span>
+  </div>
+</div>
+
 <div id="toast"></div>
+
 <script>
-var CSRF='{{ csrf_token }}';
-var UNAVAILABLE_MSG='{{ config.event_form_unavailable_msg|default:"Leider sind wir an diesem Datum nicht verfügbar." }}';
-var dateAvailable=false;
-var DJ_HOME={{ dj_coords_json|safe }};
-var eventDistanceKm=null;
-function haversineKm(lat1,lon1,lat2,lon2){
-  var R=6371,toRad=Math.PI/180;
-  var dLat=(lat2-lat1)*toRad,dLon=(lon2-lon1)*toRad;
-  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*toRad)*Math.cos(lat2*toRad)*Math.sin(dLon/2)*Math.sin(dLon/2);
-  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+var CSRF = '{{ csrf_token }}';
+var UNAVAILABLE_MSG = '{{ config.event_form_unavailable_msg|default:"Leider sind wir an diesem Datum nicht verfügbar." }}';
+var dateAvailable = false;
+var DJ_HOME = {{ dj_coords_json|safe }};
+var eventDistanceKm = null;
+var currentStep = 1;
+var TOTAL_STEPS = 5;
+
+/* ── Haversine ── */
+function haversineKm(lat1, lon1, lat2, lon2) {
+  var R = 6371, toRad = Math.PI / 180;
+  var dLat = (lat2 - lat1) * toRad, dLon = (lon2 - lon1) * toRad;
+  var a = Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*toRad)*Math.cos(lat2*toRad)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
-function setEventCoords(lat,lon){
-  if(DJ_HOME.lat===null||DJ_HOME.lon===null||lat===null){eventDistanceKm=null;return}
-  eventDistanceKm=Math.round(haversineKm(DJ_HOME.lat,DJ_HOME.lon,lat,lon)*1.3);
+function setEventCoords(lat, lon) {
+  if (DJ_HOME.lat === null || DJ_HOME.lon === null || lat === null) { eventDistanceKm = null; return; }
+  eventDistanceKm = Math.round(haversineKm(DJ_HOME.lat, DJ_HOME.lon, lat, lon) * 1.3);
 }
 
-document.getElementById('f-date').addEventListener('change', async function(){
-  var d=this.value, s=document.getElementById('date-status'), rest=document.getElementById('rest-form');
-  if(!d){s.className='date-status';rest.classList.remove('visible');return}
-  s.className='date-status checking'; s.textContent='Verfügbarkeit wird geprüft…';
-  try{
-    var r=await fetch('/api/check-date/?date='+d), data=await r.json();
-    if(data.available){
-      s.className='date-status available'; s.textContent='✓ Datum ist verfügbar!';
-      dateAvailable=true; rest.classList.add('visible'); updateTotal();
-    } else {
-      s.className='date-status unavailable'; s.textContent='✕ '+UNAVAILABLE_MSG;
-      dateAvailable=false; rest.classList.remove('visible');
+/* ── Step navigation ── */
+function goStep(n) {
+  document.getElementById('step-' + currentStep).classList.remove('active');
+  currentStep = n;
+  document.getElementById('step-' + currentStep).classList.add('active');
+  updateProgressUI();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (n === 5) updateSubmitButton();
+}
+
+function updateProgressUI() {
+  document.getElementById('step-counter').textContent = 'Schritt ' + currentStep + ' von ' + TOTAL_STEPS;
+  for (var i = 1; i <= TOTAL_STEPS; i++) {
+    var li = document.getElementById('prog-' + i);
+    var dot = li ? li.querySelector('.progress-step-dot') : null;
+    if (!dot) continue;
+    dot.removeAttribute('aria-current');
+    dot.classList.remove('done');
+    if (li) li.removeAttribute('aria-current');
+    if (i < currentStep) dot.classList.add('done');
+    else if (i === currentStep) {
+      dot.setAttribute('aria-current', 'step');
+      if (li) li.setAttribute('aria-current', 'step');
     }
-    updateSubmitButton();
-  } catch(e) {
-    s.className='date-status checking'; s.textContent='Prüfung nicht möglich – Formular trotzdem nutzbar';
-    dateAvailable=true; rest.classList.add('visible'); updateTotal(); updateSubmitButton();
   }
+}
+
+/* ── Step validation before advancing ── */
+function stepValidate(fromStep) {
+  var required = [];
+  if (fromStep === 2) required = ['f-client-name', 'f-client-email'];
+  if (fromStep === 3) required = ['f-name', 'f-location'];
+  var ok = true;
+  required.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (!el.value.trim()) {
+      el.setAttribute('aria-invalid', 'true');
+      el.classList.add('border-danger');
+      ok = false;
+    } else {
+      el.removeAttribute('aria-invalid');
+      el.classList.remove('border-danger');
+    }
+  });
+  if (ok) goStep(fromStep + 1);
+  else showToast('Bitte Pflichtfelder ausfüllen', true);
+}
+
+/* ── Date availability check ── */
+document.getElementById('f-date').addEventListener('change', async function() {
+  var d = this.value;
+  var s = document.getElementById('date-status');
+  var btn = document.getElementById('btn-next-1');
+  if (!d) { s.className = 'date-status'; dateAvailable = false; btn.disabled = true; btn.setAttribute('aria-disabled','true'); btn.classList.add('opacity-40','cursor-not-allowed'); return; }
+  s.className = 'date-status checking'; s.textContent = 'Verfügbarkeit wird geprüft…';
+  try {
+    var r = await fetch('/api/check-date/?date=' + d), data = await r.json();
+    if (data.available) {
+      s.className = 'date-status available'; s.textContent = '✓ Datum ist verfügbar!';
+      dateAvailable = true;
+    } else {
+      s.className = 'date-status unavailable'; s.textContent = '✕ ' + UNAVAILABLE_MSG;
+      dateAvailable = false;
+    }
+  } catch(e) {
+    s.className = 'date-status checking'; s.textContent = 'Prüfung nicht möglich – Formular trotzdem nutzbar';
+    dateAvailable = true;
+  }
+  if (dateAvailable) {
+    btn.disabled = false; btn.removeAttribute('aria-disabled');
+    btn.classList.remove('opacity-40','cursor-not-allowed');
+  } else {
+    btn.disabled = true; btn.setAttribute('aria-disabled','true');
+    btn.classList.add('opacity-40','cursor-not-allowed');
+  }
+  updateTotal();
 });
 
-function updateTotal(){var t=0;document.querySelectorAll('.price-checkbox:checked').forEach(function(c){t+=parseFloat(c.dataset.price)});var el=document.getElementById('price-total');if(el)el.textContent=t.toFixed(2)+' €'}
+/* ── Price helpers ── */
+function updateTotal() {
+  var t = 0;
+  document.querySelectorAll('.price-checkbox:checked').forEach(function(c) { t += parseFloat(c.dataset.price); });
+  var el = document.getElementById('price-total');
+  if (el) el.textContent = t.toFixed(2) + ' €';
+  var st = document.getElementById('sticky-total');
+  if (st) st.textContent = t.toFixed(2) + ' €';
+}
+
 var _priceTimer;
-function updatePrice(){
+function updatePrice() {
   updateTotal();
   clearTimeout(_priceTimer);
-  _priceTimer=setTimeout(doUpdatePrice,400);
+  _priceTimer = setTimeout(doUpdatePrice, 400);
 }
-function doUpdatePrice(){
-  var pkgRadio=document.querySelector('input[name="f-package"]:checked');
-  var pkgId=pkgRadio?(parseInt(pkgRadio.value)||null):null;
-  var itemIds=[];document.querySelectorAll('.price-checkbox:checked').forEach(function(c){itemIds.push(parseInt(c.value))});
-  var body={
-    date:document.getElementById('f-date').value||null,
-    guest_count:document.getElementById('f-guest-count').value||null,
-    event_type:document.getElementById('f-event-type').value||'',
-    time_start:document.getElementById('f-time-start').value||null,
-    time_end:document.getElementById('f-time-end').value||null,
-    package_id:pkgId,
-    selected_item_ids:itemIds,
-    distance_km:eventDistanceKm
+
+function doUpdatePrice() {
+  var pkgRadio = document.querySelector('input[name="f-package"]:checked');
+  var pkgId = pkgRadio ? (parseInt(pkgRadio.value) || null) : null;
+  var itemIds = [];
+  document.querySelectorAll('.price-checkbox:checked').forEach(function(c) { itemIds.push(parseInt(c.value)); });
+  var body = {
+    date: document.getElementById('f-date').value || null,
+    guest_count: document.getElementById('f-guest-count').value || null,
+    event_type: document.getElementById('f-event-type').value || '',
+    time_start: document.getElementById('f-time-start').value || null,
+    time_end: document.getElementById('f-time-end').value || null,
+    package_id: pkgId,
+    selected_item_ids: itemIds,
+    distance_km: eventDistanceKm
   };
-  fetch('/api/price-estimate/',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:JSON.stringify(body)})
-  .then(function(r){return r.json()})
-  .then(function(d){
-    var el=document.getElementById('price-total');
-    if(el)el.textContent=d.grand_total.toFixed(2)+' €';
-    var bd=document.getElementById('price-breakdown');
-    if(bd){
-      var h='';
-      if(d.package)h+='<div style="display:flex;justify-content:space-between;margin-bottom:.2rem"><span>'+d.package.name+'</span><span style="font-family:\'Space Mono\',monospace">'+d.package.price.toFixed(2)+' €</span></div>';
-      d.items.forEach(function(i){h+='<div style="display:flex;justify-content:space-between;margin-bottom:.2rem"><span>'+i.name+'</span><span style="font-family:\'Space Mono\',monospace">'+i.price.toFixed(2)+' €</span></div>';});
-      d.rules_applied.forEach(function(r){h+='<div style="display:flex;justify-content:space-between;margin-bottom:.2rem;color:var(--accent2)"><span>⚡ '+r.name+'</span><span style="font-family:\'Space Mono\',monospace">'+r.amount.toFixed(2)+' €</span></div>';});
-      bd.innerHTML=h;
+  fetch('/api/price-estimate/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+    body: JSON.stringify(body)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    var el = document.getElementById('price-total');
+    if (el) el.textContent = d.grand_total.toFixed(2) + ' €';
+    var st = document.getElementById('sticky-total');
+    if (st) st.textContent = d.grand_total.toFixed(2) + ' €';
+    var bd = document.getElementById('price-breakdown');
+    if (bd) {
+      var h = '';
+      if (d.package) h += '<div class="flex justify-between"><span>' + d.package.name + '</span><span class="font-mono">' + d.package.price.toFixed(2) + ' €</span></div>';
+      d.items.forEach(function(i) { h += '<div class="flex justify-between"><span>' + i.name + '</span><span class="font-mono">' + i.price.toFixed(2) + ' €</span></div>'; });
+      d.rules_applied.forEach(function(r) { h += '<div class="flex justify-between text-purple-300"><span>⚡ ' + r.name + '</span><span class="font-mono">' + r.amount.toFixed(2) + ' €</span></div>'; });
+      bd.innerHTML = h;
     }
-    var ri=document.getElementById('rules-info');
-    if(ri&&d.rules_applied.length){ri.textContent=d.rules_applied.map(function(r){return r.name+' ('+r.effect+')'}).join(', ');}
-    else if(ri){ri.textContent='';}
-  }).catch(function(){});
+    var ri = document.getElementById('rules-info');
+    if (ri && d.rules_applied.length) ri.textContent = d.rules_applied.map(function(r) { return r.name + ' (' + r.effect + ')'; }).join(', ');
+    else if (ri) ri.textContent = '';
+  }).catch(function() {});
 }
-function updateSubmitButton(){
-  var n=document.getElementById('f-client-name').value.trim(),
-      e=document.getElementById('f-client-email').value.trim(),
-      en=document.getElementById('f-name').value.trim(),
-      d=document.getElementById('f-date').value,
-      l=document.getElementById('f-location').value.trim();
-  document.getElementById('submit-btn').disabled=!(n&&e&&en&&d&&l&&dateAvailable);
-}
-['f-client-name','f-client-email','f-name','f-location'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('input',updateSubmitButton)});
 
-async function submitForm(){
-  var b=document.getElementById('submit-btn');b.disabled=true;b.textContent='Wird gesendet…';
-  var items=[];document.querySelectorAll('.price-checkbox:checked').forEach(function(c){items.push(parseInt(c.value))});
-  try{
-    var r=await fetch('/api/submit-event/',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:JSON.stringify({
-      name:document.getElementById('f-name').value.trim(),
-      date:document.getElementById('f-date').value,
-      time_start:document.getElementById('f-time-start').value||null,
-      time_end:document.getElementById('f-time-end').value||null,
-      location:document.getElementById('f-location').value.trim(),
-      address_street:document.getElementById('f-street').value.trim(),
-      address_zip:document.getElementById('f-zip').value.trim(),
-      address_city:document.getElementById('f-city').value.trim(),
-      event_type:document.getElementById('f-event-type').value,
-      description:document.getElementById('f-description').value.trim(),
-      client_name:document.getElementById('f-client-name').value.trim(),
-      client_email:document.getElementById('f-client-email').value.trim(),
-      client_phone:document.getElementById('f-client-phone').value.trim(),
-      client_company:document.getElementById('f-client-company').value.trim(),
-      guest_count:document.getElementById('f-guest-count').value||null,
-      distance_km:eventDistanceKm,
-      selected_items:items,
-      package_id:(function(){var p=document.querySelector('input[name="f-package"]:checked');return p?parseInt(p.value):null})()
-    })});
-    var d=await r.json();
-    if(d.success){document.getElementById('booking-form').style.display='none';document.getElementById('success-view').style.display='block'}
-    else{showToast(d.error||'Fehler',true);b.disabled=false;b.textContent='📩 Anfrage senden'}
-  }catch(e){showToast('Netzwerkfehler',true);b.disabled=false;b.textContent='📩 Anfrage senden'}
+/* ── Submit button state ── */
+function updateSubmitButton() {
+  var n = document.getElementById('f-client-name').value.trim();
+  var e = document.getElementById('f-client-email').value.trim();
+  var en = document.getElementById('f-name').value.trim();
+  var d = document.getElementById('f-date').value;
+  var l = document.getElementById('f-location').value.trim();
+  var btn = document.getElementById('submit-btn');
+  var ok = !!(n && e && en && d && l && dateAvailable);
+  btn.disabled = !ok;
+  btn.setAttribute('aria-disabled', ok ? 'false' : 'true');
+  if (ok) btn.classList.remove('opacity-40', 'cursor-not-allowed');
+  else btn.classList.add('opacity-40', 'cursor-not-allowed');
 }
-function showToast(m,e){var t=document.getElementById('toast');t.textContent=m;t.className=e?'error show':'show';setTimeout(function(){t.className=''},3500)}
+['f-client-name', 'f-client-email', 'f-name', 'f-location'].forEach(function(id) {
+  var el = document.getElementById(id);
+  if (el) el.addEventListener('input', updateSubmitButton);
+});
 
-// Address autocomplete via Nominatim
+/* ── Submit ── */
+async function submitForm() {
+  var b = document.getElementById('submit-btn');
+  b.disabled = true; b.textContent = 'Wird gesendet…';
+  var items = [];
+  document.querySelectorAll('.price-checkbox:checked').forEach(function(c) { items.push(parseInt(c.value)); });
+  try {
+    var r = await fetch('/api/submit-event/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({
+        name: document.getElementById('f-name').value.trim(),
+        date: document.getElementById('f-date').value,
+        time_start: document.getElementById('f-time-start').value || null,
+        time_end: document.getElementById('f-time-end').value || null,
+        location: document.getElementById('f-location').value.trim(),
+        address_street: document.getElementById('f-street').value.trim(),
+        address_zip: document.getElementById('f-zip').value.trim(),
+        address_city: document.getElementById('f-city').value.trim(),
+        event_type: document.getElementById('f-event-type').value,
+        description: document.getElementById('f-description').value.trim(),
+        client_name: document.getElementById('f-client-name').value.trim(),
+        client_email: document.getElementById('f-client-email').value.trim(),
+        client_phone: document.getElementById('f-client-phone').value.trim(),
+        client_company: document.getElementById('f-client-company').value.trim(),
+        guest_count: document.getElementById('f-guest-count').value || null,
+        distance_km: eventDistanceKm,
+        selected_items: items,
+        package_id: (function() { var p = document.querySelector('input[name="f-package"]:checked'); return p ? (parseInt(p.value) || null) : null; })()
+      })
+    });
+    var d = await r.json();
+    if (d.success) {
+      document.getElementById('booking-form').style.display = 'none';
+      document.getElementById('success-view').style.display = 'block';
+      document.getElementById('sticky-price').style.display = 'none';
+    } else {
+      showToast(d.error || 'Fehler', true);
+      b.disabled = false; b.textContent = 'Anfrage senden';
+    }
+  } catch(e) {
+    showToast('Netzwerkfehler', true);
+    b.disabled = false; b.textContent = 'Anfrage senden';
+  }
+}
+
+/* ── Toast ── */
+function showToast(m, e) {
+  var t = document.getElementById('toast');
+  t.textContent = m; t.className = e ? 'error show' : 'show';
+  setTimeout(function() { t.className = ''; }, 3500);
+}
+
+/* ── Nominatim Autocomplete ── */
 (function() {
   var si = document.getElementById('f-addr-search');
   var rb = document.getElementById('f-addr-results');
@@ -317,12 +548,12 @@ function showToast(m,e){var t=document.getElementById('toast');t.textContent=m;t
           if (!data.length) { rb.style.display = 'none'; return; }
           rb.innerHTML = '';
           data.forEach(function(item) {
-            var d = document.createElement('div');
-            d.textContent = item.display_name;
-            d.style.cssText = 'padding:.5rem .75rem;font-size:.82rem;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text);transition:background .15s';
-            d.onmouseover = function() { this.style.background = 'rgba(168,85,247,.08)'; };
-            d.onmouseout = function() { this.style.background = 'transparent'; };
-            d.onclick = function() {
+            var div = document.createElement('div');
+            div.textContent = item.display_name;
+            div.style.cssText = 'padding:.5rem .75rem;font-size:.82rem;cursor:pointer;border-bottom:1px solid #1e1e30;color:#e8e8f0;transition:background .15s';
+            div.onmouseover = function() { this.style.background = 'rgba(168,85,247,.08)'; };
+            div.onmouseout = function() { this.style.background = 'transparent'; };
+            div.onclick = function() {
               var a = item.address || {};
               var street = (a.road || '') + (a.house_number ? ' ' + a.house_number : '');
               var city = a.city || a.town || a.village || a.municipality || '';
@@ -334,11 +565,10 @@ function showToast(m,e){var t=document.getElementById('toast');t.textContent=m;t
               document.getElementById('f-city').value = city;
               setEventCoords(parseFloat(item.lat), parseFloat(item.lon));
               updatePrice();
-              si.value = '';
-              rb.style.display = 'none';
+              si.value = ''; rb.style.display = 'none';
               updateSubmitButton();
             };
-            rb.appendChild(d);
+            rb.appendChild(div);
           });
           rb.style.display = 'block';
         })
@@ -350,7 +580,17 @@ function showToast(m,e){var t=document.getElementById('toast');t.textContent=m;t
   });
 })();
 
+/* ── Show sticky price bar on step 5 ── */
+var _origGoStep = goStep;
+goStep = function(n) {
+  _origGoStep(n);
+  var sp = document.getElementById('sticky-price');
+  if (n === 5) { sp.style.removeProperty('display'); }
+  else { sp.style.setProperty('display', 'none', 'important'); }
+};
+
+/* ── Init ── */
 updateTotal();
+updateProgressUI();
 </script>
-</body>
-</html>
+{% endblock %}
