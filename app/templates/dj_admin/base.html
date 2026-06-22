@@ -181,11 +181,18 @@
   {% block extra_head %}{% endblock %}
 </head>
 <body>
-<button class="mobile-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open');document.querySelector('.sidebar-overlay').classList.toggle('open')">
-  <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+<button
+  id="drawer-toggle"
+  class="mobile-toggle"
+  aria-label="Menü öffnen"
+  aria-expanded="false"
+  aria-controls="main-sidebar"
+  style="min-height:44px;min-width:44px"
+>
+  <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
 </button>
-<div class="sidebar-overlay" onclick="document.querySelector('.sidebar').classList.remove('open');this.classList.remove('open')"></div>
-<aside class="sidebar">
+<div class="sidebar-overlay" role="presentation"></div>
+<aside class="sidebar" id="main-sidebar" aria-label="Navigation">
   <div class="sidebar-brand">
     <h1>DJ Admin</h1>
     <span>Event Management</span>
@@ -258,11 +265,9 @@ function checkConnectionStatus(){
 checkConnectionStatus();
 setInterval(checkConnectionStatus,10000);
 
-// Close sidebar on mobile when clicking a nav link
-document.querySelectorAll('.nav-link').forEach(function(l){l.addEventListener('click',function(){
-  if(window.innerWidth<=768){document.querySelector('.sidebar').classList.remove('open');document.querySelector('.sidebar-overlay').classList.remove('open')}
-})});
+// nav-link mobile close: handled by drawer.js
 </script>
+<script src="{% static 'js/drawer.js' %}" defer></script>
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>
