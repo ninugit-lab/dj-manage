@@ -1,0 +1,11 @@
+{% comment %} include: tabs(list of {id,label}) group {% endcomment %}
+<div class="flex gap-1 border-b border-border mb-4" role="tablist" data-tabs="{{ group }}">
+  {% for t in tabs %}
+  <button role="tab" id="tab-{{ group }}-{{ t.id }}" aria-controls="panel-{{ group }}-{{ t.id }}"
+          aria-selected="{% if forloop.first %}true{% else %}false{% endif %}"
+          tabindex="{% if forloop.first %}0{% else %}-1{% endif %}"
+          class="min-h-[44px] px-4 font-mono text-sm border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">
+    {{ t.label }}
+  </button>
+  {% endfor %}
+</div>
