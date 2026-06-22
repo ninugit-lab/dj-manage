@@ -1,0 +1,62 @@
+{% comment %}
+now_playing.html — Wiederverwendbares Now-Playing-Widget.
+
+Erwartete Kontextvariablen (aus /api/now-playing/ JS-Response oder Django-Context):
+  now_playing        — dict/object mit folgenden Feldern (analog API-Response):
+    .track_name      — str  Titel des Songs
+    .artist          — str  Künstler
+    .cover           — str  Cover-URL (von Spotify)
+    .progress_ms     — int  Wiedergabeposition in Millisekunden
+    .duration_ms     — int  Gesamtlänge in Millisekunden
+    .device          — str  Gerätename (optional)
+  compact            — bool  Klein-Variante (schmaleres Cover, kleinere Schrift)
+
+Wenn now_playing leer/falsy ist, wird das Widget gedimmt als "Nichts spielt gerade" angezeigt.
+{% endcomment %}
+
+{% if now_playing %}
+  {% with pct=now_playing.progress_ms|default:0 dur=now_playing.duration_ms|default:1 %}
+  <div class="glass flex items-center gap-3 px-4 py-3 {% if compact %}py-2{% endif %}">
+    {% if now_playing.cover %}
+      <img
+        src="{{ now_playing.cover }}"
+        alt="{{ now_playing.track_name }}"
+        class="object-cover rounded-sm flex-shrink-0 {% if compact %}w-[44px] h-[44px]{% else %}w-[56px] h-[56px]{% endif %}"
+        loading="lazy"
+      />
+    {% else %}
+      <div class="flex-shrink-0 rounded-sm bg-card-solid flex items-center justify-center text-subtle {% if compact %}w-[44px] h-[44px]{% else %}w-[56px] h-[56px]{% endif %}">
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M18 3a1 1 0 0 0-1.196-.98l-10 2A1 1 0 0 0 6 5v6.499A2.5 2.5 0 1 0 8 14V8.86l8-1.6V11.5A2.5 2.5 0 1 0 18 14V3Z"/></svg>
+      </div>
+    {% endif %}
+
+    <div class="flex-1 min-w-0">
+      <div class="font-medium text-text-bright truncate {% if compact %}text-sm{% else %}text-base{% endif %}">
+        {{ now_playing.track_name }}
+      </div>
+      <div class="text-muted truncate {% if compact %}text-xs{% else %}text-sm{% endif %}">
+        {{ now_playing.artist }}
+      </div>
+      {% if now_playing.duration_ms %}
+        <div class="mt-1.5 w-full h-[2px] bg-border rounded-full overflow-hidden">
+          <div
+            class="h-full bg-accent rounded-full"
+            style="width: {% widthratio now_playing.progress_ms now_playing.duration_ms 100 %}%"
+          ></div>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if now_playing.device %}
+      <div class="text-subtle text-xs font-mono flex-shrink-0 hidden sm:block">{{ now_playing.device }}</div>
+    {% endif %}
+  </div>
+  {% endwith %}
+{% else %}
+  <div class="glass flex items-center gap-3 px-4 py-3 {% if compact %}py-2{% endif %} opacity-40">
+    <div class="flex-shrink-0 rounded-sm bg-card-solid flex items-center justify-center text-subtle min-w-[44px] h-[44px]">
+      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M18 3a1 1 0 0 0-1.196-.98l-10 2A1 1 0 0 0 6 5v6.499A2.5 2.5 0 1 0 8 14V8.86l8-1.6V11.5A2.5 2.5 0 1 0 18 14V3Z"/></svg>
+    </div>
+    <span class="text-subtle text-sm">Nichts spielt gerade</span>
+  </div>
+{% endif %}

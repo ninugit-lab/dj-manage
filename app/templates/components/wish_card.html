@@ -1,0 +1,60 @@
+{% comment %}
+wish_card.html — Wiederverwendbare Wunsch-Karte (ohne Action-Buttons).
+
+Erwartete Kontextvariablen (SongWish-Instanz aus wishlist/models.py):
+  wish.pk              — int   Primärschlüssel
+  wish.track_name      — str   Titel (CharField max 300)
+  wish.artist_name     — str   Künstler (CharField max 300)
+  wish.album_cover_url — str   Cover-URL, kann leer sein (URLField)
+  wish.guest_name      — str   Gast-Name, kann leer sein (CharField max 100)
+  wish.created_at      — datetime  Zeitpunkt der Einreichung (auto_now_add)
+  wish.duration_ms     — int   Länge in ms, 0 wenn unbekannt (PositiveIntegerField)
+  wish.duration_formatted — str  formatierte Länge via @property (z.B. "3:45")
+  wish.preview_url     — str   Preview-URL (optional)
+
+Optionale Event-Flags (aus Context):
+  event.wishlist_show_artist    — bool
+  event.wishlist_show_duration  — bool
+
+Action-Buttons werden NICHT gerendert — separat via icon_button.html einbinden.
+{% endcomment %}
+
+<div
+  class="glass flex items-center gap-3 px-3 py-2.5 min-h-[44px] hover:border-border-hover hover:shadow-glass-sm transition-all duration-200 cursor-default"
+  id="wish-{{ wish.pk }}"
+>
+  {% if wish.album_cover_url %}
+    <img
+      src="{{ wish.album_cover_url }}"
+      alt="{{ wish.track_name }}"
+      class="object-cover rounded-sm flex-shrink-0 min-w-[44px] min-h-[44px] w-[44px] h-[44px]"
+      loading="lazy"
+    />
+  {% else %}
+    <div class="flex-shrink-0 rounded-sm bg-card-solid flex items-center justify-center text-subtle min-w-[44px] min-h-[44px] w-[44px] h-[44px]">
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M18 3a1 1 0 0 0-1.196-.98l-10 2A1 1 0 0 0 6 5v6.499A2.5 2.5 0 1 0 8 14V8.86l8-1.6V11.5A2.5 2.5 0 1 0 18 14V3Z"/></svg>
+    </div>
+  {% endif %}
+
+  <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+    <div class="font-medium text-text-bright text-sm truncate" title="{{ wish.track_name }}">
+      {{ wish.track_name }}
+    </div>
+
+    {% if not event or event.wishlist_show_artist %}
+      <div class="text-muted text-xs truncate">{{ wish.artist_name }}</div>
+    {% endif %}
+
+    <div class="flex items-center gap-1.5 text-subtle text-xs font-mono mt-0.5 flex-wrap">
+      {% if wish.guest_name %}
+        <span class="text-accent2">{{ wish.guest_name }}</span>
+        <span class="opacity-40">·</span>
+      {% endif %}
+      <span>{{ wish.created_at|time:"H:i" }}</span>
+      {% if event.wishlist_show_duration and wish.duration_ms %}
+        <span class="opacity-40">·</span>
+        <span>{{ wish.duration_formatted }}</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
