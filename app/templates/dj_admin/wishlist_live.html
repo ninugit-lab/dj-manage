@@ -1,0 +1,275 @@
+{% extends "dj_admin/base.html" %}
+{% block title %}Live Event — DJ Admin{% endblock %}
+{% block nav_wishlist %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>🎵 Live Event</h2>
+  {% if active_event %}
+  <div style="display:flex;align-items:center;gap:.75rem">
+    <span class="badge badge-confirmed">{{ active_event.name }}</span>
+    <a href="{% url 'dj_admin:event_edit' pk=active_event.pk %}" class="btn btn-ghost btn-sm">Event bearbeiten</a>
+  </div>
+  {% endif %}
+</div>
+
+{% if active_event %}
+<div class="grid-2">
+  <!-- Left: Live Wishlist -->
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Aktuelle Wünsche</div>
+        <button class="btn btn-ghost btn-sm" onclick="refreshWishlist()">↻</button>
+      </div>
+      <turbo-frame id="event-wishlist" src="{% url 'dj_admin:wishlist_frame' pk=active_event.pk %}">
+        <div style="text-align:center;padding:1rem;color:var(--muted)">Lade...</div>
+      </turbo-frame>
+    </div>
+  </div>
+
+  <!-- Right: Settings + Blocking -->
+  <div>
+    <!-- Now Playing (compact) -->
+    <div class="card" style="margin-bottom:1rem;padding:.85rem">
+      <div style="font-size:.62rem;font-family:'Space Mono',monospace;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.5rem">Jetzt läuft</div>
+      <div id="np-live" style="display:flex;align-items:center;gap:.7rem">
+        <div style="font-size:.72rem;color:var(--muted)">Lade…</div>
+      </div>
+    </div>
+
+    <!-- Quick Wishlist Settings -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:.75rem">⚙ Live Event Einstellungen</div>
+      <form method="post" action="{% url 'dj_admin:event_edit' pk=active_event.pk %}" style="margin:0">
+        {% csrf_token %}
+        <!-- Hidden fields to preserve all event data -->
+        <input type="hidden" name="name" value="{{ active_event.name }}">
+        <input type="hidden" name="date" value="{{ active_event.date|date:'Y-m-d' }}">
+        <input type="hidden" name="location" value="{{ active_event.location }}">
+        <input type="hidden" name="status" value="{{ active_event.status }}">
+        <input type="hidden" name="is_active" value="on">
+        <input type="hidden" name="spotify_playlist_id" value="{{ active_event.spotify_playlist_id }}">
+
+        <div class="form-group">
+          <label class="form-label">Max. Wünsche pro Session</label>
+          <input type="number" name="max_wishes_per_session" class="form-input" value="{{ active_event.max_wishes_per_session }}" style="max-width:100px" min="1">
+        </div>
+        <div class="form-check"><input type="checkbox" name="wishlist_show_cover" id="qs_cover" {% if active_event.wishlist_show_cover %}checked{% endif %}><label for="qs_cover">Cover</label></div>
+        <div class="form-check"><input type="checkbox" name="wishlist_show_artist" id="qs_artist" {% if active_event.wishlist_show_artist %}checked{% endif %}><label for="qs_artist">Künstler</label></div>
+        <div class="form-check"><input type="checkbox" name="wishlist_show_preview" id="qs_preview" {% if active_event.wishlist_show_preview %}checked{% endif %}><label for="qs_preview">Preview</label></div>
+        <div class="form-check"><input type="checkbox" name="wishlist_show_duration" id="qs_dur" {% if active_event.wishlist_show_duration %}checked{% endif %}><label for="qs_dur">Dauer</label></div>
+        <div class="form-check"><input type="checkbox" name="wishlist_require_name" id="qs_name" {% if active_event.wishlist_require_name %}checked{% endif %}><label for="qs_name">Name Pflicht</label></div>
+        <div class="form-check"><input type="checkbox" name="wishlist_show_played" id="qs_played" {% if active_event.wishlist_show_played %}checked{% endif %}><label for="qs_played">Gespielte zeigen</label></div>
+        <div class="form-check"><input type="checkbox" name="spotify_remove_on_played" id="qs_spotify_rm" {% if active_event.spotify_remove_on_played %}checked{% endif %}><label for="qs_spotify_rm">Gespielt → aus Spotify entfernen</label></div>
+        <button type="submit" class="btn btn-ghost btn-sm" style="margin-top:.5rem">💾 Speichern</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🚫 Blockierte Clients</div>
+      </div>
+      <turbo-frame id="blocked-clients" src="{% url 'dj_admin:blocked_frame' %}">
+        <div style="text-align:center;padding:1rem;color:var(--muted)">Lade...</div>
+      </turbo-frame>
+    </div>
+
+    <!-- Manual Block -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:1rem">Client manuell blockieren</div>
+      <div class="form-group">
+        <label class="form-label">IP-Adresse</label>
+        <input type="text" id="block-ip" class="form-input" placeholder="z.B. 192.168.1.1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Grund (intern)</label>
+        <input type="text" id="manual-block-reason" class="form-input" value="Vom Admin blockiert">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nachricht an den User</label>
+        <input type="text" id="manual-block-msg" class="form-input" value="Du wurdest für diese Wishlist gesperrt.">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sperrdauer</label>
+        <select id="manual-block-hours" class="form-input" style="appearance:auto">
+          <option value="0">Permanent</option>
+          <option value="1">1 Stunde</option>
+          <option value="2">2 Stunden</option>
+          <option value="6">6 Stunden</option>
+          <option value="12">12 Stunden</option>
+          <option value="24" selected>24 Stunden</option>
+          <option value="48">2 Tage</option>
+          <option value="168">1 Woche</option>
+        </select>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="manualBlock()">🚫 Blockieren</button>
+    </div>
+  </div>
+</div>
+
+<!-- Block Dialog (OUTSIDE turbo-frames, won't be destroyed by refresh) -->
+<div id="block-dialog" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.7);align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.5rem;max-width:400px;width:90%">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;margin-bottom:1rem">🚫 Client blockieren</div>
+    <input type="hidden" id="block-wish-id">
+    <div style="margin-bottom:.75rem">
+      <label style="display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem">Grund (nur für dich sichtbar)</label>
+      <input type="text" id="block-reason" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .7rem;color:var(--text);font-size:.85rem;outline:none" value="{{ active_event.default_block_reason|default:"Unangemessene Eingaben" }}">
+    </div>
+    <div style="margin-bottom:.75rem">
+      <label style="display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem">Nachricht an den User</label>
+      <input type="text" id="block-message" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .7rem;color:var(--text);font-size:.85rem;outline:none" value="{{ active_event.default_block_message|default:"Du wurdest für diese Wishlist gesperrt." }}">
+    </div>
+    <div style="margin-bottom:1rem">
+      <label style="display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem">Sperrdauer</label>
+      <select id="block-hours" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .7rem;color:var(--text);font-size:.85rem;outline:none;appearance:auto">
+        <option value="0">Permanent</option>
+        <option value="1">1 Stunde</option>
+        <option value="2">2 Stunden</option>
+        <option value="6">6 Stunden</option>
+        <option value="12">12 Stunden</option>
+        <option value="24" selected>24 Stunden</option>
+        <option value="48">2 Tage</option>
+        <option value="168">1 Woche</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:.5rem">
+      <button type="button" class="btn btn-danger btn-sm" onclick="submitBlock()" style="flex:1" data-turbo="false">🚫 Blockieren</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="closeBlockDialog()" style="flex:1" data-turbo="false">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<div class="empty-state">
+  <div class="icon">🎧</div>
+  <p>Kein aktives Event. Aktiviere ein Event in den Event-Einstellungen.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+{% if active_event %}
+// Use var to survive Turbo page re-renders (let would throw "already declared")
+var dialogOpen = false;
+
+if (typeof _refreshInterval !== 'undefined') clearInterval(_refreshInterval);
+if (typeof _blockedInterval !== 'undefined') clearInterval(_blockedInterval);
+
+var _refreshInterval = setInterval(refreshWishlist, 5000);
+var _blockedInterval = setInterval(function() {
+  if (!dialogOpen) {
+    var bf = document.getElementById('blocked-clients');
+    if (bf) bf.src = '{% url "dj_admin:blocked_frame" %}';
+  }
+}, 10000);
+
+function refreshWishlist() {
+  if (dialogOpen) return;
+  var f = document.getElementById('event-wishlist');
+  if (f) f.src = '{% url "dj_admin:wishlist_frame" pk=active_event.pk %}';
+}
+
+// ── Wish actions (called from within turbo-frame) ──
+async function togglePlayed(id) {
+  await fetch(`/dj-admin/wishes/${id}/toggle/`, {method:'POST', headers:{'X-CSRFToken':csrfToken()}});
+  refreshWishlist();
+}
+async function deleteWish(id) {
+  if (!confirm('Wunsch löschen?')) return;
+  await fetch(`/dj-admin/wishes/${id}/delete/`, {method:'POST', headers:{'X-CSRFToken':csrfToken()}});
+  refreshWishlist();
+}
+
+// ── Block Dialog (lives outside turbo-frame) ──
+function openBlockDialog(wishId) {
+  dialogOpen = true;
+  document.getElementById('block-wish-id').value = wishId;
+  document.getElementById('block-dialog').style.display = 'flex';
+}
+function closeBlockDialog() {
+  document.getElementById('block-dialog').style.display = 'none';
+  dialogOpen = false;
+}
+
+async function submitBlock() {
+  const wishId = document.getElementById('block-wish-id').value;
+  const reason = document.getElementById('block-reason').value.trim();
+  const publicMsg = document.getElementById('block-message').value.trim();
+  const hours = parseInt(document.getElementById('block-hours').value) || 0;
+
+  try {
+    const res = await fetch(`/dj-admin/wishes/${wishId}/block/`, {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrfToken(), 'Content-Type': 'application/json'},
+      body: JSON.stringify({reason: reason, public_message: publicMsg, hours: hours})
+    });
+    const data = await res.json();
+    closeBlockDialog();
+    if (res.ok && data.success) {
+      showToast('Client blockiert ✓');
+    } else {
+      showToast('Fehler: ' + (data.error || res.status), true);
+    }
+  } catch (e) {
+    closeBlockDialog();
+    showToast('Netzwerkfehler: ' + e.message, true);
+  }
+  refreshWishlist();
+  const bf = document.getElementById('blocked-clients');
+  if (bf) bf.src = '{% url "dj_admin:blocked_frame" %}';
+}
+
+// ── Manual Block ──
+async function manualBlock() {
+  const ip = document.getElementById('block-ip').value.trim();
+  const reason = document.getElementById('manual-block-reason').value.trim();
+  const publicMsg = document.getElementById('manual-block-msg').value.trim();
+  const hours = parseInt(document.getElementById('manual-block-hours').value) || 0;
+  if (!ip) { showToast('IP-Adresse eingeben', true); return; }
+  const res = await fetch('/dj-admin/api/block/', {
+    method: 'POST',
+    headers: {'X-CSRFToken': csrfToken(), 'Content-Type': 'application/json'},
+    body: JSON.stringify({ip_address: ip, reason: reason, public_message: publicMsg, hours: hours, event_id: {{ active_event.pk }}})
+  });
+  if (res.ok) {
+    showToast('Client blockiert');
+    document.getElementById('block-ip').value = '';
+    const bf = document.getElementById('blocked-clients');
+    if (bf) bf.src = '{% url "dj_admin:blocked_frame" %}';
+  }
+}
+// ── Now Playing (compact) ────────────────────────────────────────────────────
+(function() {
+  var npEl = document.getElementById('np-live');
+  if (!npEl) return;
+  function renderNP(p) {
+    if (!p) {
+      npEl.innerHTML = '<div style="font-size:.72rem;color:var(--muted)">Nichts läuft gerade</div>';
+      return;
+    }
+    var pct = p.duration_ms > 0 ? Math.round(p.progress_ms / p.duration_ms * 100) : 0;
+    npEl.innerHTML =
+      '<img src="' + (p.cover || '') + '" style="width:42px;height:42px;border-radius:5px;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-weight:600;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + p.track_name + '</div>' +
+        '<div style="font-size:.7rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + p.artist + '</div>' +
+        '<progress value="' + pct + '" max="100" style="width:100%;height:2px;margin-top:.3rem;accent-color:var(--accent)"></progress>' +
+      '</div>';
+  }
+  async function poll() {
+    try {
+      var r = await fetch('/api/now-playing/');
+      var d = await r.json();
+      renderNP(d.playing);
+    } catch(e) {}
+  }
+  poll();
+  if (typeof _npInterval !== 'undefined') clearInterval(_npInterval);
+  var _npInterval = setInterval(poll, 5000);
+})();
+{% endif %}
+</script>
+{% endblock %}

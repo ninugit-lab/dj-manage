@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}DJ Admin{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Space+Mono&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@7.3.0/dist/turbo.es2017-esm.js" type="module"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+    /* ── Design Tokens ─────────────────────────────────── */
+    :root{
+      --bg:#06060e;
+      --surface:rgba(12,12,24,.85);
+      --card:rgba(16,16,32,.7);
+      --card-solid:#10102a;
+      --border:rgba(40,40,80,.45);
+      --border-hover:rgba(70,70,140,.5);
+      --accent:#3b82f6;
+      --accent-glow:rgba(59,130,246,.25);
+      --accent2:#a855f7;
+      --accent2-glow:rgba(168,85,247,.2);
+      --green:#22c55e;
+      --red:#ef4444;
+      --yellow:#eab308;
+      --text:#e4e4ef;
+      --text-bright:#f4f4ff;
+      --muted:rgba(148,148,190,.7);
+      --sidebar-w:250px;
+      --radius:10px;
+      --radius-sm:6px;
+      --glass:saturate(1.6) blur(18px);
+      --shadow-lg:0 12px 40px rgba(0,0,0,.45);
+      --shadow-card:0 2px 12px rgba(0,0,0,.2);
+      --transition:cubic-bezier(.4,0,.2,1)
+    }
+
+    /* ── Base ───────────────────────────────────────────── */
+    html{scroll-behavior:smooth}
+    body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;-webkit-font-smoothing:antialiased}
+    body::before{content:'';position:fixed;inset:0;background:
+      radial-gradient(ellipse 80% 60% at 10% 0%,rgba(59,130,246,.06),transparent),
+      radial-gradient(ellipse 60% 50% at 90% 100%,rgba(168,85,247,.05),transparent);
+      pointer-events:none;z-index:0}
+
+    /* ── Sidebar ────────────────────────────────────────── */
+    .sidebar{width:var(--sidebar-w);background:var(--surface);backdrop-filter:var(--glass);-webkit-backdrop-filter:var(--glass);border-right:1px solid var(--border);position:fixed;top:0;left:0;bottom:0;display:flex;flex-direction:column;z-index:100;transition:transform .35s var(--transition)}
+    .sidebar-brand{padding:1.75rem 1.5rem 1.25rem;border-bottom:1px solid var(--border)}
+    .sidebar-brand h1{font-family:'Bebas Neue',sans-serif;font-size:1.7rem;letter-spacing:.06em;color:var(--text-bright)}
+    .sidebar-brand span{font-size:.65rem;color:var(--muted);font-family:'Space Mono',monospace;letter-spacing:.04em}
+    .sidebar-nav{flex:1;padding:.75rem .6rem;overflow-y:auto}
+    .sidebar-nav::-webkit-scrollbar{width:3px}.sidebar-nav::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+    .nav-section{font-family:'Space Mono',monospace;font-size:.58rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);padding:1.25rem .85rem .45rem}
+    .nav-link{display:flex;align-items:center;gap:.7rem;padding:.62rem .85rem;border-radius:var(--radius-sm);color:var(--text);text-decoration:none;font-size:.84rem;font-weight:400;transition:all .2s var(--transition);margin-bottom:1px;position:relative}
+    .nav-link:hover{background:rgba(59,130,246,.06);color:var(--text-bright)}
+    .nav-link.active{background:rgba(59,130,246,.1);color:var(--accent);font-weight:600}
+    .nav-link.active::before{content:'';position:absolute;left:0;top:25%;bottom:25%;width:3px;background:var(--accent);border-radius:0 3px 3px 0}
+    .nav-link svg{width:17px;height:17px;flex-shrink:0;opacity:.55;transition:opacity .2s}
+    .nav-link:hover svg,.nav-link.active svg{opacity:1}
+    .nav-badge{margin-left:auto;background:var(--accent);color:#fff;font-size:.58rem;font-family:'Space Mono',monospace;padding:.15rem .5rem;border-radius:100px;font-weight:700}
+    .sidebar-footer{padding:1rem 1.5rem;border-top:1px solid var(--border);font-size:.72rem;color:var(--muted)}
+    .status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:.4rem;vertical-align:middle;transition:background .3s}
+    .status-dot.ok{background:var(--green);box-shadow:0 0 6px rgba(34,197,94,.5)}.status-dot.err{background:var(--red);box-shadow:0 0 6px rgba(239,68,68,.4)}
+
+    /* ── Main ───────────────────────────────────────────── */
+    .main{margin-left:var(--sidebar-w);flex:1;min-height:100vh;padding:2rem 2.5rem;position:relative;z-index:1}
+    .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;flex-wrap:wrap;gap:1rem}
+    .page-header h2{font-family:'Bebas Neue',sans-serif;font-size:2.3rem;letter-spacing:.04em;color:var(--text-bright)}
+
+    /* ── Cards ──────────────────────────────────────────── */
+    .card{background:var(--card);backdrop-filter:var(--glass);-webkit-backdrop-filter:var(--glass);border:1px solid var(--border);border-radius:var(--radius);padding:1.35rem;margin-bottom:1rem;transition:border-color .25s var(--transition),box-shadow .25s var(--transition);box-shadow:var(--shadow-card)}
+    .card:hover{border-color:var(--border-hover);box-shadow:var(--shadow-lg)}
+    .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;gap:.75rem}
+    .card-title{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:.04em;color:var(--text-bright)}
+
+    /* ── Buttons ────────────────────────────────────────── */
+    .btn{display:inline-flex;align-items:center;gap:.45rem;padding:.55rem 1.1rem;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:.82rem;font-weight:600;border:none;cursor:pointer;transition:all .2s var(--transition);text-decoration:none;white-space:nowrap}
+    .btn:hover{transform:translateY(-1px)}.btn:active{transform:translateY(0)}
+    .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{box-shadow:0 4px 20px var(--accent-glow)}
+    .btn-purple{background:var(--accent2);color:#fff}.btn-purple:hover{box-shadow:0 4px 20px var(--accent2-glow)}
+    .btn-danger{background:var(--red);color:#fff}
+    .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text)}.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+    .btn-sm{padding:.35rem .75rem;font-size:.74rem}
+
+    /* ── Forms ──────────────────────────────────────────── */
+    .form-group{margin-bottom:1rem}
+    .form-label{display:block;margin-bottom:.35rem;font-size:.76rem;font-weight:500;color:var(--muted);letter-spacing:.01em}
+    .form-input,.form-select,.form-textarea{width:100%;background:rgba(8,8,20,.6);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.6rem .85rem;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.87rem;outline:none;transition:border-color .25s var(--transition),box-shadow .25s var(--transition)}
+    .form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+    .form-textarea{min-height:80px;resize:vertical}
+    .form-check{display:flex;align-items:center;gap:.55rem;margin-bottom:.55rem}
+    .form-check input[type="checkbox"]{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
+    .form-check label{font-size:.84rem;cursor:pointer;color:var(--text)}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+    .form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
+
+    /* ── Tables ─────────────────────────────────────────── */
+    .table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border)}
+    table{width:100%;border-collapse:collapse;font-size:.84rem}
+    th{text-align:left;padding:.7rem .9rem;font-family:'Space Mono',monospace;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:rgba(8,8,20,.4);border-bottom:1px solid var(--border)}
+    td{padding:.65rem .9rem;border-bottom:1px solid rgba(40,40,80,.25);vertical-align:middle}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(59,130,246,.03)}
+
+    /* ── Badges ─────────────────────────────────────────── */
+    .badge{display:inline-block;font-family:'Space Mono',monospace;font-size:.62rem;letter-spacing:.05em;padding:.22rem .6rem;border-radius:3px;font-weight:700}
+    .badge-confirmed{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+    .badge-inquiry{background:rgba(168,85,247,.1);color:var(--accent2);border:1px solid rgba(168,85,247,.15)}
+    .badge-past{background:rgba(148,148,190,.08);color:var(--muted);border:1px solid rgba(148,148,190,.12)}
+    .badge-cancelled{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.15)}
+
+    /* ── Tabs ───────────────────────────────────────────── */
+    .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:1.5rem;overflow-x:auto}
+    .tab{padding:.65rem 1.3rem;font-size:.82rem;font-weight:500;color:var(--muted);cursor:pointer;border:none;border-bottom:2px solid transparent;transition:all .2s var(--transition);background:none;white-space:nowrap}
+    .tab:hover{color:var(--text)}.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+    .tab-content{display:none}.tab-content.active{display:block}
+
+    /* ── Toast ──────────────────────────────────────────── */
+    #admin-toast{position:fixed;bottom:2rem;right:2rem;background:var(--card-solid);border:1px solid var(--accent);border-radius:var(--radius);padding:.85rem 1.5rem;font-size:.84rem;color:var(--accent);z-index:999;transform:translateY(120px);transition:transform .4s var(--transition);box-shadow:var(--shadow-lg);backdrop-filter:var(--glass);max-width:90vw}
+    #admin-toast.show{transform:translateY(0)}#admin-toast.error{border-color:var(--red);color:var(--red)}
+
+    /* ── Grids & Stats ─────────────────────────────────── */
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+    .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
+    .stat-card{background:var(--card);backdrop-filter:var(--glass);border:1px solid var(--border);border-radius:var(--radius);padding:1.3rem;box-shadow:var(--shadow-card);transition:border-color .25s}
+    .stat-card:hover{border-color:var(--border-hover)}
+    .stat-value{font-family:'Bebas Neue',sans-serif;font-size:2.6rem;letter-spacing:.02em;color:var(--text-bright)}
+    .stat-label{font-size:.72rem;color:var(--muted);font-family:'Space Mono',monospace;letter-spacing:.04em;margin-top:.15rem}
+
+    /* ── Wish Items (admin list) ────────────────────────── */
+    .wish-item{display:flex;align-items:center;gap:.8rem;padding:.65rem .9rem;border-bottom:1px solid rgba(40,40,80,.25);transition:background .2s}
+    .wish-item:last-child{border-bottom:none}
+    .wish-item:hover{background:rgba(59,130,246,.04)}
+    .wish-item img{width:42px;height:42px;border-radius:5px;object-fit:cover;flex-shrink:0}
+    .wish-item-info{flex:1;min-width:0}
+    .wish-item-title{font-weight:500;font-size:.87rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-bright)}
+    .wish-item-artist{font-size:.74rem;color:var(--muted)}
+    .wish-item-meta{font-size:.66rem;color:var(--muted);font-family:'Space Mono',monospace}
+    .wish-item-actions{display:flex;gap:.35rem;flex-shrink:0}
+    .section-divider{font-family:'Space Mono',monospace;font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);padding:1.1rem 0 .5rem;border-bottom:1px solid var(--border);margin-bottom:.5rem}
+
+    /* ── Empty State ────────────────────────────────────── */
+    .empty-state{text-align:center;padding:3rem;color:var(--muted)}.empty-state .icon{font-size:2.5rem;margin-bottom:.75rem;opacity:.6}
+
+    /* ── Mobile Toggle ─────────────────────────────────── */
+    .mobile-toggle{display:none;position:fixed;top:.85rem;left:.85rem;z-index:200;background:var(--card-solid);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.55rem;cursor:pointer;color:var(--text);box-shadow:var(--shadow-card)}
+    .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99}
+
+    /* ── Responsive: Tablet ────────────────────────────── */
+    @media(max-width:1024px){
+      :root{--sidebar-w:220px}
+      .main{padding:1.75rem 1.5rem}
+      .grid-2{gap:1rem}
+      .page-header h2{font-size:1.9rem}
+    }
+
+    /* ── Responsive: Mobile ────────────────────────────── */
+    @media(max-width:768px){
+      .sidebar{transform:translateX(-100%)}
+      .sidebar.open{transform:translateX(0)}
+      .sidebar-overlay.open{display:block}
+      .main{margin-left:0;padding:1.25rem 1rem;padding-top:3.5rem}
+      .mobile-toggle{display:block}
+      .form-row,.form-row-3,.grid-2,.grid-3{grid-template-columns:1fr}
+      .page-header{flex-direction:column;align-items:flex-start;gap:.75rem}
+      .page-header h2{font-size:1.7rem}
+      .tabs{gap:0;-webkit-overflow-scrolling:touch}
+      .tab{padding:.55rem .9rem;font-size:.78rem}
+      .stat-value{font-size:2rem}
+    }
+
+    @media(max-width:480px){
+      .main{padding:1rem .75rem;padding-top:3.5rem}
+      .card{padding:1rem}
+      .btn-sm{padding:.3rem .55rem;font-size:.7rem}
+    }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+<button class="mobile-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open');document.querySelector('.sidebar-overlay').classList.toggle('open')">
+  <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+</button>
+<div class="sidebar-overlay" onclick="document.querySelector('.sidebar').classList.remove('open');this.classList.remove('open')"></div>
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <h1>DJ Admin</h1>
+    <span>Event Management</span>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-section">Übersicht</div>
+    <a href="{% url 'dj_admin:dashboard' %}" class="nav-link {% block nav_dashboard %}{% endblock %}">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Dashboard
+    </a>
+    <a href="{% url 'dj_admin:calendar' %}" class="nav-link {% block nav_calendar %}{% endblock %}">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Kalender
+    </a>
+    <div class="nav-section">Events</div>
+    <a href="{% url 'dj_admin:event_create' %}" class="nav-link {% block nav_event_new %}{% endblock %}">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      Neues Event
+    </a>
+    <a href="{% url 'dj_admin:wishlist_live' %}" class="nav-link {% block nav_wishlist %}{% endblock %}">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      Live Event
+    </a>
+    <div class="nav-section">System</div>
+    <a href="{% url 'dj_admin:config' %}" class="nav-link {% block nav_config %}{% endblock %}">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Konfiguration
+    </a>
+    <a href="{% url 'dj_admin:workflow_builder' %}" class="nav-link {% block nav_workflow %}{% endblock %}">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      Preiskalkulation
+    </a>
+    <a href="/admin/" class="nav-link" target="_blank">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+      Django Admin
+    </a>
+    <a href="/" class="nav-link" target="_blank">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg>
+      Wishlist öffnen
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <div style="margin-bottom:.35rem"><span class="status-dot" id="status-spotify"></span> Spotify <span id="status-spotify-label" style="font-size:.58rem;opacity:.6"></span></div>
+    <div><span class="status-dot" id="status-google"></span> Google <span id="status-google-label" style="font-size:.58rem;opacity:.6"></span></div>
+  </div>
+</aside>
+<main class="main">{% block content %}{% endblock %}</main>
+<div id="admin-toast"></div>
+<script>
+function showToast(m,e){var t=document.getElementById('admin-toast');t.textContent=m;t.className=e?'error show':'show';setTimeout(function(){t.className=''},3500)}
+function csrfToken(){return '{{ csrf_token }}'}
+
+var _prevSpotify=null,_prevGoogle=null;
+function checkConnectionStatus(){
+  fetch('/spotify/status/').then(function(r){return r.json()}).then(function(d){
+    var dot=document.getElementById('status-spotify'),label=document.getElementById('status-spotify-label');
+    if(dot)dot.className='status-dot '+(d.connected?'ok':'err');
+    if(label)label.textContent=d.connected?'':'(getrennt)';
+    if(_prevSpotify===true&&d.connected===false)showToast('Spotify-Verbindung verloren',true);
+    _prevSpotify=d.connected;
+  }).catch(function(){});
+  fetch('/google/status/').then(function(r){return r.json()}).then(function(d){
+    var dot=document.getElementById('status-google'),label=document.getElementById('status-google-label');
+    if(dot)dot.className='status-dot '+(d.connected?'ok':'err');
+    if(label)label.textContent=d.connected?'':'(getrennt)';
+    if(_prevGoogle===true&&d.connected===false)showToast('Google-Verbindung verloren',true);
+    _prevGoogle=d.connected;
+  }).catch(function(){});
+}
+checkConnectionStatus();
+setInterval(checkConnectionStatus,10000);
+
+// Close sidebar on mobile when clicking a nav link
+document.querySelectorAll('.nav-link').forEach(function(l){l.addEventListener('click',function(){
+  if(window.innerWidth<=768){document.querySelector('.sidebar').classList.remove('open');document.querySelector('.sidebar-overlay').classList.remove('open')}
+})});
+</script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

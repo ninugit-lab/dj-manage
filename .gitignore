@@ -1,0 +1,9 @@
+node_modules/
+__pycache__/
+*.pyc
+staticfiles/
+.env
+app/theme/static/css/dist/
+app/theme/static_src/node_modules/
+*.sqlite3
+.memsearch/

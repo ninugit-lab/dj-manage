@@ -1,0 +1,97 @@
+<turbo-frame id="event-wishlist">
+{% if wishes_pending or wishes_played %}
+
+{% if wishes_pending %}
+<div class="section-divider">🎵 Gewünscht ({{ wishes_pending.count }})</div>
+{% for wish in wishes_pending %}
+<div class="wish-item" id="wish-{{ wish.pk }}">
+  {% if wish.album_cover_url %}
+  <img src="{{ wish.album_cover_url }}" alt="">
+  {% else %}
+  <div style="width:40px;height:40px;background:var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center">🎵</div>
+  {% endif %}
+  <div class="wish-item-info">
+    <div class="wish-item-title">{{ wish.track_name }}</div>
+    <div class="wish-item-artist">{{ wish.artist_name }}</div>
+  </div>
+  <div class="wish-item-meta">
+    {% if wish.guest_name %}{{ wish.guest_name }} · {% endif %}{{ wish.created_at|time:"H:i" }}
+    {% if wish.ip_address %}<br><span style="font-size:.6rem;opacity:.5">{{ wish.ip_address }}</span>{% endif %}
+  </div>
+  <div class="wish-item-actions">
+    <button type="button" class="btn btn-ghost btn-sm" data-turbo="false" onclick="showAudioFeatures({{ wish.pk }})" title="Audio Features" style="font-size:.75rem">📊</button>
+    <button type="button" class="btn btn-primary btn-sm" data-turbo="false" onclick="(async function(b){b.disabled=true;try{await fetch('/dj-admin/wishes/{{ wish.pk }}/toggle/',{method:'POST',headers:{'X-CSRFToken':csrfToken()}});if(typeof refreshWishlist==='function')refreshWishlist();}catch(e){console.error(e)}b.disabled=false})(this)" title="Gespielt">✓</button>
+    <button type="button" class="btn btn-danger btn-sm" data-turbo="false" onclick="if(typeof openBlockDialog==='function')openBlockDialog({{ wish.pk }});else alert('Block-Dialog nicht verfügbar auf dieser Seite')" title="Blockieren">🚫</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-turbo="false" onclick="(async function(b){if(!confirm('Löschen?'))return;b.disabled=true;await fetch('/dj-admin/wishes/{{ wish.pk }}/delete/',{method:'POST',headers:{'X-CSRFToken':csrfToken()}});if(typeof refreshWishlist==='function')refreshWishlist();})(this)" title="Löschen" style="font-size:.7rem">✕</button>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if wishes_played %}
+<div class="section-divider">✅ Gespielt ({{ wishes_played.count }})</div>
+{% for wish in wishes_played %}
+<div class="wish-item" style="opacity:.5" id="wish-{{ wish.pk }}">
+  {% if wish.album_cover_url %}<img src="{{ wish.album_cover_url }}" alt="">{% else %}
+  <div style="width:40px;height:40px;background:var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center">🎵</div>{% endif %}
+  <div class="wish-item-info">
+    <div class="wish-item-title">{{ wish.track_name }}</div>
+    <div class="wish-item-artist">{{ wish.artist_name }}</div>
+  </div>
+  <div class="wish-item-meta">{% if wish.guest_name %}{{ wish.guest_name }} · {% endif %}{{ wish.created_at|time:"H:i" }}</div>
+  <div class="wish-item-actions">
+    <button type="button" class="btn btn-ghost btn-sm" data-turbo="false" onclick="(async function(b){b.disabled=true;await fetch('/dj-admin/wishes/{{ wish.pk }}/toggle/',{method:'POST',headers:{'X-CSRFToken':csrfToken()}});if(typeof refreshWishlist==='function')refreshWishlist();b.disabled=false})(this)" title="Zurücksetzen">↩</button>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% else %}
+<div class="empty-state" style="padding:1.5rem"><div class="icon">🎧</div><p style="font-size:.85rem">Noch keine Wünsche</p></div>
+{% endif %}
+
+<!-- Audio Features Modal -->
+<div id="af-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
+  <div style="background:var(--card-solid);border:1px solid var(--border);border-radius:12px;padding:1.5rem;max-width:340px;width:calc(100% - 2rem);position:relative">
+    <button onclick="closeAF()" style="position:absolute;top:.75rem;right:.75rem;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer">✕</button>
+    <div id="af-content"></div>
+  </div>
+</div>
+
+<script>
+function showAudioFeatures(wishId) {
+  var modal = document.getElementById('af-modal');
+  var content = document.getElementById('af-content');
+  modal.style.display = 'flex';
+  content.innerHTML = '<div style="text-align:center;color:var(--muted);padding:1rem">Lade…</div>';
+  fetch('/dj-admin/wishes/' + wishId + '/audio-features/')
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      if (d.error) { content.innerHTML = '<div style="color:var(--muted);text-align:center">' + d.error + '</div>'; return; }
+      var metrics = [
+        {label:'BPM', val: d.bpm ? Math.round(d.bpm) : null, raw: d.bpm, max:210, unit:''},
+        {label:'Energie', val: d.energy, raw: d.energy, max:1, unit:''},
+        {label:'Tanzbarkeit', val: d.danceability, raw: d.danceability, max:1, unit:''},
+        {label:'Stimmung', val: d.valence, raw: d.valence, max:1, unit:''},
+        {label:'Akustik', val: d.acousticness, raw: d.acousticness, max:1, unit:''},
+        {label:'Instrumental', val: d.instrumentalness, raw: d.instrumentalness, max:1, unit:''},
+      ];
+      var bars = metrics.map(function(m) {
+        if (m.val === null || m.val === undefined) return '';
+        var pct = m.max === 1 ? Math.round(m.raw * 100) : Math.min(100, Math.round(m.raw / m.max * 100));
+        var display = m.label === 'BPM' ? m.val : pct + '%';
+        return '<div style="margin-bottom:.6rem">' +
+          '<div style="display:flex;justify-content:space-between;font-size:.72rem;margin-bottom:.2rem"><span style="color:var(--muted)">' + m.label + '</span><span style="color:var(--text-bright);font-family:\'Space Mono\',monospace">' + display + '</span></div>' +
+          '<div style="background:var(--border);border-radius:4px;height:6px"><div style="background:var(--accent);border-radius:4px;height:6px;width:' + pct + '%"></div></div>' +
+        '</div>';
+      }).join('');
+      content.innerHTML =
+        '<div style="margin-bottom:1rem"><div style="font-weight:600;font-size:.92rem">' + d.track_name + '</div><div style="font-size:.75rem;color:var(--muted)">' + d.artist_name + '</div></div>' +
+        bars;
+    })
+    .catch(function(){ content.innerHTML = '<div style="color:var(--muted);text-align:center">Fehler beim Laden</div>'; });
+}
+function closeAF() { document.getElementById('af-modal').style.display = 'none'; }
+document.getElementById('af-modal').addEventListener('click', function(e){ if (e.target === this) closeAF(); });
+</script>
+</turbo-frame>

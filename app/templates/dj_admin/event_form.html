@@ -1,0 +1,640 @@
+{% extends "dj_admin/base.html" %}
+{% block title %}{% if event %}{{ event.name }}{% else %}Neues Event{% endif %} — DJ Admin{% endblock %}
+{% block nav_event_new %}{% if not event %}active{% endif %}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>{% if event %}{{ event.name }}{% else %}Neues Event{% endif %}</h2>
+  <div style="display:flex;gap:.5rem">
+    {% if event %}
+    <span class="badge badge-{{ event.status }}">{{ event.get_status_display }}</span>
+    {% if event.status == 'inquiry' %}
+    <button class="btn btn-primary btn-sm" onclick="confirmEvent({{ event.pk }})">✓ Bestätigen</button>
+    {% endif %}
+    <a href="{% url 'dj_admin:event_delete' pk=event.pk %}" class="btn btn-danger btn-sm">Löschen</a>
+    {% endif %}
+  </div>
+</div>
+
+<form method="post" action="" enctype="multipart/form-data">
+{% csrf_token %}
+
+<div class="grid-2">
+  <!-- Left Column: Event Details -->
+  <div>
+    <div class="card">
+      <div class="card-title" style="margin-bottom:1rem">Event Details</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Event Name *</label>
+          <input type="text" name="name" class="form-input" value="{{ event.name|default:'' }}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Art des Events</label>
+          <select name="event_type" class="form-input">
+            <option value="">— Auswählen —</option>
+            {% for val in "Hochzeit,Firmenfeier,Geburtstag,Club,Festival,Privatfeier,Sonstige"|make_list %}{% endfor %}
+            <option value="Hochzeit" {% if event.event_type == 'Hochzeit' %}selected{% endif %}>Hochzeit</option>
+            <option value="Firmenfeier" {% if event.event_type == 'Firmenfeier' %}selected{% endif %}>Firmenfeier</option>
+            <option value="Geburtstag" {% if event.event_type == 'Geburtstag' %}selected{% endif %}>Geburtstag</option>
+            <option value="Club" {% if event.event_type == 'Club' %}selected{% endif %}>Club</option>
+            <option value="Festival" {% if event.event_type == 'Festival' %}selected{% endif %}>Festival</option>
+            <option value="Privatfeier" {% if event.event_type == 'Privatfeier' %}selected{% endif %}>Privatfeier</option>
+            <option value="Sonstige" {% if event.event_type == 'Sonstige' %}selected{% endif %}>Sonstige</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label class="form-label">Datum *</label>
+          <input type="date" name="date" class="form-input" value="{{ event.date|date:'Y-m-d'|default:'' }}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Beginn</label>
+          <input type="time" name="time_start" class="form-input" value="{{ event.time_start|time:'H:i'|default:'' }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ende</label>
+          <input type="time" name="time_end" class="form-input" value="{{ event.time_end|time:'H:i'|default:'' }}">
+        </div>
+      </div>
+      <div class="form-group" style="position:relative">
+          <label class="form-label">Adresse suchen</label>
+          <input type="text" id="address-search" class="form-input" placeholder="Adresse oder Ort eingeben..." autocomplete="off">
+          <div id="address-results" style="display:none;position:absolute;z-index:50;left:0;right:0;top:100%;max-height:220px;overflow-y:auto;background:var(--card-solid);border:1px solid var(--border);border-radius:0 0 var(--radius-sm) var(--radius-sm);box-shadow:var(--shadow-lg)"></div>
+        </div>
+      <div class="form-group">
+        <label class="form-label">Veranstaltungsort</label>
+        <input type="text" name="location" class="form-input" id="addr-location" value="{{ event.location|default:'' }}" placeholder="z.B. Schloss Heidelberg, Festsaal Mayer">
+      </div>
+      <div class="form-row-3">
+        <div class="form-group" style="grid-column:1/3">
+          <label class="form-label">Straße + Nr.</label>
+          <input type="text" name="address_street" class="form-input" id="addr-street" value="{{ event.address_street|default:'' }}" placeholder="z.B. Schlosshof 1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">PLZ</label>
+          <input type="text" name="address_zip" class="form-input" id="addr-zip" value="{{ event.address_zip|default:'' }}" placeholder="z.B. 69117" maxlength="10">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Stadt</label>
+        <input type="text" name="address_city" class="form-input" id="addr-city" value="{{ event.address_city|default:'' }}" placeholder="z.B. Heidelberg">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Beschreibung</label>
+        <textarea name="description" class="form-textarea">{{ event.description|default:'' }}</textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Gästeanzahl</label>
+          <input type="number" name="guest_count" class="form-input" value="{{ event.guest_count|default:'' }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cover Bild</label>
+          {% if event and event.cover_url %}<img src="{{ event.cover_url }}" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin-bottom:.4rem;display:block">{% endif %}
+          <input type="file" name="cover_image" class="form-input" accept="image/*" style="padding:.4rem">
+          <input type="url" name="cover_image_url" class="form-input" value="{{ event.cover_image_url|default:'' }}" placeholder="Oder URL eingeben" style="margin-top:.3rem">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sonderwünsche</label>
+        <textarea name="special_requests" class="form-textarea">{{ event.special_requests|default:'' }}</textarea>
+      </div>
+    </div>
+
+    <!-- Kunde -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:1rem">Auftraggeber</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <input type="text" name="client_name" class="form-input" value="{{ event.client_name|default:'' }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">E-Mail</label>
+          <input type="email" name="client_email" class="form-input" value="{{ event.client_email|default:'' }}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Telefon</label>
+          <input type="tel" name="client_phone" class="form-input" value="{{ event.client_phone|default:'' }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Firma</label>
+          <input type="text" name="client_company" class="form-input" value="{{ event.client_company|default:'' }}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Kundennotizen</label>
+        <textarea name="client_notes" class="form-textarea">{{ event.client_notes|default:'' }}</textarea>
+      </div>
+    </div>
+
+    <!-- Preis -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:1rem">Preis & Kalkulation</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select name="status" class="form-input" style="appearance:auto">
+            <option value="inquiry" {% if event.status == 'inquiry' %}selected{% endif %}>Angefragt</option>
+            <option value="confirmed" {% if event.status == 'confirmed' %}selected{% endif %}>Bestätigt</option>
+            <option value="past" {% if event.status == 'past' %}selected{% endif %}>Vergangen</option>
+            <option value="cancelled" {% if event.status == 'cancelled' %}selected{% endif %}>Storniert</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Gesamtpreis (€)</label>
+          <input type="number" step="0.01" name="total_price" class="form-input" id="admin-total-price" value="{{ event.total_price|default:'' }}">
+        </div>
+      </div>
+
+      <!-- Workflow-Auswahl -->
+      {% if pricing_workflows %}
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem;font-family:'Space Mono',monospace">WORKFLOW</div>
+        <select name="pricing_workflow_id" id="workflow-select" class="form-input" style="appearance:auto" onchange="recalculate()">
+          <option value="">Kein Workflow (Legacy)</option>
+          {% for wf in pricing_workflows %}
+          <option value="{{ wf.pk }}" {% if selected_workflow_id == wf.pk %}selected{% endif %} {% if wf.is_default %}data-default="1"{% endif %}>{{ wf.name }}{% if wf.is_default %} (Standard){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+
+      <!-- Paket-Auswahl -->
+      {% if pricing_packages %}
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem;font-family:'Space Mono',monospace">PAKET AUSWÄHLEN</div>
+        <label style="display:flex;align-items:center;gap:.5rem;padding:.4rem;border-radius:6px;cursor:pointer;font-size:.84rem;margin-bottom:.3rem" onmouseover="this.style.background='rgba(59,130,246,.05)'" onmouseout="this.style.background='transparent'">
+          <input type="radio" name="pricing_package_id" value="" {% if not selected_package_id %}checked{% endif %} onchange="recalculate()" style="accent-color:var(--accent)">
+          <span>Kein Paket</span>
+        </label>
+        {% for pkg in pricing_packages %}
+        <label style="display:flex;align-items:center;gap:.5rem;padding:.4rem;border-radius:6px;cursor:pointer;font-size:.84rem;margin-bottom:.3rem" onmouseover="this.style.background='rgba(59,130,246,.05)'" onmouseout="this.style.background='transparent'">
+          <input type="radio" name="pricing_package_id" value="{{ pkg.pk }}" data-price="{{ pkg.base_price }}" data-items="{{ pkg.included_items.all|join:',' }}" {% if selected_package_id == pkg.pk %}checked{% endif %} onchange="recalculate()" style="accent-color:var(--accent)">
+          <span style="flex:1">{{ pkg.name }}{% if pkg.badge_label %} <span class="badge badge-inquiry">{{ pkg.badge_label }}</span>{% endif %}{% if pkg.description %} <span style="color:var(--muted);font-size:.72rem">— {{ pkg.description|truncatewords:8 }}</span>{% endif %}</span>
+          <span style="font-family:'Space Mono',monospace;font-size:.82rem;color:var(--accent)">{{ pkg.base_price }} €</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Entfernung -->
+      <div class="form-group" style="margin-top:.75rem">
+        <label class="form-label">Entfernung (km)</label>
+        <input type="number" step="0.1" name="distance_km" class="form-input" value="{{ event.distance_km|default:'' }}" onchange="recalculate()" style="max-width:150px">
+      </div>
+
+      <!-- Price Calculator Items -->
+      {% if price_items %}
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem;font-family:'Space Mono',monospace">KALKULATOR — Posten auswählen:</div>
+        {% regroup price_items by get_category_display as categories %}
+        {% for cat in categories %}
+        <div style="margin-bottom:.5rem">
+          <div style="font-size:.65rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.25rem">{{ cat.grouper }}</div>
+          {% for item in cat.list %}
+          <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .4rem;border-radius:4px;cursor:pointer;transition:background .15s;font-size:.82rem" onmouseover="this.style.background='rgba(168,85,247,.05)'" onmouseout="this.style.background='transparent'">
+            <input type="checkbox" class="admin-price-cb" data-price="{{ item.price }}" value="{{ item.pk }}"
+              {% if item.is_required %}checked disabled{% endif %}
+              {% if calculation %}{% for ci in calculation.selected_items.all %}{% if ci.pk == item.pk %}checked{% endif %}{% endfor %}{% elif item.is_default %}checked{% endif %}
+              onchange="calcAdminTotal()" style="accent-color:var(--accent);width:14px;height:14px">
+            <span style="flex:1">{{ item.name }}{% if item.description %} <span style="color:var(--muted);font-size:.72rem">— {{ item.description }}</span>{% endif %}</span>
+            <span style="font-family:'Space Mono',monospace;font-size:.78rem;color:var(--accent)">{{ item.price }}€</span>
+          </label>
+          {% endfor %}
+        </div>
+        {% endfor %}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem;background:var(--surface);border-radius:6px;margin-top:.5rem">
+          <span style="font-size:.82rem;font-weight:600">Kalkulator-Summe:</span>
+          <span style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:var(--accent)" id="admin-calc-total">0 €</span>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" style="margin-top:.4rem;font-size:.72rem" onclick="applyCalcToPrice()">↑ Summe als Gesamtpreis übernehmen</button>
+      </div>
+      {% endif %}
+
+      <!-- EventOffer Kalkulator -->
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:.75rem;font-family:'Space Mono',monospace">ANGEBOTS-KALKULATOR</div>
+
+        <div style="font-size:.65rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.35rem">Variable Kosten (Gäste-Staffelung)</div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label class="form-label">Gästeanzahl</label>
+            <input type="number" name="offer_guest_count" class="form-input offer-input" id="offer-guests" value="{{ offer.guest_count|default:'0' }}" min="0" onchange="calcOffer()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Schwellenwert</label>
+            <input type="number" name="offer_threshold" class="form-input offer-input" id="offer-threshold" value="{{ offer.threshold|default:'50' }}" min="0" onchange="calcOffer()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">€/Person (bis Schwelle)</label>
+            <input type="number" step="0.01" name="offer_rate_1" class="form-input offer-input" id="offer-rate1" value="{{ offer.rate_1|default:'0' }}" min="0" onchange="calcOffer()">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">€/Person (über Schwelle, reduziert)</label>
+          <input type="number" step="0.01" name="offer_rate_2" class="form-input offer-input" id="offer-rate2" value="{{ offer.rate_2|default:'0' }}" min="0" onchange="calcOffer()">
+        </div>
+
+        <div style="font-size:.65rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-top:.75rem;margin-bottom:.35rem">Fixkosten</div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label class="form-label">Grundgebühr (€)</label>
+            <input type="number" step="0.01" name="offer_base_rent" class="form-input offer-input" id="offer-base" value="{{ offer.base_rent|default:'0' }}" min="0" onchange="calcOffer()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Endreinigung (€)</label>
+            <input type="number" step="0.01" name="offer_cleaning_fee" class="form-input offer-input" id="offer-clean" value="{{ offer.cleaning_fee|default:'0' }}" min="0" onchange="calcOffer()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Technik-Pauschale (€)</label>
+            <input type="number" step="0.01" name="offer_tech_package" class="form-input offer-input" id="offer-tech" value="{{ offer.tech_package|default:'0' }}" min="0" onchange="calcOffer()">
+          </div>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" name="offer_tech_required" id="offer-tech-req" {% if offer.tech_required %}checked{% endif %} onchange="calcOffer()">
+          <label for="offer-tech-req">Technik-Pauschale einbeziehen</label>
+        </div>
+
+        <div style="background:var(--surface);border-radius:6px;padding:.75rem;margin-top:.75rem">
+          <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:.3rem">
+            <span style="color:var(--muted)">Variable Kosten:</span>
+            <span style="font-family:'Space Mono',monospace" id="offer-var-total">0,00 €</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:.3rem">
+            <span style="color:var(--muted)">Fixkosten:</span>
+            <span style="font-family:'Space Mono',monospace" id="offer-fix-total">0,00 €</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding-top:.5rem;border-top:1px solid var(--border)">
+            <span style="font-size:.88rem;font-weight:600">Gesamt:</span>
+            <span style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;color:var(--green)" id="offer-grand-total">0,00 €</span>
+          </div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" style="margin-top:.4rem;font-size:.72rem" onclick="applyOfferToPrice()">↑ Angebotssumme als Gesamtpreis übernehmen</button>
+      </div>
+
+      <!-- Automatische Regeln -->
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem;font-family:'Space Mono',monospace">AUTOMATISCHE REGELN</div>
+        <div id="rules-display" style="font-size:.82rem;color:var(--muted)">Keine Regeln aktiv</div>
+      </div>
+
+      <!-- Formel -->
+      {% if pricing_formulas %}
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem;font-family:'Space Mono',monospace">FORMEL</div>
+        <select name="pricing_formula_id" id="formula-select" class="form-input" style="appearance:auto" onchange="recalculate()">
+          <option value="">Keine Formel</option>
+          {% for f in pricing_formulas %}
+          <option value="{{ f.pk }}" {% if selected_formula_id == f.pk %}selected{% endif %}>{{ f.name }} — {{ f.expression }}</option>
+          {% endfor %}
+        </select>
+        <div id="formula-result" style="margin-top:.3rem;font-size:.78rem;color:var(--accent);font-family:'Space Mono',monospace"></div>
+      </div>
+      {% endif %}
+
+      <!-- Gesamt-Übersicht (unified) -->
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem;font-family:'Space Mono',monospace">GESAMT-ÜBERSICHT</div>
+        <div id="unified-breakdown" style="background:var(--surface);border-radius:6px;padding:.75rem">
+          <div style="text-align:center;color:var(--muted);font-size:.82rem">Eingaben ändern für Live-Berechnung</div>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" style="margin-top:.5rem;font-size:.74rem" onclick="applyUnifiedToPrice()">↑ Berechneten Preis als Gesamtpreis übernehmen</button>
+      </div>
+
+      <div class="form-group" style="margin-top:1rem">
+        <label class="form-label">Preis-Notizen</label>
+        <textarea name="price_notes" class="form-textarea">{{ event.price_notes|default:'' }}</textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Column: Wishlist Settings & Live Wishlist -->
+  <div>
+    <!-- Spotify & Wishlist Settings -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:1rem">Spotify Playlists</div>
+      <div class="form-group">
+        <label class="form-label">Wishlist Playlist</label>
+        <input type="text" name="spotify_playlist_id" class="form-input" value="{{ event.spotify_playlist_id|default:'' }}" placeholder="URL oder ID — wird automatisch erstellt">
+        {% if event.spotify_playlist_id %}
+        <a href="https://open.spotify.com/playlist/{{ event.spotify_playlist_id }}" target="_blank" style="font-size:.72rem;color:var(--accent);margin-top:.25rem;display:inline-block">🔗 Auf Spotify öffnen</a>
+        {% endif %}
+      </div>
+      <div class="form-group">
+        <label class="form-label">Vorauswahl Playlist</label>
+        <input type="text" name="spotify_preselection_playlist_id" class="form-input" value="{{ event.spotify_preselection_playlist_id|default:'' }}" placeholder="URL oder ID — wird automatisch erstellt">
+        {% if event.spotify_preselection_playlist_id %}
+        <a href="https://open.spotify.com/playlist/{{ event.spotify_preselection_playlist_id }}" target="_blank" style="font-size:.72rem;color:var(--accent2);margin-top:.25rem;display:inline-block">🔗 Auf Spotify öffnen</a>
+        {% endif %}
+      </div>
+      {% if not event.spotify_playlist_id and not event.spotify_preselection_playlist_id %}
+      <div style="font-size:.72rem;color:var(--muted);margin-top:.25rem">Playlists werden automatisch beim Erstellen eines neuen Events angelegt (Spotify-Verbindung nötig).</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:1rem">Wishlist Einstellungen</div>
+      <div class="form-group">
+        <label class="form-label">Max. Wünsche pro Session</label>
+        <input type="number" name="max_wishes_per_session" class="form-input" value="{{ event.max_wishes_per_session|default:3 }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Begrüßungstext</label>
+        <input type="text" name="wishlist_custom_message" class="form-input" value="{{ event.wishlist_custom_message|default:'' }}" placeholder="z.B. Wünsch dir deinen Song!">
+      </div>
+      <div class="form-group">
+        <label class="form-label">DJ Nachricht (beim Counter)</label>
+        <input type="text" name="wishlist_dj_message" class="form-input" value="{{ event.wishlist_dj_message|default:'' }}" placeholder="z.B. Danke für eure Wünsche!">
+      </div>
+      <div style="margin-top:.75rem">
+        <div class="form-check">
+          <input type="checkbox" name="is_active" id="is_active" {% if event.is_active %}checked{% endif %}>
+          <label for="is_active">🟢 Aktive Wishlist (nur 1 gleichzeitig)</label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" name="wishlist_show_cover" id="wl_cover" {% if event.wishlist_show_cover|default:True %}checked{% endif %}>
+          <label for="wl_cover">Album-Cover anzeigen</label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" name="wishlist_show_artist" id="wl_artist" {% if event.wishlist_show_artist|default:True %}checked{% endif %}>
+          <label for="wl_artist">Künstler anzeigen</label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" name="wishlist_show_preview" id="wl_preview" {% if event.wishlist_show_preview %}checked{% endif %}>
+          <label for="wl_preview">Preview-Player anzeigen</label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" name="wishlist_show_duration" id="wl_duration" {% if event.wishlist_show_duration %}checked{% endif %}>
+          <label for="wl_duration">Dauer anzeigen</label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" name="wishlist_require_name" id="wl_name" {% if event.wishlist_require_name|default:True %}checked{% endif %}>
+          <label for="wl_name">Name als Pflichtfeld</label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" name="wishlist_show_played" id="wl_played" {% if event.wishlist_show_played|default:True %}checked{% endif %}>
+          <label for="wl_played">Gespielte Lieder anzeigen</label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" name="spotify_remove_on_played" id="wl_spotify_rm" {% if event.spotify_remove_on_played|default:True %}checked{% endif %}>
+          <label for="wl_spotify_rm">Gespielt → Song aus Spotify-Playlist entfernen</label>
+        </div>
+      </div>
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <div class="form-group">
+          <label class="form-label">Standard Sperrgrund (intern)</label>
+          <input type="text" name="default_block_reason" class="form-input" value="{{ event.default_block_reason|default:'' }}" placeholder="z.B. Unangemessene Eingaben">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Standard Sperrnachricht (User sieht das)</label>
+          <input type="text" name="default_block_message" class="form-input" value="{{ event.default_block_message|default:'' }}" placeholder="z.B. Du wurdest gesperrt.">
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Wishlist Frame -->
+    {% if event %}
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🎵 Wishlist ({{ event.wishes.count }})</div>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="refreshWishlist()">↻ Aktualisieren</button>
+      </div>
+      <turbo-frame id="event-wishlist" src="{% url 'dj_admin:wishlist_frame' pk=event.pk %}">
+        <div style="text-align:center;padding:1rem;color:var(--muted)">Lade...</div>
+      </turbo-frame>
+    </div>
+    {% endif %}
+
+    <!-- Save Button -->
+    <div style="margin-top:1rem">
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:.75rem">
+        💾 {% if event %}Änderungen speichern{% else %}Event erstellen{% endif %}
+      </button>
+    </div>
+  </div>
+</div>
+</form>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+{% if event %}
+// Auto-refresh wishlist every 5 seconds
+let wishlistInterval = setInterval(() => {
+  const frame = document.getElementById('event-wishlist');
+  if (frame) frame.src = '{% url "dj_admin:wishlist_frame" pk=event.pk %}';
+}, 5000);
+
+function refreshWishlist() {
+  const frame = document.getElementById('event-wishlist');
+  if (frame) frame.src = '{% url "dj_admin:wishlist_frame" pk=event.pk %}';
+}
+{% endif %}
+
+async function confirmEvent(pk) {
+  if (!confirm('Event bestätigen? E-Mail an Kunden + Kalendereintrag werden erstellt.')) return;
+  try {
+    var res = await fetch('/dj-admin/events/' + pk + '/confirm/', {
+      method: 'POST', headers: {'X-CSRFToken': csrfToken(), 'Content-Type': 'application/json'}
+    });
+    var data = await res.json();
+    if (data.success) { showToast('Event bestätigt! ✓'); setTimeout(function(){ location.reload() }, 800); }
+  } catch (e) { showToast('Fehler', true); }
+}
+
+// Price calculator
+function calcAdminTotal() {
+  var total = 0;
+  document.querySelectorAll('.admin-price-cb:checked').forEach(function(cb){ total += parseFloat(cb.dataset.price) });
+  var el = document.getElementById('admin-calc-total');
+  if (el) el.textContent = total.toFixed(2) + ' €';
+}
+function applyCalcToPrice() {
+  var total = 0;
+  document.querySelectorAll('.admin-price-cb:checked').forEach(function(cb){ total += parseFloat(cb.dataset.price) });
+  var priceInput = document.getElementById('admin-total-price');
+  if (priceInput) priceInput.value = total.toFixed(2);
+  showToast('Preis übernommen: ' + total.toFixed(2) + ' €');
+}
+calcAdminTotal();
+
+// Unified recalculate via PriceEngine API
+var _recalcTimer;
+var _lastUnifiedTotal = 0;
+function recalculate() {
+  clearTimeout(_recalcTimer);
+  _recalcTimer = setTimeout(doRecalculate, 300);
+}
+function doRecalculate() {
+  var eventId = {% if event %}{{ event.pk }}{% else %}null{% endif %};
+  var pkgRadio = document.querySelector('input[name="pricing_package_id"]:checked');
+  var pkgId = pkgRadio ? (parseInt(pkgRadio.value) || null) : null;
+  var itemIds = [];
+  document.querySelectorAll('.admin-price-cb:checked').forEach(function(cb) { itemIds.push(parseInt(cb.value)); });
+  var formulaEl = document.getElementById('formula-select');
+  var formulaId = formulaEl ? (parseInt(formulaEl.value) || null) : null;
+
+  var wfEl = document.getElementById('workflow-select');
+  var workflowId = wfEl ? (parseInt(wfEl.value) || null) : null;
+
+  var body = {
+    event_id: eventId,
+    package_id: pkgId,
+    selected_item_ids: itemIds,
+    formula_id: formulaId,
+    discount_percent: 0,
+    workflow_id: workflowId,
+  };
+
+  fetch('/dj-admin/api/price/calculate/', {
+    method: 'POST',
+    headers: {'X-CSRFToken': csrfToken(), 'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    _lastUnifiedTotal = data.grand_total || 0;
+    var bd = document.getElementById('unified-breakdown');
+    if (!bd) return;
+    var html = '';
+    if (data.workflow && data.steps) {
+      html += '<div style="font-size:.7rem;color:var(--accent);margin-bottom:.4rem;font-family:\'Space Mono\',monospace">WORKFLOW: ' + data.workflow + '</div>';
+      data.steps.forEach(function(s, i) {
+        var detail = s.detail ? ' <span style="opacity:.5;font-size:.75rem">(' + s.detail + ')</span>' : '';
+        html += row((i+1) + '. ' + s.label + detail, s.amount);
+      });
+    } else {
+      if (data.package) html += row('Paket: ' + data.package.name, data.package.price);
+      (data.items||[]).forEach(function(i) { html += row(i.name, i.price); });
+      (data.custom_items||[]).forEach(function(i) { html += row(i.name, i.price); });
+      if (data.offer_breakdown && data.offer_breakdown.grand_total > 0) html += row('Gäste-Staffelung', data.offer_breakdown.grand_total);
+      (data.rules_applied||[]).forEach(function(r) { html += row('⚡ ' + r.name, r.amount); });
+      if (data.formula_result !== null && data.formula_result !== undefined) html += row('Formel-Ergebnis', data.formula_result);
+      if (data.discount_amount > 0) html += row('Rabatt -' + data.discount_percent + '%', -data.discount_amount);
+    }
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:.5rem;border-top:1px solid var(--border);margin-top:.3rem"><span style="font-weight:600">Gesamt</span><span style="font-family:\'Bebas Neue\',sans-serif;font-size:1.6rem;color:var(--green)">' + fmt(data.grand_total) + '</span></div>';
+    bd.innerHTML = html;
+
+    // Rules display
+    var rd = document.getElementById('rules-display');
+    if (rd) {
+      if (data.rules_applied.length) {
+        rd.innerHTML = data.rules_applied.map(function(r) {
+          return '<div style="display:flex;justify-content:space-between;padding:.2rem 0"><span>⚡ ' + r.name + ' (' + r.effect + ')</span><span style="font-family:\'Space Mono\',monospace;color:var(--accent)">' + fmt(r.amount) + '</span></div>';
+        }).join('');
+      } else {
+        rd.textContent = 'Keine Regeln aktiv';
+      }
+    }
+
+    // Formula result
+    var fr = document.getElementById('formula-result');
+    if (fr) {
+      fr.textContent = data.formula_result !== null ? 'Ergebnis: ' + fmt(data.formula_result) : '';
+    }
+  })
+  .catch(function() {});
+}
+function row(label, amount) {
+  return '<div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:.2rem"><span style="color:var(--muted)">' + label + '</span><span style="font-family:\'Space Mono\',monospace">' + fmt(amount) + '</span></div>';
+}
+function fmt(n) { return (n || 0).toFixed(2).replace('.', ',') + ' €'; }
+function applyUnifiedToPrice() {
+  document.getElementById('admin-total-price').value = _lastUnifiedTotal.toFixed(2);
+  showToast('Preis übernommen: ' + _lastUnifiedTotal.toFixed(2) + ' €');
+}
+
+// Trigger initial recalculate
+{% if event %}setTimeout(recalculate, 500);{% endif %}
+
+// Offer calculator
+function calcOffer() {
+  var n = parseInt(document.getElementById('offer-guests').value) || 0;
+  var threshold = parseInt(document.getElementById('offer-threshold').value) || 0;
+  var r1 = parseFloat(document.getElementById('offer-rate1').value) || 0;
+  var r2 = parseFloat(document.getElementById('offer-rate2').value) || 0;
+  var base = parseFloat(document.getElementById('offer-base').value) || 0;
+  var clean = parseFloat(document.getElementById('offer-clean').value) || 0;
+  var tech = parseFloat(document.getElementById('offer-tech').value) || 0;
+  var techReq = document.getElementById('offer-tech-req').checked;
+
+  var varTotal = n <= threshold ? n * r1 : (threshold * r1) + ((n - threshold) * r2);
+  var fixTotal = base + clean + (techReq ? tech : 0);
+  var grand = varTotal + fixTotal;
+
+  document.getElementById('offer-var-total').textContent = varTotal.toFixed(2).replace('.', ',') + ' €';
+  document.getElementById('offer-fix-total').textContent = fixTotal.toFixed(2).replace('.', ',') + ' €';
+  document.getElementById('offer-grand-total').textContent = grand.toFixed(2).replace('.', ',') + ' €';
+}
+function applyOfferToPrice() {
+  var n = parseInt(document.getElementById('offer-guests').value) || 0;
+  var threshold = parseInt(document.getElementById('offer-threshold').value) || 0;
+  var r1 = parseFloat(document.getElementById('offer-rate1').value) || 0;
+  var r2 = parseFloat(document.getElementById('offer-rate2').value) || 0;
+  var base = parseFloat(document.getElementById('offer-base').value) || 0;
+  var clean = parseFloat(document.getElementById('offer-clean').value) || 0;
+  var tech = parseFloat(document.getElementById('offer-tech').value) || 0;
+  var techReq = document.getElementById('offer-tech-req').checked;
+  var varTotal = n <= threshold ? n * r1 : (threshold * r1) + ((n - threshold) * r2);
+  var grand = varTotal + base + clean + (techReq ? tech : 0);
+  document.getElementById('admin-total-price').value = grand.toFixed(2);
+  showToast('Angebotspreis übernommen: ' + grand.toFixed(2) + ' €');
+}
+calcOffer();
+
+// Address autocomplete via Nominatim (OpenStreetMap)
+(function() {
+  var searchInput = document.getElementById('address-search');
+  var resultsBox = document.getElementById('address-results');
+  var debounceTimer;
+  if (!searchInput) return;
+
+  searchInput.addEventListener('input', function() {
+    clearTimeout(debounceTimer);
+    var q = this.value.trim();
+    if (q.length < 3) { resultsBox.style.display = 'none'; return; }
+    debounceTimer = setTimeout(function() {
+      fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=de,at,ch&q=' + encodeURIComponent(q))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data.length) { resultsBox.style.display = 'none'; return; }
+          resultsBox.innerHTML = '';
+          data.forEach(function(item) {
+            var div = document.createElement('div');
+            div.textContent = item.display_name;
+            div.style.cssText = 'padding:.55rem .75rem;font-size:.82rem;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text);transition:background .15s';
+            div.onmouseover = function() { this.style.background = 'rgba(59,130,246,.08)'; };
+            div.onmouseout = function() { this.style.background = 'transparent'; };
+            div.onclick = function() {
+              var a = item.address || {};
+              var street = (a.road || '') + (a.house_number ? ' ' + a.house_number : '');
+              var city = a.city || a.town || a.village || a.municipality || '';
+              var zip = a.postcode || '';
+              var name = a.amenity || a.building || a.tourism || a.leisure || '';
+              document.getElementById('addr-location').value = name || item.display_name.split(',')[0];
+              document.getElementById('addr-street').value = street;
+              document.getElementById('addr-zip').value = zip;
+              document.getElementById('addr-city').value = city;
+              searchInput.value = '';
+              resultsBox.style.display = 'none';
+            };
+            resultsBox.appendChild(div);
+          });
+          resultsBox.style.display = 'block';
+        })
+        .catch(function() { resultsBox.style.display = 'none'; });
+    }, 350);
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!searchInput.contains(e.target) && !resultsBox.contains(e.target)) resultsBox.style.display = 'none';
+  });
+})();
+</script>
+{% endblock %}

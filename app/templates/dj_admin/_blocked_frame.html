@@ -1,0 +1,31 @@
+<turbo-frame id="blocked-clients">
+{% if blocks %}
+{% for block in blocks %}
+<div class="wish-item" style="border-left:3px solid var(--red)">
+  <div class="wish-item-info">
+    <div class="wish-item-title" style="color:var(--red)">{{ block.ip_address|default:"Session" }}</div>
+    <div class="wish-item-artist">{{ block.reason }}</div>
+    <div class="wish-item-meta">
+      {{ block.created_at|date:"d.m.Y H:i" }}
+      {% if block.expires_at %} · Bis {{ block.expires_at|date:"d.m.Y H:i" }}{% else %} · Permanent{% endif %}
+    </div>
+  </div>
+  <button class="btn btn-ghost btn-sm" onclick="unblockClient({{ block.pk }})">Freigeben</button>
+</div>
+{% endfor %}
+{% else %}
+<div style="text-align:center;padding:1rem;color:var(--muted);font-size:.85rem">Keine blockierten Clients</div>
+{% endif %}
+<script>
+async function unblockClient(id) {
+  const res = await fetch(`/dj-admin/api/unblock/${id}/`, {
+    method: 'POST', headers: {'X-CSRFToken': csrfToken()}
+  });
+  if (res.ok) {
+    showToast('Client freigegeben');
+    const bf = document.getElementById('blocked-clients');
+    if (bf) bf.src = '/dj-admin/api/blocked-frame/';
+  }
+}
+</script>
+</turbo-frame>

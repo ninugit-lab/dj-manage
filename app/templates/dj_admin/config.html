@@ -1,0 +1,306 @@
+{% extends "dj_admin/base.html" %}
+{% block title %}Konfiguration — DJ Admin{% endblock %}
+{% block nav_config %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Konfiguration</h2>
+</div>
+
+<div class="tabs">
+  <button type="button" class="tab active" onclick="switchTab(this,'person')">Person</button>
+  <button type="button" class="tab" onclick="switchTab(this,'defaults')">Wishlist Defaults</button>
+  <button type="button" class="tab" onclick="switchTab(this,'email')">E-Mail Templates</button>
+  <button type="button" class="tab" onclick="switchTab(this,'form')">Event-Formular</button>
+  <button type="button" class="tab" onclick="switchTab(this,'logs')">E-Mail Logs</button>
+  <button type="button" class="tab" onclick="switchTab(this,'api')">API Keys & Verbindungen</button>
+</div>
+
+<form method="post" action="">
+{% csrf_token %}
+<input type="hidden" name="action" value="save_config">
+
+<!-- Person -->
+<div id="tab-person" class="tab-content active">
+  <div class="card">
+    <div class="card-title" style="margin-bottom:1rem">Deine Angaben</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">DJ Name / Künstlername</label>
+        <input type="text" name="dj_name" class="form-input" value="{{ config.dj_name }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Echter Name</label>
+        <input type="text" name="dj_real_name" class="form-input" value="{{ config.dj_real_name }}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">E-Mail</label>
+        <input type="email" name="dj_email" class="form-input" value="{{ config.dj_email }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Telefon</label>
+        <input type="tel" name="dj_phone" class="form-input" value="{{ config.dj_phone }}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Adresse</label>
+      <textarea name="dj_address" class="form-textarea" style="min-height:60px">{{ config.dj_address }}</textarea>
+    </div>
+      <div class="form-group" style="position:relative">
+        <label class="form-label">Standort für Anfahrts-Berechnung</label>
+        <input type="text" id="cfg-addr-search" class="form-input" placeholder="Adresse suchen, um Koordinaten zu setzen…" autocomplete="off">
+        <div id="cfg-addr-results" style="display:none;position:absolute;left:0;right:0;z-index:50;background:var(--card-solid,#1a1a2e);border:1px solid var(--border);border-radius:var(--radius);max-height:220px;overflow-y:auto"></div>
+        <div style="display:flex;gap:.75rem;margin-top:.5rem">
+          <div style="flex:1"><label class="form-label" style="font-size:.7rem">Breitengrad</label>
+            <input type="text" name="dj_home_lat" id="cfg-home-lat" class="form-input" value="{{ config.dj_home_lat|default_if_none:'' }}"></div>
+          <div style="flex:1"><label class="form-label" style="font-size:.7rem">Längengrad</label>
+            <input type="text" name="dj_home_lon" id="cfg-home-lon" class="form-input" value="{{ config.dj_home_lon|default_if_none:'' }}"></div>
+        </div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:.3rem">Wird genutzt, um Kunden im Buchungsformular die Anfahrt live einzupreisen.</div>
+      </div>
+    <div class="form-group">
+      <label class="form-label">Website</label>
+      <input type="url" name="dj_website" class="form-input" value="{{ config.dj_website }}">
+    </div>
+  </div>
+</div>
+
+<!-- Wishlist Defaults -->
+<div id="tab-defaults" class="tab-content">
+  <div class="card">
+    <div class="card-title" style="margin-bottom:1rem">Standard-Einstellungen für neue Events</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Standard Max. Wünsche pro Session</label>
+        <input type="number" name="default_max_wishes" class="form-input" value="{{ config.default_max_wishes }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Standard Spotify Playlist</label>
+        <input type="text" name="default_playlist_id" class="form-input" value="{{ config.default_playlist_id }}" placeholder="URL oder ID">
+      </div>
+    </div>
+    <div style="margin-top:.75rem">
+      <div class="form-check">
+        <input type="checkbox" name="default_show_cover" id="dc" {% if config.default_show_cover %}checked{% endif %}>
+        <label for="dc">Cover anzeigen</label>
+      </div>
+      <div class="form-check">
+        <input type="checkbox" name="default_show_artist" id="da" {% if config.default_show_artist %}checked{% endif %}>
+        <label for="da">Künstler anzeigen</label>
+      </div>
+      <div class="form-check">
+        <input type="checkbox" name="default_show_preview" id="dp" {% if config.default_show_preview %}checked{% endif %}>
+        <label for="dp">Preview anzeigen</label>
+      </div>
+      <div class="form-check">
+        <input type="checkbox" name="default_show_duration" id="dd" {% if config.default_show_duration %}checked{% endif %}>
+        <label for="dd">Dauer anzeigen</label>
+      </div>
+      <div class="form-check">
+        <input type="checkbox" name="default_require_name" id="dn" {% if config.default_require_name %}checked{% endif %}>
+        <label for="dn">Name als Pflichtfeld</label>
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:1rem">
+      <label class="form-label">Wunschlimit-Nachricht</label>
+      <input type="text" name="wishlist_limit_message" class="form-input" value="{{ config.wishlist_limit_message }}" placeholder="z.B. Danke für deine Wünsche! 🎶">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Kein-Event-Nachricht (Wishlist Startseite)</label>
+      <input type="text" name="no_event_message" class="form-input" value="{{ config.no_event_message }}" placeholder="z.B. Aktuell ist kein Event aktiv.">
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:1rem">Sperrung Defaults</div>
+    <div class="form-group">
+      <label class="form-label">Standard Sperrgrund (intern)</label>
+      <input type="text" name="default_block_reason" class="form-input" value="{{ config.default_block_reason }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Standard Sperrnachricht (öffentlich)</label>
+      <input type="text" name="default_block_message" class="form-input" value="{{ config.default_block_message }}">
+    </div>
+  </div>
+</div>
+
+<!-- E-Mail Templates -->
+<div id="tab-email" class="tab-content">
+  <div class="card">
+    <div class="card-title" style="margin-bottom:1rem">Bestätigungs-E-Mail an Kunden</div>
+    <div class="form-group">
+      <label class="form-label">Betreff</label>
+      <input type="text" name="confirmation_email_subject" class="form-input" value="{{ config.confirmation_email_subject }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Text</label>
+      <textarea name="confirmation_email_body" class="form-textarea" style="min-height:150px">{{ config.confirmation_email_body }}</textarea>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:.3rem">Platzhalter: {client_name}, {event_name}, {event_date}, {event_time}, {location}, {dj_name}</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:1rem">Anfrage-Eingangsbestätigung</div>
+    <div class="form-group">
+      <label class="form-label">Betreff</label>
+      <input type="text" name="inquiry_email_subject" class="form-input" value="{{ config.inquiry_email_subject }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Text</label>
+      <textarea name="inquiry_email_body" class="form-textarea" style="min-height:150px">{{ config.inquiry_email_body }}</textarea>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:.3rem">Platzhalter: {client_name}, {event_name}, {event_date}, {location}, {dj_name}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Event-Formular Settings -->
+<div id="tab-form" class="tab-content">
+  <div class="card">
+    <div class="card-title" style="margin-bottom:1rem">Öffentliches Buchungsformular</div>
+    <div class="form-check">
+      <input type="checkbox" name="event_form_enabled" id="fe" {% if config.event_form_enabled %}checked{% endif %}>
+      <label for="fe">Formular aktiv (erreichbar unter /buchen/)</label>
+    </div>
+    <div class="form-group" style="margin-top:1rem">
+      <label class="form-label">Einleitungstext</label>
+      <textarea name="event_form_intro" class="form-textarea">{{ config.event_form_intro }}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Datum-Aufforderung</label>
+      <input type="text" name="event_form_date_prompt" class="form-input" value="{{ config.event_form_date_prompt }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Nicht-verfügbar-Nachricht</label>
+      <input type="text" name="event_form_unavailable_msg" class="form-input" value="{{ config.event_form_unavailable_msg }}">
+    </div>
+  </div>
+</div>
+
+<!-- E-Mail Logs -->
+<div id="tab-logs" class="tab-content">
+  <div class="card">
+    <div class="card-title" style="margin-bottom:1rem">Gesendete E-Mails</div>
+    {% if email_logs %}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Datum</th><th>Empfänger</th><th>Betreff</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for log in email_logs %}
+      <tr>
+        <td style="font-family:'Space Mono',monospace;font-size:.72rem">{{ log.sent_at|date:"d.m.Y H:i" }}</td>
+        <td>{{ log.recipient }}</td>
+        <td>{{ log.subject }}</td>
+        <td>{% if log.success %}<span style="color:var(--accent)">✓</span>{% else %}<span style="color:var(--red)">✕ {{ log.error_message|truncatewords:5 }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="empty-state" style="padding:1rem"><p>Noch keine E-Mails gesendet</p></div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- API Keys & Verbindungen (letzter Tab) -->
+<div id="tab-api" class="tab-content">
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Spotify</div>
+        <span class="status-dot" id="cfg-spotify-dot"></span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Client ID</label>
+        <input type="text" name="spotify_client_id" class="form-input" value="{{ config.spotify_client_id }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Client Secret</label>
+        <input type="password" name="spotify_client_secret" class="form-input" value="{{ config.spotify_client_secret }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Redirect URI</label>
+        <input type="url" name="spotify_redirect_uri" class="form-input" value="{{ config.spotify_redirect_uri }}">
+      </div>
+      <a href="{% url 'spotify_login' %}" class="btn btn-primary btn-sm">Spotify verbinden →</a>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Google</div>
+        <span class="status-dot" id="cfg-google-dot"></span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Client ID</label>
+        <input type="text" name="google_client_id" class="form-input" value="{{ config.google_client_id }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Client Secret</label>
+        <input type="password" name="google_client_secret" class="form-input" value="{{ config.google_client_secret }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Redirect URI</label>
+        <input type="url" name="google_redirect_uri" class="form-input" value="{{ config.google_redirect_uri }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Google Sheets ID (Backup)</label>
+        <input type="text" name="google_sheets_id" class="form-input" value="{{ config.google_sheets_id }}">
+      </div>
+      <a href="{% url 'google_login' %}" class="btn btn-purple btn-sm">Google verbinden →</a>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:1.5rem">
+  <button type="submit" class="btn btn-primary">💾 Konfiguration speichern</button>
+</div>
+</form>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function switchTab(btn, name) {
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
+  document.querySelectorAll('.tab-content').forEach(function(t){t.classList.remove('active')});
+  btn.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+// Update connection dots on config page too
+fetch('/spotify/status/').then(function(r){return r.json()}).then(function(d){
+  var dot = document.getElementById('cfg-spotify-dot');
+  if(dot) dot.className = 'status-dot ' + (d.connected ? 'ok' : 'err');
+}).catch(function(){});
+fetch('/google/status/').then(function(r){return r.json()}).then(function(d){
+  var dot = document.getElementById('cfg-google-dot');
+  if(dot) dot.className = 'status-dot ' + (d.connected ? 'ok' : 'err');
+}).catch(function(){});
+
+(function(){
+  var si=document.getElementById('cfg-addr-search'),rb=document.getElementById('cfg-addr-results'),dt;
+  if(!si)return;
+  si.addEventListener('input',function(){
+    clearTimeout(dt);var q=this.value.trim();
+    if(q.length<3){rb.style.display='none';return}
+    dt=setTimeout(function(){
+      fetch('https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=de,at,ch&q='+encodeURIComponent(q))
+      .then(function(r){return r.json()})
+      .then(function(data){
+        if(!data.length){rb.style.display='none';return}
+        rb.innerHTML='';
+        data.forEach(function(item){
+          var d=document.createElement('div');
+          d.textContent=item.display_name;
+          d.style.cssText='padding:.5rem .75rem;font-size:.82rem;cursor:pointer;border-bottom:1px solid var(--border)';
+          d.onclick=function(){
+            document.getElementById('cfg-home-lat').value=parseFloat(item.lat).toFixed(6);
+            document.getElementById('cfg-home-lon').value=parseFloat(item.lon).toFixed(6);
+            si.value=item.display_name;rb.style.display='none';
+          };
+          rb.appendChild(d);
+        });
+        rb.style.display='block';
+      }).catch(function(){rb.style.display='none'});
+    },350);
+  });
+  document.addEventListener('click',function(e){if(!si.contains(e.target)&&!rb.contains(e.target))rb.style.display='none'});
+})();
+</script>
+{% endblock %}

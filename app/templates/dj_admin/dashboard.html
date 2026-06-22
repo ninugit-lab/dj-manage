@@ -1,0 +1,211 @@
+{% extends "dj_admin/base.html" %}
+{% block title %}Dashboard — DJ Admin{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Dashboard</h2>
+  <a href="{% url 'dj_admin:event_create' %}" class="btn btn-primary">+ Neues Event</a>
+</div>
+
+<!-- Stats -->
+<div class="grid-3" style="margin-bottom:2rem">
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--accent)">{{ events_confirmed.count }}</div>
+    <div class="stat-label">Bestätigt</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--accent2)">{{ events_inquiry.count }}</div>
+    <div class="stat-label">Anfragen</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--muted)">{{ events_past.count }}</div>
+    <div class="stat-label">Vergangen</div>
+  </div>
+</div>
+
+<!-- Active Wishlist Banner -->
+{% if active_event %}
+<div class="card" style="border-color:var(--accent);margin-bottom:2rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem">
+    <div>
+      <div style="font-size:.65rem;font-family:'Space Mono',monospace;color:var(--accent);letter-spacing:.1em;text-transform:uppercase">Aktives Live Event</div>
+      <div style="font-size:1.1rem;font-weight:600;margin-top:.2rem">{{ active_event.name }}</div>
+      <div style="font-size:.78rem;color:var(--muted)">{{ active_event.date|date:"d.m.Y" }} · {{ active_event.location }} · {{ active_event.wishes.count }} Wünsche</div>
+    </div>
+    <div style="display:flex;gap:.4rem">
+      <a href="{% url 'dj_admin:wishlist_live' %}" class="btn btn-primary btn-sm">🎵 Live Event</a>
+      <a href="{% url 'dj_admin:event_edit' pk=active_event.pk %}" class="btn btn-ghost btn-sm">Verwalten</a>
+    </div>
+  </div>
+  <!-- Now Playing Widget -->
+  <div id="now-playing-dashboard" style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+    <div id="np-inner" style="display:flex;align-items:center;gap:.85rem">
+      <div style="font-size:.7rem;color:var(--muted);font-family:'Space Mono',monospace">Lade Spotify…</div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="card" style="border-color:var(--border);margin-bottom:2rem;text-align:center;padding:1.5rem">
+  <div style="color:var(--muted);font-size:.88rem">Kein aktives Live Event. Setze ein bestätigtes Event auf „Live".</div>
+</div>
+{% endif %}
+
+<!-- Tabs: Bestätigt zuerst -->
+<div class="tabs">
+  <button type="button" class="tab active" onclick="switchTab(this,'confirmed')">Bestätigt ({{ events_confirmed.count }})</button>
+  <button type="button" class="tab" onclick="switchTab(this,'inquiry')">Angefragt ({{ events_inquiry.count }})</button>
+  <button type="button" class="tab" onclick="switchTab(this,'past')">Vergangen ({{ events_past.count }})</button>
+</div>
+
+<!-- Bestätigt (default sichtbar) -->
+<div id="tab-confirmed" class="tab-content active">
+  {% if events_confirmed %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Event</th><th>Datum</th><th>Adresse</th><th>Kunde</th><th>Wünsche</th><th></th></tr></thead>
+    <tbody>
+    {% for ev in events_confirmed %}
+    <tr>
+      <td>
+        <strong>{{ ev.name }}</strong>
+        {% if ev.is_active %}<span class="badge badge-confirmed" style="margin-left:.4rem">LIVE</span>{% endif %}
+        <br><span style="font-size:.7rem;color:var(--muted)">{{ ev.event_type }}</span>
+      </td>
+      <td>{{ ev.date|date:"d.m.Y" }}</td>
+      <td>{{ ev.location }}{% if ev.full_address %}<br><span style="font-size:.68rem;color:var(--muted)">{{ ev.full_address }}</span>{% endif %}</td>
+      <td>{{ ev.client_name }}</td>
+      <td>{{ ev.wishes.count }}</td>
+      <td style="white-space:nowrap">
+        {% if not ev.is_active %}
+        <button type="button" class="btn btn-primary btn-sm" onclick="setActive({{ ev.pk }})">🔴 Live</button>
+        {% endif %}
+        <a href="{% url 'dj_admin:event_edit' pk=ev.pk %}" class="btn btn-ghost btn-sm">Bearbeiten</a>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty-state"><div class="icon">📅</div><p>Keine bestätigten Events</p></div>
+  {% endif %}
+</div>
+
+<!-- Angefragt -->
+<div id="tab-inquiry" class="tab-content">
+  {% if events_inquiry %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Event</th><th>Datum</th><th>Adresse</th><th>Kunde</th><th>Preis</th><th></th></tr></thead>
+    <tbody>
+    {% for ev in events_inquiry %}
+    <tr>
+      <td><strong>{{ ev.name }}</strong><br><span style="font-size:.7rem;color:var(--muted)">{{ ev.event_type }}</span></td>
+      <td>{{ ev.date|date:"d.m.Y" }}</td>
+      <td>{{ ev.location }}{% if ev.full_address %}<br><span style="font-size:.68rem;color:var(--muted)">{{ ev.full_address }}</span>{% endif %}</td>
+      <td>{{ ev.client_name }}<br><span style="font-size:.7rem;color:var(--muted)">{{ ev.client_email }}</span></td>
+      <td>{% if ev.total_price %}{{ ev.total_price }} €{% else %}-{% endif %}</td>
+      <td style="white-space:nowrap">
+        <a href="{% url 'dj_admin:event_edit' pk=ev.pk %}" class="btn btn-ghost btn-sm">Bearbeiten</a>
+        <button type="button" class="btn btn-primary btn-sm" onclick="confirmEvent({{ ev.pk }})">✓ Bestätigen</button>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty-state"><div class="icon">📭</div><p>Keine offenen Anfragen</p></div>
+  {% endif %}
+</div>
+
+<!-- Vergangen -->
+<div id="tab-past" class="tab-content">
+  {% if events_past %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Event</th><th>Datum</th><th>Adresse</th><th>Wünsche</th><th></th></tr></thead>
+    <tbody>
+    {% for ev in events_past %}
+    <tr style="opacity:.6">
+      <td>{{ ev.name }}</td>
+      <td>{{ ev.date|date:"d.m.Y" }}</td>
+      <td>{{ ev.location }}{% if ev.full_address %}<br><span style="font-size:.68rem;color:var(--muted)">{{ ev.full_address }}</span>{% endif %}</td>
+      <td>{{ ev.wishes.count }}</td>
+      <td><a href="{% url 'dj_admin:event_edit' pk=ev.pk %}" class="btn btn-ghost btn-sm">Details</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty-state"><div class="icon">📦</div><p>Noch keine vergangenen Events</p></div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function switchTab(btn, name) {
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
+  document.querySelectorAll('.tab-content').forEach(function(t){t.classList.remove('active')});
+  btn.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+async function confirmEvent(pk) {
+  if (!confirm('Event bestätigen? E-Mail + Kalendereintrag werden erstellt.')) return;
+  try {
+    var res = await fetch('/dj-admin/events/' + pk + '/confirm/', {
+      method: 'POST', headers: {'X-CSRFToken': csrfToken(), 'Content-Type': 'application/json'}
+    });
+    var data = await res.json();
+    if (data.success) {
+      showToast('Event bestätigt! ✓');
+      setTimeout(function(){ location.reload() }, 800);
+    }
+  } catch (e) { showToast('Fehler beim Bestätigen', true); }
+}
+
+async function setActive(pk) {
+  try {
+    var res = await fetch('/dj-admin/events/' + pk + '/set-active/', {
+      method: 'POST', headers: {'X-CSRFToken': csrfToken(), 'Content-Type': 'application/json'}
+    });
+    var data = await res.json();
+    if (data.success) {
+      showToast('Event "' + data.event_name + '" ist jetzt live! 🎧');
+      setTimeout(function(){ location.reload() }, 800);
+    }
+  } catch (e) { showToast('Fehler', true); }
+}
+
+// ── Now Playing (Dashboard) ──────────────────────────────────────────────────
+(function() {
+  var npEl = document.getElementById('np-inner');
+  if (!npEl) return;
+  function renderNP(p) {
+    if (!p) {
+      npEl.innerHTML = '<div style="font-size:.7rem;color:var(--muted);font-family:\'Space Mono\',monospace">Kein Track läuft gerade</div>';
+      return;
+    }
+    var pct = p.duration_ms > 0 ? Math.round(p.progress_ms / p.duration_ms * 100) : 0;
+    var stateIcon = p.is_playing ? '▶' : '⏸';
+    npEl.innerHTML =
+      '<img src="' + (p.cover || '') + '" style="width:56px;height:56px;border-radius:6px;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:.65rem;font-family:\'Space Mono\',monospace;color:var(--accent);letter-spacing:.08em">' + stateIcon + ' JETZT LÄUFT</div>' +
+        '<div style="font-weight:600;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + p.track_name + '</div>' +
+        '<div style="font-size:.75rem;color:var(--muted)">' + p.artist + '</div>' +
+        '<progress value="' + pct + '" max="100" style="width:100%;height:3px;margin-top:.4rem;accent-color:var(--accent)"></progress>' +
+      '</div>' +
+      (p.device && p.device.name ? '<div style="font-size:.65rem;color:var(--muted);font-family:\'Space Mono\',monospace;white-space:nowrap">' + p.device.name + '</div>' : '');
+  }
+  async function poll() {
+    try {
+      var r = await fetch('/api/now-playing/');
+      var d = await r.json();
+      renderNP(d.playing);
+    } catch(e) {}
+  }
+  poll();
+  setInterval(poll, 5000);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,860 @@
+{% extends "dj_admin/base.html" %}
+{% block title %}Preiskalkulation — DJ Admin{% endblock %}
+{% block nav_workflow %}active{% endblock %}
+{% block content %}
+<style>
+.wb-wrap{display:flex;gap:1.5rem;min-height:calc(100vh - 6rem)}
+.wb-palette{width:240px;flex-shrink:0}
+.wb-palette .card{padding:1rem}
+.wb-palette h3{font-size:.85rem;margin-bottom:.75rem;color:var(--text-bright)}
+.wb-block{padding:.55rem .8rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:.4rem;cursor:grab;font-size:.8rem;display:flex;align-items:center;gap:.5rem;transition:all .2s}
+.wb-block:hover{border-color:var(--accent);background:rgba(59,130,246,.05)}
+.wb-block svg{width:14px;height:14px;opacity:.5;flex-shrink:0}
+.wb-block .wb-hint{font-size:.62rem;color:var(--muted);margin-left:auto;white-space:nowrap}
+.wb-canvas-wrap{flex:1;min-width:0}
+.wb-canvas-wrap h2{font-size:1.1rem;margin-bottom:.75rem}
+.wb-canvas{min-height:200px;background:var(--surface);border:2px dashed var(--border);border-radius:var(--radius);padding:1rem;transition:border-color .2s}
+.wb-canvas.drag-over{border-color:var(--accent);background:rgba(59,130,246,.03)}
+.wb-step{display:flex;align-items:center;gap:.7rem;padding:.6rem .9rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:.35rem;cursor:grab;font-size:.82rem}
+.wb-step:hover{border-color:var(--accent)}
+.wb-step .wb-num{width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;flex-shrink:0}
+.wb-step .wb-label{flex:1}
+.wb-step .wb-detail{font-size:.68rem;color:var(--muted);font-family:'Space Mono',monospace;display:block;margin-top:.15rem}
+.wb-step .wb-rm{cursor:pointer;opacity:.4;font-size:.9rem;transition:opacity .2s;flex-shrink:0}
+.wb-step .wb-rm:hover{opacity:1;color:var(--danger)}
+.wb-empty{text-align:center;color:var(--muted);padding:2rem;font-size:.82rem}
+.wb-actions{display:flex;gap:.7rem;margin-top:1rem;align-items:center;flex-wrap:wrap}
+.wb-wf-select{display:flex;gap:.7rem;margin-bottom:1rem;align-items:center}
+.wb-wf-select select{flex:1}
+.wb-test-result{margin-top:1rem}
+.wb-test-row{display:flex;justify-content:space-between;font-size:.8rem;padding:.25rem 0}
+.wb-test-total{display:flex;justify-content:space-between;align-items:center;padding-top:.5rem;border-top:1px solid var(--border);margin-top:.3rem;font-weight:600}
+.wb-test-total .wb-val{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--green)}
+.wb-guide{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.75rem;margin-top:.75rem}
+.wb-guide summary{font-size:.78rem;color:var(--accent);cursor:pointer;font-weight:600}
+.wb-guide .wb-guide-body{font-size:.72rem;color:var(--muted);line-height:1.7;margin-top:.5rem}
+.wb-guide .wb-guide-body code{background:var(--card);padding:.1rem .3rem;border-radius:3px;font-size:.68rem}
+.wb-guide .wb-guide-body strong{color:var(--text)}
+
+/* Tabs für Komponenten-Verwaltung */
+.wb-comp-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-top:2rem;margin-bottom:0}
+.wb-comp-tab{padding:.5rem 1rem;font-size:.78rem;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;transition:all .2s}
+.wb-comp-tab:hover{color:var(--text)}
+.wb-comp-tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.wb-comp-panel{display:none;padding:1rem 0}
+.wb-comp-panel.active{display:block}
+.wb-comp-row{display:flex;align-items:center;gap:.75rem;padding:.5rem .6rem;border-bottom:1px solid var(--border);font-size:.8rem}
+.wb-comp-row:last-child{border-bottom:none}
+.wb-comp-empty{padding:1rem;text-align:center;color:var(--muted);font-size:.82rem}
+.wb-add-form{margin-bottom:1rem;padding:1rem;background:var(--surface);border-radius:var(--radius-sm);display:none}
+</style>
+
+<div class="page-header"><h2>Preiskalkulation</h2></div>
+
+<div class="wb-wrap">
+  <!-- Linke Spalte: Blöcke + Anleitung -->
+  <div class="wb-palette">
+    <div class="card">
+      <h3>Berechnungs-Blöcke</h3>
+      <div class="wb-block" draggable="true" data-type="package">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        <div>Paket<div style="font-size:.62rem;color:var(--muted)">Vordefiniertes Preis-Bundle</div></div>
+        <span class="wb-hint" id="hint-package"></span>
+      </div>
+      <div class="wb-block" draggable="true" data-type="items">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <div>Posten<div style="font-size:.62rem;color:var(--muted)">Einzelne Zusatzleistungen</div></div>
+        <span class="wb-hint" id="hint-items"></span>
+      </div>
+      <div class="wb-block" draggable="true" data-type="offer">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <div>Angebot<div style="font-size:.62rem;color:var(--muted)">Gäste-Staffelpreis</div></div>
+      </div>
+      <div class="wb-block" draggable="true" data-type="rules">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        <div>Regeln<div style="font-size:.62rem;color:var(--muted)">Automatische Zuschläge</div></div>
+        <span class="wb-hint" id="hint-rules"></span>
+      </div>
+      <div class="wb-block" draggable="true" data-type="formula">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        <div>Formel<div style="font-size:.62rem;color:var(--muted)">Benutzerdefinierte Berechnung</div></div>
+        <span class="wb-hint" id="hint-formula"></span>
+      </div>
+      <div class="wb-block" draggable="true" data-type="discount">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+        <div>Rabatt<div style="font-size:.62rem;color:var(--muted)">Prozentualer Abzug</div></div>
+      </div>
+    </div>
+
+    <!-- Kurzanleitung -->
+    <div class="wb-guide">
+      <details>
+        <summary>Kurzanleitung</summary>
+        <div class="wb-guide-body">
+          <strong>So funktioniert der Preis-Workflow:</strong><br><br>
+          1. <strong>Blöcke ziehen</strong> — Ziehe die gewünschten Berechnungsschritte von links in den Workflow-Bereich.<br><br>
+          2. <strong>Reihenfolge bestimmt Berechnung</strong> — Die Blöcke werden von oben nach unten abgearbeitet. Jeder Block addiert seinen Betrag auf die bisherige Summe.<br><br>
+          3. <strong>Umsortieren</strong> — Blöcke im Workflow per Drag & Drop verschieben. Die Reihenfolge beeinflusst das Ergebnis (z.B. Rabatt vor oder nach Regeln).<br><br>
+          4. <strong>Als Standard setzen</strong> — Ein Standard-Workflow wird automatisch bei neuen Events und auf der öffentlichen Buchungsseite verwendet.<br><br>
+          5. <strong>Testen</strong> — Mit dem Test-Button eine Probeberechnung starten.<br><br>
+          <strong>Block-Beschreibungen:</strong><br>
+          <strong>Paket</strong> — Basispreis eines Pakets (z.B. "Premium DJ 350 €")<br>
+          <strong>Posten</strong> — Einzelne Zusatzleistungen die der Kunde wählt (z.B. Lichtanlage, Nebelmaschine)<br>
+          <strong>Angebot</strong> — Gäste-Staffelpreis aus dem EventOffer (Schwellwert + Raten)<br>
+          <strong>Regeln</strong> — Automatische Zuschläge basierend auf Bedingungen (z.B. +15% am Wochenende, +50 € ab 100 km)<br>
+          <strong>Formel</strong> — Freie mathematische Berechnung mit Variablen wie <code>base</code>, <code>guests</code>, <code>hours</code>, <code>distance</code><br>
+          <strong>Rabatt</strong> — Prozentualer Abzug auf die bisherige Zwischensumme<br><br>
+          <strong>Beispiel-Workflow:</strong><br>
+          Paket → Posten → Regeln → Rabatt<br>
+          = Paketpreis + gewählte Extras + automatische Zuschläge − Rabatt
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- Rechte Spalte: Workflow Canvas + Komponenten-Verwaltung -->
+  <div class="wb-canvas-wrap">
+    <div class="wb-wf-select">
+      <select id="wf-select" class="form-control" onchange="loadWorkflow()">
+        <option value="">— Neuer Workflow —</option>
+        {% for wf in workflows %}
+        <option value="{{ wf.pk }}" data-json='{{ wf.workflow_json|escapejs }}' data-default="{{ wf.is_default|yesno:'1,0' }}"{% if selected_wf_id == wf.pk %} selected{% endif %}>{{ wf.name }}{% if wf.is_default %} (Standard){% endif %}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm" onclick="deleteWorkflow()" id="btn-delete-wf" style="display:none" title="Workflow löschen">&#x1f5d1;</button>
+    </div>
+
+    <h2 id="wf-title">Neuer Workflow</h2>
+
+    <div class="wb-canvas" id="wf-canvas">
+      <div class="wb-empty" id="wf-empty">Ziehe Blöcke hierher, um den Berechnungs-Workflow zu definieren.<br><span style="font-size:.72rem">Die Reihenfolge bestimmt die Berechnung — von oben nach unten.</span></div>
+    </div>
+
+    <div class="wb-actions">
+      <input type="text" id="wf-name" class="form-control" placeholder="Workflow-Name (z.B. Standard-Preis)" style="max-width:280px">
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:.8rem;white-space:nowrap">
+        <input type="checkbox" id="wf-default"> Standard
+      </label>
+      <button class="btn btn-primary btn-sm" onclick="saveWorkflow()">Speichern</button>
+      <button class="btn btn-sm" onclick="toggleForm('test-params')" style="background:var(--surface);border:1px solid var(--border)">&#9881; Test-Parameter</button>
+      <button class="btn btn-sm" onclick="testWorkflow()" style="background:var(--green,#22c55e);color:#fff">&#9654; Testen</button>
+    </div>
+
+    <div id="test-params" class="wb-add-form" style="margin-top:.5rem">
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:.5rem;font-weight:600">TEST-PARAMETER — simulierte Event-Daten</div>
+      <div class="form-row-3">
+        <div class="form-group"><label class="form-label">Gäste</label><input type="number" id="tp-guests" class="form-input" value="100" min="0"></div>
+        <div class="form-group"><label class="form-label">Dauer (Std.)</label><input type="number" id="tp-hours" class="form-input" value="4" step="0.5" min="0"></div>
+        <div class="form-group"><label class="form-label">Entfernung (km)</label><input type="number" id="tp-distance" class="form-input" value="0" min="0"></div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group"><label class="form-label">Wochentag</label>
+          <select id="tp-weekday" class="form-input" style="appearance:auto">
+            <option value="0">Montag</option><option value="1">Dienstag</option><option value="2">Mittwoch</option>
+            <option value="3">Donnerstag</option><option value="4">Freitag</option><option value="5" selected>Samstag</option><option value="6">Sonntag</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Monat</label>
+          <select id="tp-month" class="form-input" style="appearance:auto">
+            {% for m in "123456789" %}<option value="{{ m }}">Monat {{ m }}</option>{% endfor %}
+            <option value="10">Oktober</option><option value="11">November</option><option value="12">Dezember</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Event-Typ</label>
+          <select id="tp-type" class="form-input" style="appearance:auto">
+            <option value="wedding">Hochzeit</option><option value="birthday" selected>Geburtstag</option>
+            <option value="corporate">Firmen-Event</option><option value="other">Sonstiges</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="wb-test-result" id="test-result"></div>
+
+    <!-- ═══ Komponenten-Verwaltung ═══ -->
+    <div class="wb-comp-tabs">
+      <button class="wb-comp-tab active" onclick="switchCompTab(this,'comp-items')">Preis-Posten</button>
+      <button class="wb-comp-tab" onclick="switchCompTab(this,'comp-packages')">Pakete</button>
+      <button class="wb-comp-tab" onclick="switchCompTab(this,'comp-rules')">Regeln</button>
+      <button class="wb-comp-tab" onclick="switchCompTab(this,'comp-formulas')">Formeln</button>
+    </div>
+
+    <!-- ── Preis-Posten ── -->
+    <div id="comp-items" class="wb-comp-panel active">
+      <div class="card" style="margin-top:.5rem">
+        <div class="card-header">
+          <div class="card-title">Preis-Posten <span style="font-weight:400;font-size:.72rem;color:var(--muted)">— Einzelne Leistungen, die Kunden als Extras wählen können</span></div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="toggleForm('item-add')">+ Neuer Posten</button>
+        </div>
+        <div id="item-add" class="wb-add-form">
+          <div class="form-row-3">
+            <div class="form-group"><label class="form-label">Name</label><input type="text" id="item-name" class="form-input" placeholder="z.B. Lichtanlage"></div>
+            <div class="form-group"><label class="form-label">Kategorie</label>
+              <select id="item-category" class="form-input" style="appearance:auto">
+                <option value="tech">Technik</option>
+                <option value="service">Service</option>
+                <option value="extra" selected>Extra</option>
+                <option value="travel">Anfahrt</option>
+              </select>
+            </div>
+            <div class="form-group"><label class="form-label">Preis (€)</label><input type="number" step="0.01" id="item-price" class="form-input" value="0"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Beschreibung</label><input type="text" id="item-desc" class="form-input" placeholder="Kurzbeschreibung (optional)"></div>
+          </div>
+          <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+            <label style="font-size:.78rem;display:flex;align-items:center;gap:.3rem"><input type="checkbox" id="item-default"> Standardmäßig aktiv</label>
+            <label style="font-size:.78rem;display:flex;align-items:center;gap:.3rem"><input type="checkbox" id="item-required"> Pflichtposten</label>
+            <label style="font-size:.78rem;display:flex;align-items:center;gap:.3rem"><input type="checkbox" id="item-public" checked> Öffentlich sichtbar</label>
+            <div class="form-group" style="margin:0"><label class="form-label" style="margin:0">Sortierung</label><input type="number" id="item-sort" class="form-input" value="0" style="width:60px"></div>
+          </div>
+          <div style="display:flex;gap:.5rem;margin-top:.75rem">
+            <button type="button" class="btn btn-primary btn-sm" onclick="saveItem()">Speichern</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleForm('item-add')">Abbrechen</button>
+          </div>
+        </div>
+        {% if price_items %}
+        <div class="table-wrap"><table>
+          <thead><tr><th>Name</th><th>Kategorie</th><th>Preis</th><th>Standard</th><th>Pflicht</th><th>Öffentl.</th><th></th></tr></thead>
+          <tbody>
+          {% for item in price_items %}
+          <tr id="item-row-{{ item.pk }}">
+            <td>
+              <span class="item-display">{{ item.name }}{% if item.description %}<br><span style="font-size:.68rem;color:var(--muted)">{{ item.description }}</span>{% endif %}</span>
+              <span class="item-edit" style="display:none"><input type="text" data-field="name" class="form-input" value="{{ item.name }}" style="margin-bottom:.2rem"><input type="text" data-field="description" class="form-input" value="{{ item.description }}" style="font-size:.75rem"></span>
+            </td>
+            <td>
+              <span class="item-display"><span class="badge badge-inquiry">{{ item.get_category_display }}</span></span>
+              <span class="item-edit" style="display:none"><select data-field="category" class="form-input" style="appearance:auto"><option value="base" {% if item.category == 'base' %}selected{% endif %}>Grundpreis</option><option value="tech" {% if item.category == 'tech' %}selected{% endif %}>Technik</option><option value="equipment" {% if item.category == 'equipment' %}selected{% endif %}>Ausrüstung</option><option value="travel" {% if item.category == 'travel' %}selected{% endif %}>Anfahrt</option><option value="extra" {% if item.category == 'extra' %}selected{% endif %}>Extras</option><option value="service" {% if item.category == 'service' %}selected{% endif %}>Service</option></select></span>
+            </td>
+            <td>
+              <span class="item-display" style="font-family:'Space Mono',monospace">{{ item.price }} €</span>
+              <span class="item-edit" style="display:none"><input type="number" step="0.01" data-field="price" class="form-input" value="{{ item.price }}" style="max-width:90px"></span>
+            </td>
+            <td>
+              <span class="item-display">{% if item.is_default %}&#10003;{% endif %}</span>
+              <span class="item-edit" style="display:none"><input type="checkbox" data-field="is_default" {% if item.is_default %}checked{% endif %}></span>
+            </td>
+            <td>
+              <span class="item-display">{% if item.is_required %}&#10003;{% endif %}</span>
+              <span class="item-edit" style="display:none"><input type="checkbox" data-field="is_required" {% if item.is_required %}checked{% endif %}></span>
+            </td>
+            <td>
+              <span class="item-display">{% if item.is_public %}&#10003;{% else %}—{% endif %}</span>
+              <span class="item-edit" style="display:none"><input type="checkbox" data-field="is_public" {% if item.is_public %}checked{% endif %}></span>
+            </td>
+            <td style="white-space:nowrap">
+              <button type="button" class="btn btn-ghost btn-sm item-edit-btn" onclick="toggleEditRow('item',{{ item.pk }})">&#9998;</button>
+              <button type="button" class="btn btn-primary btn-sm item-save-btn" style="display:none" onclick="saveEditItem({{ item.pk }})">&#10003;</button>
+              <button type="button" class="btn btn-ghost btn-sm item-cancel-btn" style="display:none" onclick="cancelEditRow('item',{{ item.pk }})">&#10005;</button>
+              <button type="button" class="btn btn-danger btn-sm" onclick="deleteItem({{ item.pk }})">&#128465;</button>
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table></div>
+        {% else %}
+        <div class="wb-comp-empty">Noch keine Posten angelegt. Posten sind die einzelnen Leistungen, die Kunden im Buchungsformular als Extras auswählen können.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ── Pakete ── -->
+    <div id="comp-packages" class="wb-comp-panel">
+      <div class="card" style="margin-top:.5rem">
+        <div class="card-header">
+          <div class="card-title">Pakete <span style="font-weight:400;font-size:.72rem;color:var(--muted)">— Vordefinierte Bundles mit Grundpreis und enthaltenen Posten</span></div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="toggleForm('pkg-add')">+ Neues Paket</button>
+        </div>
+        <div id="pkg-add" class="wb-add-form">
+          <div class="form-row-3">
+            <div class="form-group"><label class="form-label">Name</label><input type="text" id="pkg-name" class="form-input" placeholder="z.B. Premium DJ"></div>
+            <div class="form-group"><label class="form-label">Grundpreis (€)</label><input type="number" step="0.01" id="pkg-price" class="form-input" value="0"></div>
+            <div class="form-group"><label class="form-label">Badge</label><input type="text" id="pkg-badge" class="form-input" placeholder="z.B. Beliebt"></div>
+          </div>
+          <div class="form-group"><label class="form-label">Beschreibung</label><input type="text" id="pkg-desc" class="form-input" placeholder="Kurzbeschreibung für Kunden"></div>
+          <div class="form-group">
+            <label class="form-label">Enthaltene Posten <span style="font-weight:400;font-size:.68rem;color:var(--muted)">— Diese Posten sind im Paketpreis inbegriffen und werden nicht zusätzlich berechnet</span></label>
+            <div style="display:flex;flex-wrap:wrap;gap:.4rem">
+              {% for item in price_items %}<label style="font-size:.78rem;display:flex;align-items:center;gap:.3rem;padding:.2rem .5rem;background:var(--card);border-radius:4px;cursor:pointer"><input type="checkbox" class="pkg-item-cb" value="{{ item.pk }}"> {{ item.name }} ({{ item.price }} €)</label>{% endfor %}
+            </div>
+          </div>
+          <div style="display:flex;gap:.5rem">
+            <button type="button" class="btn btn-primary btn-sm" onclick="savePkg()">Speichern</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleForm('pkg-add')">Abbrechen</button>
+          </div>
+        </div>
+        <div id="pkg-list">
+          {% for pkg in pricing_packages %}
+          <div class="wb-comp-row" id="pkg-row-{{ pkg.pk }}">
+            <div style="flex:1">
+              <span class="pkg-display">
+                <strong>{{ pkg.name }}</strong>{% if pkg.badge_label %} <span class="badge badge-inquiry">{{ pkg.badge_label }}</span>{% endif %}
+                <br><span style="font-size:.68rem;color:var(--muted)">{{ pkg.description|default:"—"|truncatewords:12 }} · {{ pkg.included_items.count }} Posten inkl.</span>
+              </span>
+              <div class="pkg-edit" style="display:none">
+                <div style="display:flex;gap:.4rem;margin-bottom:.3rem;flex-wrap:wrap">
+                  <input type="text" data-field="name" class="form-input" value="{{ pkg.name }}" style="flex:1;min-width:120px" placeholder="Name">
+                  <input type="number" step="0.01" data-field="base_price" class="form-input" value="{{ pkg.base_price }}" style="width:100px" placeholder="Preis">
+                  <input type="text" data-field="badge_label" class="form-input" value="{{ pkg.badge_label }}" style="width:100px" placeholder="Badge">
+                </div>
+                <input type="text" data-field="description" class="form-input" value="{{ pkg.description }}" placeholder="Beschreibung" style="margin-bottom:.3rem">
+                <div style="display:flex;flex-wrap:wrap;gap:.3rem">
+                  {% for item in price_items %}<label style="font-size:.72rem;display:flex;align-items:center;gap:.2rem;padding:.15rem .4rem;background:var(--card);border-radius:4px;cursor:pointer"><input type="checkbox" class="pkg-edit-item-{{ pkg.pk }}" value="{{ item.pk }}" {% if item in pkg.included_items.all %}checked{% endif %}> {{ item.name }}</label>{% endfor %}
+                </div>
+              </div>
+            </div>
+            <span class="pkg-display" style="font-family:'Space Mono',monospace;font-size:.85rem;color:var(--accent)">{{ pkg.base_price }} €</span>
+            <span style="font-size:.68rem;color:var(--muted)">{% if pkg.is_active %}aktiv{% else %}inaktiv{% endif %}</span>
+            <button type="button" class="btn btn-ghost btn-sm pkg-edit-btn" onclick="toggleEditComp('pkg',{{ pkg.pk }})">&#9998;</button>
+            <button type="button" class="btn btn-primary btn-sm pkg-save-btn" style="display:none" onclick="saveEditPkg({{ pkg.pk }})">&#10003;</button>
+            <button type="button" class="btn btn-ghost btn-sm pkg-cancel-btn" style="display:none" onclick="cancelEditComp('pkg',{{ pkg.pk }})">&#10005;</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="deletePkg({{ pkg.pk }})">&#128465;</button>
+          </div>
+          {% empty %}
+          <div class="wb-comp-empty">Noch keine Pakete. Ein Paket bündelt mehrere Posten zu einem festen Grundpreis — z.B. "Premium DJ" mit Licht, Sound und Nebelmaschine für 450 €.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Regeln ── -->
+    <div id="comp-rules" class="wb-comp-panel">
+      <div class="card" style="margin-top:.5rem">
+        <div class="card-header">
+          <div class="card-title">Regeln <span style="font-weight:400;font-size:.72rem;color:var(--muted)">— Automatische Zuschläge basierend auf Event-Eigenschaften</span></div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="toggleForm('rule-add')">+ Neue Regel</button>
+        </div>
+        <div id="rule-add" class="wb-add-form">
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Name</label><input type="text" id="rule-name" class="form-input" placeholder="z.B. Wochenend-Zuschlag"></div>
+            <div class="form-group"><label class="form-label">Beschreibung</label><input type="text" id="rule-desc" class="form-input" placeholder="Wird dem Kunden angezeigt"></div>
+          </div>
+          <div style="font-size:.72rem;color:var(--muted);margin-bottom:.5rem;font-family:'Space Mono',monospace">BEDINGUNG — Wann greift diese Regel?</div>
+          <div class="form-row-3">
+            <div class="form-group"><label class="form-label">Feld</label>
+              <select id="rule-cond-field" class="form-input" style="appearance:auto">
+                <option value="guest_count">Gästeanzahl</option>
+                <option value="duration_hours">Dauer (Std.)</option>
+                <option value="date_weekday">Wochentag (0=Mo … 6=So)</option>
+                <option value="event_type">Event-Typ</option>
+                <option value="distance_km">Entfernung (km)</option>
+                <option value="date_month">Monat (1–12)</option>
+              </select>
+            </div>
+            <div class="form-group"><label class="form-label">Operator</label>
+              <select id="rule-cond-op" class="form-input" style="appearance:auto">
+                <option value="gt">größer als</option>
+                <option value="gte">größer/gleich</option>
+                <option value="lt">kleiner als</option>
+                <option value="lte">kleiner/gleich</option>
+                <option value="eq">gleich</option>
+                <option value="neq">ungleich</option>
+                <option value="in">in Liste (kommagetrennt)</option>
+                <option value="is_weekend">ist Wochenende</option>
+              </select>
+            </div>
+            <div class="form-group"><label class="form-label">Wert</label><input type="text" id="rule-cond-val" class="form-input" placeholder="z.B. 100 oder 5,6"></div>
+          </div>
+          <div style="font-size:.72rem;color:var(--muted);margin-bottom:.5rem;font-family:'Space Mono',monospace">EFFEKT — Was passiert wenn die Bedingung zutrifft?</div>
+          <div class="form-row-3">
+            <div class="form-group"><label class="form-label">Typ</label>
+              <select id="rule-effect-type" class="form-input" style="appearance:auto">
+                <option value="percent_add">Prozent-Aufschlag (%)</option>
+                <option value="flat_add">Pauschale hinzufügen (€)</option>
+                <option value="flat_set">Preis fest setzen (€)</option>
+              </select>
+            </div>
+            <div class="form-group"><label class="form-label">Wert</label><input type="number" step="0.01" id="rule-effect-val" class="form-input" value="0"></div>
+            <div class="form-group"><label class="form-label">Sortierung</label><input type="number" id="rule-sort" class="form-input" value="0" title="Niedrigere Werte werden zuerst ausgewertet"></div>
+          </div>
+          <div style="display:flex;gap:.5rem">
+            <button type="button" class="btn btn-primary btn-sm" onclick="saveRule()">Speichern</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleForm('rule-add')">Abbrechen</button>
+          </div>
+        </div>
+        <div id="rule-list">
+          {% for rule in pricing_rules %}
+          <div class="wb-comp-row" id="rule-row-{{ rule.pk }}">
+            <div style="flex:1">
+              <span class="rule-display">
+                <strong>{{ rule.name }}</strong>
+                <br><span style="font-size:.68rem;color:var(--muted)">{{ rule.description|default:"—" }} · {{ rule.get_effect_type_display }}: {{ rule.effect_value }}{% if rule.effect_type == 'percent_add' %}%{% else %} €{% endif %}</span>
+              </span>
+              <div class="rule-edit" style="display:none">
+                <div style="display:flex;gap:.4rem;margin-bottom:.3rem;flex-wrap:wrap">
+                  <input type="text" data-field="name" class="form-input" value="{{ rule.name }}" style="flex:1;min-width:120px" placeholder="Name">
+                  <input type="text" data-field="description" class="form-input" value="{{ rule.description }}" style="flex:1;min-width:120px" placeholder="Beschreibung">
+                </div>
+                <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+                  <select data-field="effect_type" class="form-input" style="appearance:auto;width:auto">
+                    <option value="percent_add" {% if rule.effect_type == 'percent_add' %}selected{% endif %}>Prozent-Aufschlag</option>
+                    <option value="flat_add" {% if rule.effect_type == 'flat_add' %}selected{% endif %}>Pauschale hinzu</option>
+                    <option value="flat_set" {% if rule.effect_type == 'flat_set' %}selected{% endif %}>Pauschale setzen</option>
+                  </select>
+                  <input type="number" step="0.01" data-field="effect_value" class="form-input" value="{{ rule.effect_value }}" style="width:80px" placeholder="Wert">
+                  <input type="number" data-field="sort_order" class="form-input" value="{{ rule.sort_order }}" style="width:60px" placeholder="Sort">
+                  <label style="font-size:.72rem;display:flex;align-items:center;gap:.2rem"><input type="checkbox" data-field="is_active" {% if rule.is_active %}checked{% endif %}> Aktiv</label>
+                </div>
+              </div>
+            </div>
+            <span class="rule-display" style="font-size:.68rem;color:var(--muted)">{% if rule.is_active %}aktiv{% else %}inaktiv{% endif %}</span>
+            <button type="button" class="btn btn-ghost btn-sm rule-edit-btn" onclick="toggleEditComp('rule',{{ rule.pk }})">&#9998;</button>
+            <button type="button" class="btn btn-primary btn-sm rule-save-btn" style="display:none" onclick="saveEditRule({{ rule.pk }})">&#10003;</button>
+            <button type="button" class="btn btn-ghost btn-sm rule-cancel-btn" style="display:none" onclick="cancelEditComp('rule',{{ rule.pk }})">&#10005;</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="deleteRule({{ rule.pk }})">&#128465;</button>
+          </div>
+          {% empty %}
+          <div class="wb-comp-empty">Noch keine Regeln. Regeln sind automatische Zuschläge — z.B. "+15% am Wochenende" oder "+50 € ab 100 km Entfernung".</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Formeln ── -->
+    <div id="comp-formulas" class="wb-comp-panel">
+      <div class="card" style="margin-top:.5rem">
+        <div class="card-header">
+          <div class="card-title">Formeln <span style="font-weight:400;font-size:.72rem;color:var(--muted)">— Eigene mathematische Berechnungen mit Variablen</span></div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="toggleForm('formula-add')">+ Neue Formel</button>
+        </div>
+        <div id="formula-add" class="wb-add-form">
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Name</label><input type="text" id="formula-name" class="form-input" placeholder="z.B. Gäste-Kalkulation"></div>
+            <div class="form-group"><label class="form-label">Beschreibung</label><input type="text" id="formula-desc" class="form-input" placeholder="Wofür wird diese Formel verwendet?"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Formel-Ausdruck</label>
+            <input type="text" id="formula-expr" class="form-input" placeholder="z.B. base + (guests * 5) + (hours * 50)" style="font-family:'Space Mono',monospace">
+            <div style="font-size:.68rem;color:var(--muted);margin-top:.35rem;line-height:1.6">
+              <strong>Variablen:</strong>
+              <code>base</code> = bisherige Zwischensumme,
+              <code>guests</code> = Gästeanzahl,
+              <code>hours</code> = Dauer in Stunden,
+              <code>distance</code> = Entfernung in km,
+              <code>items_total</code> = Summe aller Posten,
+              <code>package_price</code> = Paketpreis<br>
+              <strong>Operatoren:</strong> <code>+</code> <code>-</code> <code>*</code> <code>/</code> <code>%</code> — Vergleiche: <code>></code> <code><</code> <code>==</code><br>
+              <strong>Beispiel:</strong> <code>base + (guests * 3) + (distance > 50) * 75</code> = Basis + 3 € pro Gast + 75 € Zuschlag ab 50 km
+            </div>
+          </div>
+          <div style="display:flex;gap:.5rem">
+            <button type="button" class="btn btn-primary btn-sm" onclick="saveFormula()">Speichern</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleForm('formula-add')">Abbrechen</button>
+          </div>
+        </div>
+        <div id="formula-list">
+          {% for f in pricing_formulas %}
+          <div class="wb-comp-row" id="formula-row-{{ f.pk }}">
+            <div style="flex:1">
+              <span class="formula-display">
+                <strong>{{ f.name }}</strong>
+                <br><code style="font-size:.7rem;color:var(--accent)">{{ f.expression }}</code>
+                {% if f.description %}<br><span style="font-size:.68rem;color:var(--muted)">{{ f.description }}</span>{% endif %}
+              </span>
+              <div class="formula-edit" style="display:none">
+                <input type="text" data-field="name" class="form-input" value="{{ f.name }}" placeholder="Name" style="margin-bottom:.2rem">
+                <input type="text" data-field="expression" class="form-input" value="{{ f.expression }}" placeholder="Formel" style="font-family:'Space Mono',monospace;margin-bottom:.2rem">
+                <input type="text" data-field="description" class="form-input" value="{{ f.description }}" placeholder="Beschreibung">
+              </div>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm formula-edit-btn" onclick="toggleEditComp('formula',{{ f.pk }})">&#9998;</button>
+            <button type="button" class="btn btn-primary btn-sm formula-save-btn" style="display:none" onclick="saveEditFormula({{ f.pk }})">&#10003;</button>
+            <button type="button" class="btn btn-ghost btn-sm formula-cancel-btn" style="display:none" onclick="cancelEditComp('formula',{{ f.pk }})">&#10005;</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="deleteFormula({{ f.pk }})">&#128465;</button>
+          </div>
+          {% empty %}
+          <div class="wb-comp-empty">Noch keine Formeln. Formeln erlauben freie mathematische Berechnungen — z.B. <code>base + (guests * 5)</code> für 5 € pro Gast on top.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+var CSRF=csrfToken();
+var currentWfId=null;
+var steps=[];
+var wfContext=null;
+
+function toggleForm(id){var el=document.getElementById(id);el.style.display=el.style.display==='block'?'none':'block'}
+function switchCompTab(btn,id){
+  document.querySelectorAll('.wb-comp-tab').forEach(function(t){t.classList.remove('active')});
+  document.querySelectorAll('.wb-comp-panel').forEach(function(p){p.classList.remove('active')});
+  btn.classList.add('active');
+  document.getElementById(id).classList.add('active');
+}
+
+// Load context data for hints
+fetch('/dj-admin/api/price/workflow-context/',{headers:{'X-CSRFToken':CSRF}})
+.then(function(r){return r.json()})
+.then(function(ctx){
+  wfContext=ctx;
+  var hp=document.getElementById('hint-package');
+  if(hp) hp.textContent=ctx.packages.length?ctx.packages.length+' verf.':'—';
+  var hi=document.getElementById('hint-items');
+  if(hi) hi.textContent=ctx.items_count?ctx.items_count+' verf.':'—';
+  var hr=document.getElementById('hint-rules');
+  if(hr) hr.textContent=ctx.rules_count?ctx.rules_count+' aktiv':'—';
+  var hf=document.getElementById('hint-formula');
+  if(hf) hf.textContent=ctx.formulas.length?ctx.formulas.length+' verf.':'—';
+  renderSteps();
+}).catch(function(){});
+
+// Drag from palette
+document.querySelectorAll('.wb-block[draggable]').forEach(function(b){
+  b.addEventListener('dragstart',function(e){e.dataTransfer.setData('text/plain',b.dataset.type);e.dataTransfer.effectAllowed='copy'});
+});
+
+var canvas=document.getElementById('wf-canvas');
+canvas.addEventListener('dragover',function(e){e.preventDefault();e.dataTransfer.dropEffect='copy';canvas.classList.add('drag-over')});
+canvas.addEventListener('dragleave',function(){canvas.classList.remove('drag-over')});
+canvas.addEventListener('drop',function(e){
+  e.preventDefault();canvas.classList.remove('drag-over');
+  var type=e.dataTransfer.getData('text/plain');
+  if(type && !e.dataTransfer.getData('application/x-step-idx'))addStep(type);
+});
+
+var LABELS={package:'Paket',items:'Posten',offer:'Angebot',rules:'Regeln',formula:'Formel',discount:'Rabatt'};
+
+function getStepDetail(type){
+  if(!wfContext) return '';
+  if(type==='package'){
+    if(!wfContext.packages.length) return 'Noch keine Pakete konfiguriert';
+    return wfContext.packages.map(function(p){return p.name+' ('+p.price.toFixed(0)+' €)'}).join(', ');
+  }
+  if(type==='items') return wfContext.items_count+' Posten verfügbar';
+  if(type==='rules'){
+    if(!wfContext.rules_count) return 'Noch keine Regeln konfiguriert';
+    return wfContext.rules_count+' Regel'+(wfContext.rules_count!==1?'n':'')+' aktiv';
+  }
+  if(type==='formula'){
+    if(!wfContext.formulas.length) return 'Noch keine Formeln konfiguriert';
+    return wfContext.formulas.map(function(f){return f.name+': '+f.expression}).join(', ');
+  }
+  if(type==='discount') return 'Prozentualer Rabatt auf bisherige Zwischensumme';
+  if(type==='offer') return 'Gäste-Staffelpreis aus EventOffer';
+  return '';
+}
+
+function addStep(type){steps.push({type:type,label:LABELS[type]||type,config:{}});renderSteps()}
+function removeStep(i){steps.splice(i,1);renderSteps()}
+
+function renderSteps(){
+  var empty=document.getElementById('wf-empty');
+  var existing=canvas.querySelectorAll('.wb-step');
+  existing.forEach(function(s){s.remove()});
+  if(!steps.length){empty.style.display='block';return}
+  empty.style.display='none';
+  steps.forEach(function(s,i){
+    if(!s.config) s.config={};
+    var el=document.createElement('div');
+    el.className='wb-step';
+    el.draggable=true;
+    el.dataset.idx=i;
+    var detail=getStepDetail(s.type);
+    var detailHtml=detail?'<span class="wb-detail">'+detail+'</span>':'';
+    var configHtml='';
+    if(s.type==='discount'){
+      var pct=s.config.percent||0;
+      configHtml='<div style="margin-top:.4rem;display:flex;align-items:center;gap:.4rem">'
+        +'<input type="number" step="0.1" min="0" max="100" value="'+pct+'" '
+        +'style="width:70px;padding:.2rem .4rem;border:1px solid var(--border);border-radius:4px;font-size:.78rem;background:var(--surface);color:var(--text)" '
+        +'onchange="updateStepConfig('+i+',\'percent\',parseFloat(this.value)||0)" '
+        +'oninput="updateStepConfig('+i+',\'percent\',parseFloat(this.value)||0)">'
+        +'<span style="font-size:.75rem;color:var(--muted)">% Rabatt</span></div>';
+    }
+    if(s.type==='package' && wfContext && wfContext.packages.length){
+      var selId=s.config.package_id||'';
+      configHtml='<div style="margin-top:.4rem"><select style="width:100%;padding:.2rem .4rem;border:1px solid var(--border);border-radius:4px;font-size:.78rem;background:var(--surface);color:var(--text);appearance:auto" onchange="updateStepConfig('+i+',\'package_id\',parseInt(this.value)||null)">'
+        +'<option value="">— Paket wählen —</option>';
+      wfContext.packages.forEach(function(p){
+        configHtml+='<option value="'+p.id+'"'+(selId==p.id?' selected':'')+'>'+p.name+' ('+p.price.toFixed(0)+' €)</option>';
+      });
+      configHtml+='</select></div>';
+    }
+    if(s.type==='formula' && wfContext && wfContext.formulas.length){
+      var selFid=s.config.formula_id||'';
+      configHtml='<div style="margin-top:.4rem"><select style="width:100%;padding:.2rem .4rem;border:1px solid var(--border);border-radius:4px;font-size:.78rem;background:var(--surface);color:var(--text);appearance:auto" onchange="updateStepConfig('+i+',\'formula_id\',parseInt(this.value)||null)">'
+        +'<option value="">— Formel wählen —</option>';
+      wfContext.formulas.forEach(function(f){
+        configHtml+='<option value="'+f.id+'"'+(selFid==f.id?' selected':'')+'>'+f.name+': '+f.expression+'</option>';
+      });
+      configHtml+='</select></div>';
+    }
+    el.innerHTML='<span class="wb-num">'+(i+1)+'</span><span class="wb-label">'+s.label+detailHtml+configHtml+'</span><span class="wb-rm" onclick="removeStep('+i+')">&times;</span>';
+    // Prevent drag on interactive elements (select, input)
+    el.querySelectorAll('select,input').forEach(function(inp){
+      inp.addEventListener('mousedown',function(e){e.stopPropagation()});
+      inp.addEventListener('dragstart',function(e){e.preventDefault();e.stopPropagation()});
+    });
+    el.addEventListener('dragstart',function(e){
+      if(e.target.tagName==='SELECT'||e.target.tagName==='INPUT'){e.preventDefault();return}
+      e.dataTransfer.setData('application/x-step-idx',String(i));e.dataTransfer.effectAllowed='move';
+    });
+    el.addEventListener('dragover',function(e){e.preventDefault();e.dataTransfer.dropEffect='move'});
+    el.addEventListener('drop',function(e){
+      e.preventDefault();e.stopPropagation();
+      // Accept palette drops onto steps (not just reorder)
+      var paletteType=e.dataTransfer.getData('text/plain');
+      var fromIdx=parseInt(e.dataTransfer.getData('application/x-step-idx'));
+      if(!isNaN(fromIdx)){
+        var item=steps.splice(fromIdx,1)[0];
+        steps.splice(i,0,item);
+        renderSteps();
+      } else if(paletteType){
+        steps.splice(i+1,0,{type:paletteType,label:LABELS[paletteType]||paletteType,config:{}});
+        renderSteps();
+      }
+    });
+    canvas.appendChild(el);
+  });
+}
+function updateStepConfig(idx,key,val){if(steps[idx]){if(!steps[idx].config)steps[idx].config={};steps[idx].config[key]=val}}
+
+function loadWorkflow(){
+  var sel=document.getElementById('wf-select');
+  var opt=sel.options[sel.selectedIndex];
+  var delBtn=document.getElementById('btn-delete-wf');
+  document.getElementById('test-result').innerHTML='';
+  if(!opt.value){
+    currentWfId=null;steps=[];renderSteps();
+    document.getElementById('wf-name').value='';
+    document.getElementById('wf-default').checked=false;
+    document.getElementById('wf-title').textContent='Neuer Workflow';
+    delBtn.style.display='none';
+    return;
+  }
+  currentWfId=parseInt(opt.value);
+  document.getElementById('wf-name').value=opt.textContent.replace(/ \(Standard\)$/,'');
+  document.getElementById('wf-default').checked=opt.dataset.default==='1';
+  document.getElementById('wf-title').textContent=opt.textContent;
+  delBtn.style.display='';
+  try{steps=JSON.parse(opt.dataset.json)||[]}catch(e){steps=[]}
+  renderSteps();
+}
+
+function saveWorkflow(){
+  var name=document.getElementById('wf-name').value.trim();
+  if(!name){showToast('Name erforderlich',true);return}
+  if(!steps.length){showToast('Mindestens ein Block erforderlich',true);return}
+  var body={name:name,workflow_json:steps,is_active:true,is_default:document.getElementById('wf-default').checked};
+  var url=currentWfId?'/dj-admin/api/price/workflows/'+currentWfId+'/':'/dj-admin/api/price/workflows/';
+  var method=currentWfId?'PUT':'POST';
+  fetch(url,{method:method,headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:JSON.stringify(body)})
+  .then(function(r){return r.json()})
+  .then(function(d){
+    if(d.error){showToast(d.error,true);return}
+    var savedId=currentWfId||d.id;
+    showToast('Workflow gespeichert');
+    window.location.href='/dj-admin/workflow/?wf='+savedId;
+  }).catch(function(){showToast('Fehler beim Speichern',true)});
+}
+
+function deleteWorkflow(){
+  if(!currentWfId||!confirm('Workflow wirklich löschen?'))return;
+  fetch('/dj-admin/api/price/workflows/'+currentWfId+'/',{method:'DELETE',headers:{'X-CSRFToken':CSRF}})
+  .then(function(r){return r.json()})
+  .then(function(d){
+    if(d.error){showToast(d.error,true);return}
+    showToast('Workflow gelöscht');
+    window.location.href='/dj-admin/workflow/';
+  }).catch(function(){showToast('Fehler beim Löschen',true)});
+}
+
+function getStepConfigValue(type,key){
+  for(var i=0;i<steps.length;i++){if(steps[i].type===type&&steps[i].config&&steps[i].config[key])return steps[i].config[key]}
+  return null;
+}
+
+function testWorkflow(){
+  if(!steps.length){showToast('Keine Blöcke im Workflow',true);return}
+  if(!currentWfId){showToast('Bitte zuerst speichern',true);return}
+  document.getElementById('test-result').innerHTML='<div class="card" style="padding:1rem;text-align:center;color:var(--muted);font-size:.82rem">Berechne...</div>';
+  fetch('/dj-admin/api/price/calculate/',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
+    body:JSON.stringify({
+      workflow_id:currentWfId,
+      package_id:getStepConfigValue('package','package_id'),
+      selected_item_ids:[],
+      formula_id:getStepConfigValue('formula','formula_id'),
+      discount_percent:getStepConfigValue('discount','percent')||0,
+      test_context:{
+        guest_count:parseInt(document.getElementById('tp-guests').value)||0,
+        duration_hours:parseFloat(document.getElementById('tp-hours').value)||0,
+        distance_km:parseInt(document.getElementById('tp-distance').value)||0,
+        date_weekday:parseInt(document.getElementById('tp-weekday').value),
+        date_month:parseInt(document.getElementById('tp-month').value),
+        event_type:document.getElementById('tp-type').value
+      }
+    })
+  })
+  .then(function(r){return r.json()})
+  .then(function(data){
+    var html='<div class="card" style="padding:1rem">';
+    html+='<div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem;font-family:\'Space Mono\',monospace">TEST-ERGEBNIS (ohne Event-Daten)</div>';
+    if(data.steps && data.steps.length){
+      data.steps.forEach(function(s,i){
+        var amt=typeof s.amount==='number'?s.amount.toFixed(2):'0.00';
+        var detail=s.detail?' <span style="opacity:.5;font-size:.68rem">('+s.detail+')</span>':'';
+        html+='<div class="wb-test-row"><span>'+(i+1)+'. '+s.label+detail+'</span><span style="font-family:\'Space Mono\',monospace">'+(parseFloat(amt)>=0?'+':'')+amt+' €</span></div>';
+      });
+    } else {
+      html+='<div style="font-size:.8rem;color:var(--muted)">Keine Schritte berechnet</div>';
+    }
+    var total=data.grand_total||0;
+    html+='<div class="wb-test-total"><span>Gesamt</span><span class="wb-val">'+total.toFixed(2)+' €</span></div>';
+    if(total===0){
+      html+='<div style="font-size:.68rem;color:var(--muted);margin-top:.5rem;line-height:1.5">Der Test läuft ohne Event-Daten (keine Gäste, kein Paket gewählt). Erstelle Pakete, Regeln oder Posten in den Tabs unten und teste erneut, um Ergebnisse zu sehen.</div>';
+    }
+    html+='</div>';
+    document.getElementById('test-result').innerHTML=html;
+  })
+  .catch(function(){
+    document.getElementById('test-result').innerHTML='<div class="card" style="padding:1rem;color:var(--danger)">Fehler beim Testen</div>';
+  });
+}
+
+// ═══ CRUD für Preis-Komponenten ═══
+function pFetch(url,method,body){
+  return fetch('/dj-admin/'+url,{
+    method:method,
+    headers:{'X-CSRFToken':CSRF,'Content-Type':'application/json'},
+    body:body?JSON.stringify(body):undefined
+  }).then(function(r){return r.json()});
+}
+
+// Preis-Posten
+function saveItem(){
+  pFetch('api/price/items/','POST',{
+    name:document.getElementById('item-name').value,
+    category:document.getElementById('item-category').value,
+    description:document.getElementById('item-desc').value,
+    price:parseFloat(document.getElementById('item-price').value)||0,
+    is_default:document.getElementById('item-default').checked,
+    is_required:document.getElementById('item-required').checked,
+    is_public:document.getElementById('item-public').checked,
+    sort_order:parseInt(document.getElementById('item-sort').value)||0,
+  }).then(function(d){if(d.success){showToast('Posten erstellt');location.reload()}else showToast(d.error||'Fehler',true)});
+}
+function deleteItem(pk){if(!confirm('Posten löschen?'))return;pFetch('api/price/items/'+pk+'/','DELETE').then(function(){showToast('Gelöscht');location.reload()})}
+
+// Pakete
+function savePkg(){
+  var items=[];
+  document.querySelectorAll('.pkg-item-cb:checked').forEach(function(c){items.push(parseInt(c.value))});
+  pFetch('api/price/packages/','POST',{
+    name:document.getElementById('pkg-name').value,
+    description:document.getElementById('pkg-desc').value,
+    base_price:parseFloat(document.getElementById('pkg-price').value)||0,
+    badge_label:document.getElementById('pkg-badge').value,
+    included_item_ids:items,
+  }).then(function(d){if(d.success){showToast('Paket erstellt');location.reload()}else showToast(d.error||'Fehler',true)});
+}
+function deletePkg(pk){if(!confirm('Paket löschen?'))return;pFetch('api/price/packages/'+pk+'/','DELETE').then(function(){showToast('Gelöscht');location.reload()})}
+
+// Regeln
+function saveRule(){
+  var val=document.getElementById('rule-cond-val').value.trim();
+  var op=document.getElementById('rule-cond-op').value;
+  var parsedVal=val;
+  if(op==='in') parsedVal=val.split(',').map(function(v){return isNaN(v.trim())?v.trim():parseFloat(v.trim())});
+  else if(op!=='is_weekend') parsedVal=isNaN(val)?val:parseFloat(val);
+  pFetch('api/price/rules/','POST',{
+    name:document.getElementById('rule-name').value,
+    description:document.getElementById('rule-desc').value,
+    condition_json:[{field:document.getElementById('rule-cond-field').value,op:op,value:parsedVal}],
+    effect_type:document.getElementById('rule-effect-type').value,
+    effect_value:parseFloat(document.getElementById('rule-effect-val').value)||0,
+    sort_order:parseInt(document.getElementById('rule-sort').value)||0,
+  }).then(function(d){if(d.success){showToast('Regel erstellt');location.reload()}else showToast(d.error||'Fehler',true)});
+}
+function deleteRule(pk){if(!confirm('Regel löschen?'))return;pFetch('api/price/rules/'+pk+'/','DELETE').then(function(){showToast('Gelöscht');location.reload()})}
+
+// Formeln
+function saveFormula(){
+  pFetch('api/price/formulas/','POST',{
+    name:document.getElementById('formula-name').value,
+    expression:document.getElementById('formula-expr').value,
+    description:document.getElementById('formula-desc').value,
+  }).then(function(d){if(d.success){showToast('Formel erstellt');location.reload()}else showToast(d.error||'Fehler',true)});
+}
+function deleteFormula(pk){if(!confirm('Formel löschen?'))return;pFetch('api/price/formulas/'+pk+'/','DELETE').then(function(){showToast('Gelöscht');location.reload()})}
+
+// ═══ Inline Edit für alle Komponenten ═══
+function toggleEditRow(type,pk){
+  var row=document.getElementById(type+'-row-'+pk);
+  row.querySelectorAll('.'+type+'-display').forEach(function(el){el.style.display='none'});
+  row.querySelectorAll('.'+type+'-edit').forEach(function(el){el.style.display=''});
+  row.querySelector('.'+type+'-edit-btn').style.display='none';
+  row.querySelector('.'+type+'-save-btn').style.display='';
+  row.querySelector('.'+type+'-cancel-btn').style.display='';
+}
+function cancelEditRow(type,pk){
+  var row=document.getElementById(type+'-row-'+pk);
+  row.querySelectorAll('.'+type+'-display').forEach(function(el){el.style.display=''});
+  row.querySelectorAll('.'+type+'-edit').forEach(function(el){el.style.display='none'});
+  row.querySelector('.'+type+'-edit-btn').style.display='';
+  row.querySelector('.'+type+'-save-btn').style.display='none';
+  row.querySelector('.'+type+'-cancel-btn').style.display='none';
+}
+function toggleEditComp(type,pk){
+  var row=document.getElementById(type+'-row-'+pk);
+  row.querySelectorAll('.'+type+'-display').forEach(function(el){el.style.display='none'});
+  row.querySelector('.'+type+'-edit').style.display='block';
+  row.querySelector('.'+type+'-edit-btn').style.display='none';
+  row.querySelector('.'+type+'-save-btn').style.display='';
+  row.querySelector('.'+type+'-cancel-btn').style.display='';
+}
+function cancelEditComp(type,pk){
+  var row=document.getElementById(type+'-row-'+pk);
+  row.querySelectorAll('.'+type+'-display').forEach(function(el){el.style.display=''});
+  row.querySelector('.'+type+'-edit').style.display='none';
+  row.querySelector('.'+type+'-edit-btn').style.display='';
+  row.querySelector('.'+type+'-save-btn').style.display='none';
+  row.querySelector('.'+type+'-cancel-btn').style.display='none';
+}
+function collectFields(row){
+  var data={};
+  row.querySelectorAll('[data-field]').forEach(function(el){
+    var f=el.dataset.field;
+    if(el.type==='checkbox') data[f]=el.checked;
+    else if(el.type==='number') data[f]=parseFloat(el.value)||0;
+    else data[f]=el.value;
+  });
+  return data;
+}
+
+function saveEditItem(pk){
+  var data=collectFields(document.getElementById('item-row-'+pk));
+  pFetch('api/price/items/'+pk+'/','PUT',data).then(function(d){
+    if(d.success){showToast('Posten gespeichert');location.reload()}else showToast('Fehler',true);
+  }).catch(function(){showToast('Fehler',true)});
+}
+function saveEditPkg(pk){
+  var row=document.getElementById('pkg-row-'+pk);
+  var data=collectFields(row);
+  var items=[];
+  row.querySelectorAll('.pkg-edit-item-'+pk+':checked').forEach(function(c){items.push(parseInt(c.value))});
+  data.included_item_ids=items;
+  pFetch('api/price/packages/'+pk+'/','PUT',data).then(function(d){
+    if(d.success){showToast('Paket gespeichert');location.reload()}else showToast('Fehler',true);
+  }).catch(function(){showToast('Fehler',true)});
+}
+function saveEditRule(pk){
+  var data=collectFields(document.getElementById('rule-row-'+pk));
+  pFetch('api/price/rules/'+pk+'/','PUT',data).then(function(d){
+    if(d.success){showToast('Regel gespeichert');location.reload()}else showToast('Fehler',true);
+  }).catch(function(){showToast('Fehler',true)});
+}
+function saveEditFormula(pk){
+  var data=collectFields(document.getElementById('formula-row-'+pk));
+  pFetch('api/price/formulas/'+pk+'/','PUT',data).then(function(d){
+    if(d.success){showToast('Formel gespeichert');location.reload()}else showToast('Fehler',true);
+  }).catch(function(){showToast('Fehler',true)});
+}
+</script>
+{% endblock %}
