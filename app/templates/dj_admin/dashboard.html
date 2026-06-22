@@ -9,44 +9,35 @@
 </div>
 
 <!-- Stats -->
-<div class="grid-3" style="margin-bottom:2rem">
-  <div class="stat-card">
-    <div class="stat-value" style="color:var(--accent)">{{ events_confirmed.count }}</div>
-    <div class="stat-label">Bestätigt</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value" style="color:var(--accent2)">{{ events_inquiry.count }}</div>
-    <div class="stat-label">Anfragen</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value" style="color:var(--muted)">{{ events_past.count }}</div>
-    <div class="stat-label">Vergangen</div>
-  </div>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+  {% include "components/stat_card.html" with label="Bestätigt" value=events_confirmed.count accent="accent" %}
+  {% include "components/stat_card.html" with label="Anfragen" value=events_inquiry.count accent="accent2" %}
+  {% include "components/stat_card.html" with label="Vergangen" value=events_past.count accent="muted" %}
 </div>
 
 <!-- Active Wishlist Banner -->
 {% if active_event %}
 <div class="card" style="border-color:var(--accent);margin-bottom:2rem">
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem">
+  <div class="flex items-center justify-between flex-wrap gap-3">
     <div>
       <div style="font-size:.65rem;font-family:'Space Mono',monospace;color:var(--accent);letter-spacing:.1em;text-transform:uppercase">Aktives Live Event</div>
       <div style="font-size:1.1rem;font-weight:600;margin-top:.2rem">{{ active_event.name }}</div>
       <div style="font-size:.78rem;color:var(--muted)">{{ active_event.date|date:"d.m.Y" }} · {{ active_event.location }} · {{ active_event.wishes.count }} Wünsche</div>
     </div>
-    <div style="display:flex;gap:.4rem">
+    <div class="flex gap-2">
       <a href="{% url 'dj_admin:wishlist_live' %}" class="btn btn-primary btn-sm">🎵 Live Event</a>
       <a href="{% url 'dj_admin:event_edit' pk=active_event.pk %}" class="btn btn-ghost btn-sm">Verwalten</a>
     </div>
   </div>
   <!-- Now Playing Widget -->
-  <div id="now-playing-dashboard" style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
-    <div id="np-inner" style="display:flex;align-items:center;gap:.85rem">
+  <div id="now-playing-dashboard" class="mt-4 pt-4" style="border-top:1px solid var(--border)">
+    <div id="np-inner" class="flex items-center gap-3">
       <div style="font-size:.7rem;color:var(--muted);font-family:'Space Mono',monospace">Lade Spotify…</div>
     </div>
   </div>
 </div>
 {% else %}
-<div class="card" style="border-color:var(--border);margin-bottom:2rem;text-align:center;padding:1.5rem">
+<div class="card mb-8 text-center" style="padding:1.5rem">
   <div style="color:var(--muted);font-size:.88rem">Kein aktives Live Event. Setze ein bestätigtes Event auf „Live".</div>
 </div>
 {% endif %}
@@ -61,21 +52,31 @@
 <!-- Bestätigt (default sichtbar) -->
 <div id="tab-confirmed" class="tab-content active">
   {% if events_confirmed %}
-  <div class="table-wrap"><table>
-    <thead><tr><th>Event</th><th>Datum</th><th>Adresse</th><th>Kunde</th><th>Wünsche</th><th></th></tr></thead>
+  <table class="w-full text-sm">
+    <caption class="sr-only">Bestätigte Events</caption>
+    <thead class="max-md:hidden">
+      <tr class="text-left text-muted font-mono text-xs">
+        <th class="py-2 px-3">Event</th>
+        <th class="py-2 px-3">Datum</th>
+        <th class="py-2 px-3">Adresse</th>
+        <th class="py-2 px-3">Kunde</th>
+        <th class="py-2 px-3">Wünsche</th>
+        <th class="py-2 px-3"></th>
+      </tr>
+    </thead>
     <tbody>
     {% for ev in events_confirmed %}
-    <tr>
-      <td>
+    <tr class="dt-row">
+      <td class="dt-cell" data-label="Event">
         <strong>{{ ev.name }}</strong>
         {% if ev.is_active %}<span class="badge badge-confirmed" style="margin-left:.4rem">LIVE</span>{% endif %}
         <br><span style="font-size:.7rem;color:var(--muted)">{{ ev.event_type }}</span>
       </td>
-      <td>{{ ev.date|date:"d.m.Y" }}</td>
-      <td>{{ ev.location }}{% if ev.full_address %}<br><span style="font-size:.68rem;color:var(--muted)">{{ ev.full_address }}</span>{% endif %}</td>
-      <td>{{ ev.client_name }}</td>
-      <td>{{ ev.wishes.count }}</td>
-      <td style="white-space:nowrap">
+      <td class="dt-cell" data-label="Datum">{{ ev.date|date:"d.m.Y" }}</td>
+      <td class="dt-cell" data-label="Adresse">{{ ev.location }}{% if ev.full_address %}<br><span style="font-size:.68rem;color:var(--muted)">{{ ev.full_address }}</span>{% endif %}</td>
+      <td class="dt-cell" data-label="Kunde">{{ ev.client_name }}</td>
+      <td class="dt-cell" data-label="Wünsche">{{ ev.wishes.count }}</td>
+      <td class="dt-cell whitespace-nowrap" data-label="">
         {% if not ev.is_active %}
         <button type="button" class="btn btn-primary btn-sm" onclick="setActive({{ ev.pk }})">🔴 Live</button>
         {% endif %}
@@ -84,7 +85,7 @@
     </tr>
     {% endfor %}
     </tbody>
-  </table></div>
+  </table>
   {% else %}
   <div class="empty-state"><div class="icon">📅</div><p>Keine bestätigten Events</p></div>
   {% endif %}
@@ -93,24 +94,34 @@
 <!-- Angefragt -->
 <div id="tab-inquiry" class="tab-content">
   {% if events_inquiry %}
-  <div class="table-wrap"><table>
-    <thead><tr><th>Event</th><th>Datum</th><th>Adresse</th><th>Kunde</th><th>Preis</th><th></th></tr></thead>
+  <table class="w-full text-sm">
+    <caption class="sr-only">Angefragte Events</caption>
+    <thead class="max-md:hidden">
+      <tr class="text-left text-muted font-mono text-xs">
+        <th class="py-2 px-3">Event</th>
+        <th class="py-2 px-3">Datum</th>
+        <th class="py-2 px-3">Adresse</th>
+        <th class="py-2 px-3">Kunde</th>
+        <th class="py-2 px-3">Preis</th>
+        <th class="py-2 px-3"></th>
+      </tr>
+    </thead>
     <tbody>
     {% for ev in events_inquiry %}
-    <tr>
-      <td><strong>{{ ev.name }}</strong><br><span style="font-size:.7rem;color:var(--muted)">{{ ev.event_type }}</span></td>
-      <td>{{ ev.date|date:"d.m.Y" }}</td>
-      <td>{{ ev.location }}{% if ev.full_address %}<br><span style="font-size:.68rem;color:var(--muted)">{{ ev.full_address }}</span>{% endif %}</td>
-      <td>{{ ev.client_name }}<br><span style="font-size:.7rem;color:var(--muted)">{{ ev.client_email }}</span></td>
-      <td>{% if ev.total_price %}{{ ev.total_price }} €{% else %}-{% endif %}</td>
-      <td style="white-space:nowrap">
+    <tr class="dt-row">
+      <td class="dt-cell" data-label="Event"><strong>{{ ev.name }}</strong><br><span style="font-size:.7rem;color:var(--muted)">{{ ev.event_type }}</span></td>
+      <td class="dt-cell" data-label="Datum">{{ ev.date|date:"d.m.Y" }}</td>
+      <td class="dt-cell" data-label="Adresse">{{ ev.location }}{% if ev.full_address %}<br><span style="font-size:.68rem;color:var(--muted)">{{ ev.full_address }}</span>{% endif %}</td>
+      <td class="dt-cell" data-label="Kunde">{{ ev.client_name }}<br><span style="font-size:.7rem;color:var(--muted)">{{ ev.client_email }}</span></td>
+      <td class="dt-cell" data-label="Preis">{% if ev.total_price %}{{ ev.total_price }} €{% else %}-{% endif %}</td>
+      <td class="dt-cell whitespace-nowrap" data-label="">
         <a href="{% url 'dj_admin:event_edit' pk=ev.pk %}" class="btn btn-ghost btn-sm">Bearbeiten</a>
         <button type="button" class="btn btn-primary btn-sm" onclick="confirmEvent({{ ev.pk }})">✓ Bestätigen</button>
       </td>
     </tr>
     {% endfor %}
     </tbody>
-  </table></div>
+  </table>
   {% else %}
   <div class="empty-state"><div class="icon">📭</div><p>Keine offenen Anfragen</p></div>
   {% endif %}
@@ -119,20 +130,29 @@
 <!-- Vergangen -->
 <div id="tab-past" class="tab-content">
   {% if events_past %}
-  <div class="table-wrap"><table>
-    <thead><tr><th>Event</th><th>Datum</th><th>Adresse</th><th>Wünsche</th><th></th></tr></thead>
+  <table class="w-full text-sm">
+    <caption class="sr-only">Vergangene Events</caption>
+    <thead class="max-md:hidden">
+      <tr class="text-left text-muted font-mono text-xs">
+        <th class="py-2 px-3">Event</th>
+        <th class="py-2 px-3">Datum</th>
+        <th class="py-2 px-3">Adresse</th>
+        <th class="py-2 px-3">Wünsche</th>
+        <th class="py-2 px-3"></th>
+      </tr>
+    </thead>
     <tbody>
     {% for ev in events_past %}
-    <tr style="opacity:.6">
-      <td>{{ ev.name }}</td>
-      <td>{{ ev.date|date:"d.m.Y" }}</td>
-      <td>{{ ev.location }}{% if ev.full_address %}<br><span style="font-size:.68rem;color:var(--muted)">{{ ev.full_address }}</span>{% endif %}</td>
-      <td>{{ ev.wishes.count }}</td>
-      <td><a href="{% url 'dj_admin:event_edit' pk=ev.pk %}" class="btn btn-ghost btn-sm">Details</a></td>
+    <tr class="dt-row opacity-60">
+      <td class="dt-cell" data-label="Event">{{ ev.name }}</td>
+      <td class="dt-cell" data-label="Datum">{{ ev.date|date:"d.m.Y" }}</td>
+      <td class="dt-cell" data-label="Adresse">{{ ev.location }}{% if ev.full_address %}<br><span style="font-size:.68rem;color:var(--muted)">{{ ev.full_address }}</span>{% endif %}</td>
+      <td class="dt-cell" data-label="Wünsche">{{ ev.wishes.count }}</td>
+      <td class="dt-cell" data-label=""><a href="{% url 'dj_admin:event_edit' pk=ev.pk %}" class="btn btn-ghost btn-sm">Details</a></td>
     </tr>
     {% endfor %}
     </tbody>
-  </table></div>
+  </table>
   {% else %}
   <div class="empty-state"><div class="icon">📦</div><p>Noch keine vergangenen Events</p></div>
   {% endif %}
