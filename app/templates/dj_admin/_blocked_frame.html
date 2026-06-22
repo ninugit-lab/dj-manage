@@ -1,9 +1,9 @@
 <turbo-frame id="blocked-clients">
 {% if blocks %}
 {% for block in blocks %}
-<div class="wish-item" style="border-left:3px solid var(--red)">
+<div class="wish-item border-l-[3px] border-danger">
   <div class="wish-item-info">
-    <div class="wish-item-title" style="color:var(--red)">{{ block.ip_address|default:"Session" }}</div>
+    <div class="wish-item-title text-danger">{{ block.ip_address|default:"Session" }}</div>
     <div class="wish-item-artist">{{ block.reason }}</div>
     <div class="wish-item-meta">
       {{ block.created_at|date:"d.m.Y H:i" }}
@@ -14,7 +14,7 @@
 </div>
 {% endfor %}
 {% else %}
-<div style="text-align:center;padding:1rem;color:var(--muted);font-size:.85rem">Keine blockierten Clients</div>
+<div class="text-center p-4 text-muted text-sm">Keine blockierten Clients</div>
 {% endif %}
 <script>
 async function unblockClient(id) {

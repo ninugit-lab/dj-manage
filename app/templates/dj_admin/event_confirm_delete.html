@@ -3,10 +3,10 @@
 
 {% block content %}
 <div class="page-header"><h2>Event löschen</h2></div>
-<div class="card" style="max-width:500px">
-  <p style="margin-bottom:1rem">Möchtest du das Event <strong>„{{ event.name }}"</strong> ({{ event.date|date:"d.m.Y" }}) wirklich löschen?</p>
-  <p style="font-size:.82rem;color:var(--red);margin-bottom:1.5rem">Alle Song-Wünsche und Kalkulationen werden ebenfalls gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.</p>
-  <form method="post" style="display:flex;gap:.5rem">
+<div class="card max-w-[500px]">
+  <p class="mb-4">Möchtest du das Event <strong>„{{ event.name }}"</strong> ({{ event.date|date:"d.m.Y" }}) wirklich löschen?</p>
+  <p class="text-sm text-danger mb-6">Alle Song-Wünsche und Kalkulationen werden ebenfalls gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.</p>
+  <form method="post" class="flex gap-2">
     {% csrf_token %}
     <button type="submit" class="btn btn-danger">Ja, endgültig löschen</button>
     <a href="{% url 'dj_admin:event_edit' pk=event.pk %}" class="btn btn-ghost">Abbrechen</a>

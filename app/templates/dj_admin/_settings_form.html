@@ -2,7 +2,7 @@
 Partial: Quick Wishlist Settings Form.
 Checkboxen verwenden label-wrapping (kein id= auf Inputs) → sicher bei Mehrfach-Include.
 {% endcomment %}
-<form method="post" action="{% url 'dj_admin:event_edit' pk=active_event.pk %}" style="margin:0">
+<form method="post" action="{% url 'dj_admin:event_edit' pk=active_event.pk %}" class="m-0">
   {% csrf_token %}
   <input type="hidden" name="name" value="{{ active_event.name }}">
   <input type="hidden" name="date" value="{{ active_event.date|date:'Y-m-d' }}">
@@ -12,10 +12,10 @@ Checkboxen verwenden label-wrapping (kein id= auf Inputs) → sicher bei Mehrfac
   <input type="hidden" name="spotify_playlist_id" value="{{ active_event.spotify_playlist_id }}">
 
   <div class="form-group">
-    <label class="form-label flex flex-col gap-1" style="max-width:160px">
+    <label class="form-label flex flex-col gap-1 max-w-[160px]">
       <span>Max. Wünsche pro Session</span>
-      <input type="number" name="max_wishes_per_session" class="form-input"
-             value="{{ active_event.max_wishes_per_session }}" style="max-width:100px" min="1">
+      <input type="number" name="max_wishes_per_session" class="form-input max-w-[100px]"
+             value="{{ active_event.max_wishes_per_session }}" min="1">
     </label>
   </div>
 

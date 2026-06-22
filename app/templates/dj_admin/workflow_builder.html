@@ -30,31 +30,31 @@
       <h3>Berechnungs-Blöcke</h3>
       <div class="wb-block" draggable="true" data-type="package">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-        <div>Paket<div style="font-size:.62rem;color:var(--muted)">Vordefiniertes Preis-Bundle</div></div>
+        <div>Paket<div class="text-[.62rem] text-muted">Vordefiniertes Preis-Bundle</div></div>
         <span class="wb-hint" id="hint-package"></span>
       </div>
       <div class="wb-block" draggable="true" data-type="items">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        <div>Posten<div style="font-size:.62rem;color:var(--muted)">Einzelne Zusatzleistungen</div></div>
+        <div>Posten<div class="text-[.62rem] text-muted">Einzelne Zusatzleistungen</div></div>
         <span class="wb-hint" id="hint-items"></span>
       </div>
       <div class="wb-block" draggable="true" data-type="offer">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        <div>Angebot<div style="font-size:.62rem;color:var(--muted)">Gäste-Staffelpreis</div></div>
+        <div>Angebot<div class="text-[.62rem] text-muted">Gäste-Staffelpreis</div></div>
       </div>
       <div class="wb-block" draggable="true" data-type="rules">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-        <div>Regeln<div style="font-size:.62rem;color:var(--muted)">Automatische Zuschläge</div></div>
+        <div>Regeln<div class="text-[.62rem] text-muted">Automatische Zuschläge</div></div>
         <span class="wb-hint" id="hint-rules"></span>
       </div>
       <div class="wb-block" draggable="true" data-type="formula">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-        <div>Formel<div style="font-size:.62rem;color:var(--muted)">Benutzerdefinierte Berechnung</div></div>
+        <div>Formel<div class="text-[.62rem] text-muted">Benutzerdefinierte Berechnung</div></div>
         <span class="wb-hint" id="hint-formula"></span>
       </div>
       <div class="wb-block" draggable="true" data-type="discount">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
-        <div>Rabatt<div style="font-size:.62rem;color:var(--muted)">Prozentualer Abzug</div></div>
+        <div>Rabatt<div class="text-[.62rem] text-muted">Prozentualer Abzug</div></div>
       </div>
     </div>
 
@@ -100,21 +100,21 @@
     <h2 id="wf-title">Neuer Workflow</h2>
 
     <div class="wb-canvas" id="wf-canvas">
-      <div class="wb-empty" id="wf-empty">Ziehe Blöcke hierher, um den Berechnungs-Workflow zu definieren.<br><span style="font-size:.72rem">Die Reihenfolge bestimmt die Berechnung — von oben nach unten.</span></div>
+      <div class="wb-empty" id="wf-empty">Ziehe Blöcke hierher, um den Berechnungs-Workflow zu definieren.<br><span class="text-xs">Die Reihenfolge bestimmt die Berechnung — von oben nach unten.</span></div>
     </div>
 
     <div class="wb-actions">
-      <input type="text" id="wf-name" class="form-control" placeholder="Workflow-Name (z.B. Standard-Preis)" style="max-width:280px">
-      <label style="display:flex;align-items:center;gap:.4rem;font-size:.8rem;white-space:nowrap">
+      <input type="text" id="wf-name" class="form-control max-w-[280px]" placeholder="Workflow-Name (z.B. Standard-Preis)">
+      <label class="flex items-center gap-1.5 text-sm whitespace-nowrap">
         <input type="checkbox" id="wf-default"> Standard
       </label>
       <button class="btn btn-primary btn-sm" onclick="saveWorkflow()">Speichern</button>
-      <button class="btn btn-sm" onclick="toggleForm('test-params')" style="background:var(--surface);border:1px solid var(--border)">&#9881; Test-Parameter</button>
-      <button class="btn btn-sm" onclick="testWorkflow()" style="background:var(--green,#22c55e);color:#fff">&#9654; Testen</button>
+      <button class="btn btn-sm bg-surface border border-border" onclick="toggleForm('test-params')">&#9881; Test-Parameter</button>
+      <button class="btn btn-sm bg-[#22c55e] text-white" onclick="testWorkflow()">&#9654; Testen</button>
     </div>
 
-    <div id="test-params" class="wb-add-form" style="margin-top:.5rem">
-      <div style="font-size:.72rem;color:var(--muted);margin-bottom:.5rem;font-weight:600">TEST-PARAMETER — simulierte Event-Daten</div>
+    <div id="test-params" class="wb-add-form mt-2">
+      <div class="text-xs text-muted mb-2 font-semibold">TEST-PARAMETER — simulierte Event-Daten</div>
       <div class="form-row-3">
         <div class="form-group"><label class="form-label">Gäste</label><input type="number" id="tp-guests" class="form-input" value="100" min="0"></div>
         <div class="form-group"><label class="form-label">Dauer (Std.)</label><input type="number" id="tp-hours" class="form-input" value="4" step="0.5" min="0"></div>
@@ -122,19 +122,19 @@
       </div>
       <div class="form-row-3">
         <div class="form-group"><label class="form-label">Wochentag</label>
-          <select id="tp-weekday" class="form-input" style="appearance:auto">
+          <select id="tp-weekday" class="form-input appearance-auto">
             <option value="0">Montag</option><option value="1">Dienstag</option><option value="2">Mittwoch</option>
             <option value="3">Donnerstag</option><option value="4">Freitag</option><option value="5" selected>Samstag</option><option value="6">Sonntag</option>
           </select>
         </div>
         <div class="form-group"><label class="form-label">Monat</label>
-          <select id="tp-month" class="form-input" style="appearance:auto">
+          <select id="tp-month" class="form-input appearance-auto">
             {% for m in "123456789" %}<option value="{{ m }}">Monat {{ m }}</option>{% endfor %}
             <option value="10">Oktober</option><option value="11">November</option><option value="12">Dezember</option>
           </select>
         </div>
         <div class="form-group"><label class="form-label">Event-Typ</label>
-          <select id="tp-type" class="form-input" style="appearance:auto">
+          <select id="tp-type" class="form-input appearance-auto">
             <option value="wedding">Hochzeit</option><option value="birthday" selected>Geburtstag</option>
             <option value="corporate">Firmen-Event</option><option value="other">Sonstiges</option>
           </select>
@@ -154,16 +154,16 @@
 
     <!-- ── Preis-Posten ── -->
     <div id="comp-items" class="wb-comp-panel active">
-      <div class="card" style="margin-top:.5rem">
+      <div class="card mt-2">
         <div class="card-header">
-          <div class="card-title">Preis-Posten <span style="font-weight:400;font-size:.72rem;color:var(--muted)">— Einzelne Leistungen, die Kunden als Extras wählen können</span></div>
+          <div class="card-title">Preis-Posten <span class="font-normal text-xs text-muted">— Einzelne Leistungen, die Kunden als Extras wählen können</span></div>
           <button type="button" class="btn btn-primary btn-sm" onclick="toggleForm('item-add')">+ Neuer Posten</button>
         </div>
         <div id="item-add" class="wb-add-form">
           <div class="form-row-3">
             <div class="form-group"><label class="form-label">Name</label><input type="text" id="item-name" class="form-input" placeholder="z.B. Lichtanlage"></div>
             <div class="form-group"><label class="form-label">Kategorie</label>
-              <select id="item-category" class="form-input" style="appearance:auto">
+              <select id="item-category" class="form-input appearance-auto">
                 <option value="tech">Technik</option>
                 <option value="service">Service</option>
                 <option value="extra" selected>Extra</option>
@@ -175,13 +175,13 @@
           <div class="form-row">
             <div class="form-group"><label class="form-label">Beschreibung</label><input type="text" id="item-desc" class="form-input" placeholder="Kurzbeschreibung (optional)"></div>
           </div>
-          <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
-            <label style="font-size:.78rem;display:flex;align-items:center;gap:.3rem"><input type="checkbox" id="item-default"> Standardmäßig aktiv</label>
-            <label style="font-size:.78rem;display:flex;align-items:center;gap:.3rem"><input type="checkbox" id="item-required"> Pflichtposten</label>
-            <label style="font-size:.78rem;display:flex;align-items:center;gap:.3rem"><input type="checkbox" id="item-public" checked> Öffentlich sichtbar</label>
-            <div class="form-group" style="margin:0"><label class="form-label" style="margin:0">Sortierung</label><input type="number" id="item-sort" class="form-input" value="0" style="width:60px"></div>
+          <div class="flex gap-3 items-center flex-wrap">
+            <label class="text-[.78rem] flex items-center gap-1"><input type="checkbox" id="item-default"> Standardmäßig aktiv</label>
+            <label class="text-[.78rem] flex items-center gap-1"><input type="checkbox" id="item-required"> Pflichtposten</label>
+            <label class="text-[.78rem] flex items-center gap-1"><input type="checkbox" id="item-public" checked> Öffentlich sichtbar</label>
+            <div class="form-group m-0"><label class="form-label m-0">Sortierung</label><input type="number" id="item-sort" class="form-input w-[60px]" value="0"></div>
           </div>
-          <div style="display:flex;gap:.5rem;margin-top:.75rem">
+          <div class="flex gap-2 mt-3">
             <button type="button" class="btn btn-primary btn-sm" onclick="saveItem()">Speichern</button>
             <button type="button" class="btn btn-ghost btn-sm" onclick="toggleForm('item-add')">Abbrechen</button>
           </div>
@@ -193,16 +193,16 @@
           {% for item in price_items %}
           <tr id="item-row-{{ item.pk }}">
             <td>
-              <span class="item-display">{{ item.name }}{% if item.description %}<br><span style="font-size:.68rem;color:var(--muted)">{{ item.description }}</span>{% endif %}</span>
-              <span class="item-edit" style="display:none"><input type="text" data-field="name" class="form-input" value="{{ item.name }}" style="margin-bottom:.2rem"><input type="text" data-field="description" class="form-input" value="{{ item.description }}" style="font-size:.75rem"></span>
+              <span class="item-display">{{ item.name }}{% if item.description %}<br><span class="text-[.68rem] text-muted">{{ item.description }}</span>{% endif %}</span>
+              <span class="item-edit" style="display:none"><input type="text" data-field="name" class="form-input mb-0.5" value="{{ item.name }}"><input type="text" data-field="description" class="form-input text-sm" value="{{ item.description }}"></span>
             </td>
             <td>
               <span class="item-display"><span class="badge badge-inquiry">{{ item.get_category_display }}</span></span>
-              <span class="item-edit" style="display:none"><select data-field="category" class="form-input" style="appearance:auto"><option value="base" {% if item.category == 'base' %}selected{% endif %}>Grundpreis</option><option value="tech" {% if item.category == 'tech' %}selected{% endif %}>Technik</option><option value="equipment" {% if item.category == 'equipment' %}selected{% endif %}>Ausrüstung</option><option value="travel" {% if item.category == 'travel' %}selected{% endif %}>Anfahrt</option><option value="extra" {% if item.category == 'extra' %}selected{% endif %}>Extras</option><option value="service" {% if item.category == 'service' %}selected{% endif %}>Service</option></select></span>
+              <span class="item-edit" style="display:none"><select data-field="category" class="form-input appearance-auto"><option value="base" {% if item.category == 'base' %}selected{% endif %}>Grundpreis</option><option value="tech" {% if item.category == 'tech' %}selected{% endif %}>Technik</option><option value="equipment" {% if item.category == 'equipment' %}selected{% endif %}>Ausrüstung</option><option value="travel" {% if item.category == 'travel' %}selected{% endif %}>Anfahrt</option><option value="extra" {% if item.category == 'extra' %}selected{% endif %}>Extras</option><option value="service" {% if item.category == 'service' %}selected{% endif %}>Service</option></select></span>
             </td>
             <td>
-              <span class="item-display" style="font-family:'Space Mono',monospace">{{ item.price }} €</span>
-              <span class="item-edit" style="display:none"><input type="number" step="0.01" data-field="price" class="form-input" value="{{ item.price }}" style="max-width:90px"></span>
+              <span class="item-display font-mono">{{ item.price }} €</span>
+              <span class="item-edit" style="display:none"><input type="number" step="0.01" data-field="price" class="form-input max-w-[90px]" value="{{ item.price }}"></span>
             </td>
             <td>
               <span class="item-display">{% if item.is_default %}&#10003;{% endif %}</span>
@@ -216,7 +216,7 @@
               <span class="item-display">{% if item.is_public %}&#10003;{% else %}—{% endif %}</span>
               <span class="item-edit" style="display:none"><input type="checkbox" data-field="is_public" {% if item.is_public %}checked{% endif %}></span>
             </td>
-            <td style="white-space:nowrap">
+            <td class="whitespace-nowrap">
               <button type="button" class="btn btn-ghost btn-sm item-edit-btn" onclick="toggleEditRow('item',{{ item.pk }})">&#9998;</button>
               <button type="button" class="btn btn-primary btn-sm item-save-btn" style="display:none" onclick="saveEditItem({{ item.pk }})">&#10003;</button>
               <button type="button" class="btn btn-ghost btn-sm item-cancel-btn" style="display:none" onclick="cancelEditRow('item',{{ item.pk }})">&#10005;</button>
@@ -234,9 +234,9 @@
 
     <!-- ── Pakete ── -->
     <div id="comp-packages" class="wb-comp-panel">
-      <div class="card" style="margin-top:.5rem">
+      <div class="card mt-2">
         <div class="card-header">
-          <div class="card-title">Pakete <span style="font-weight:400;font-size:.72rem;color:var(--muted)">— Vordefinierte Bundles mit Grundpreis und enthaltenen Posten</span></div>
+          <div class="card-title">Pakete <span class="font-normal text-xs text-muted">— Vordefinierte Bundles mit Grundpreis und enthaltenen Posten</span></div>
           <button type="button" class="btn btn-primary btn-sm" onclick="toggleForm('pkg-add')">+ Neues Paket</button>
         </div>
         <div id="pkg-add" class="wb-add-form">
@@ -247,12 +247,12 @@
           </div>
           <div class="form-group"><label class="form-label">Beschreibung</label><input type="text" id="pkg-desc" class="form-input" placeholder="Kurzbeschreibung für Kunden"></div>
           <div class="form-group">
-            <label class="form-label">Enthaltene Posten <span style="font-weight:400;font-size:.68rem;color:var(--muted)">— Diese Posten sind im Paketpreis inbegriffen und werden nicht zusätzlich berechnet</span></label>
-            <div style="display:flex;flex-wrap:wrap;gap:.4rem">
-              {% for item in price_items %}<label style="font-size:.78rem;display:flex;align-items:center;gap:.3rem;padding:.2rem .5rem;background:var(--card);border-radius:4px;cursor:pointer"><input type="checkbox" class="pkg-item-cb" value="{{ item.pk }}"> {{ item.name }} ({{ item.price }} €)</label>{% endfor %}
+            <label class="form-label">Enthaltene Posten <span class="font-normal text-[.68rem] text-muted">— Diese Posten sind im Paketpreis inbegriffen und werden nicht zusätzlich berechnet</span></label>
+            <div class="flex flex-wrap gap-1.5">
+              {% for item in price_items %}<label class="text-[.78rem] flex items-center gap-1 px-2 py-0.5 bg-card rounded cursor-pointer"><input type="checkbox" class="pkg-item-cb" value="{{ item.pk }}"> {{ item.name }} ({{ item.price }} €)</label>{% endfor %}
             </div>
           </div>
-          <div style="display:flex;gap:.5rem">
+          <div class="flex gap-2">
             <button type="button" class="btn btn-primary btn-sm" onclick="savePkg()">Speichern</button>
             <button type="button" class="btn btn-ghost btn-sm" onclick="toggleForm('pkg-add')">Abbrechen</button>
           </div>
@@ -260,25 +260,25 @@
         <div id="pkg-list">
           {% for pkg in pricing_packages %}
           <div class="wb-comp-row" id="pkg-row-{{ pkg.pk }}">
-            <div style="flex:1">
+            <div class="flex-1">
               <span class="pkg-display">
                 <strong>{{ pkg.name }}</strong>{% if pkg.badge_label %} <span class="badge badge-inquiry">{{ pkg.badge_label }}</span>{% endif %}
-                <br><span style="font-size:.68rem;color:var(--muted)">{{ pkg.description|default:"—"|truncatewords:12 }} · {{ pkg.included_items.count }} Posten inkl.</span>
+                <br><span class="text-[.68rem] text-muted">{{ pkg.description|default:"—"|truncatewords:12 }} · {{ pkg.included_items.count }} Posten inkl.</span>
               </span>
               <div class="pkg-edit" style="display:none">
-                <div style="display:flex;gap:.4rem;margin-bottom:.3rem;flex-wrap:wrap">
-                  <input type="text" data-field="name" class="form-input" value="{{ pkg.name }}" style="flex:1;min-width:120px" placeholder="Name">
-                  <input type="number" step="0.01" data-field="base_price" class="form-input" value="{{ pkg.base_price }}" style="width:100px" placeholder="Preis">
-                  <input type="text" data-field="badge_label" class="form-input" value="{{ pkg.badge_label }}" style="width:100px" placeholder="Badge">
+                <div class="flex gap-1.5 mb-1 flex-wrap">
+                  <input type="text" data-field="name" class="form-input flex-1 min-w-[120px]" value="{{ pkg.name }}" placeholder="Name">
+                  <input type="number" step="0.01" data-field="base_price" class="form-input w-[100px]" value="{{ pkg.base_price }}" placeholder="Preis">
+                  <input type="text" data-field="badge_label" class="form-input w-[100px]" value="{{ pkg.badge_label }}" placeholder="Badge">
                 </div>
-                <input type="text" data-field="description" class="form-input" value="{{ pkg.description }}" placeholder="Beschreibung" style="margin-bottom:.3rem">
-                <div style="display:flex;flex-wrap:wrap;gap:.3rem">
-                  {% for item in price_items %}<label style="font-size:.72rem;display:flex;align-items:center;gap:.2rem;padding:.15rem .4rem;background:var(--card);border-radius:4px;cursor:pointer"><input type="checkbox" class="pkg-edit-item-{{ pkg.pk }}" value="{{ item.pk }}" {% if item in pkg.included_items.all %}checked{% endif %}> {{ item.name }}</label>{% endfor %}
+                <input type="text" data-field="description" class="form-input mb-1" value="{{ pkg.description }}" placeholder="Beschreibung">
+                <div class="flex flex-wrap gap-1">
+                  {% for item in price_items %}<label class="text-[.72rem] flex items-center gap-0.5 py-[.15rem] px-1.5 bg-card rounded-sm cursor-pointer"><input type="checkbox" class="pkg-edit-item-{{ pkg.pk }}" value="{{ item.pk }}" {% if item in pkg.included_items.all %}checked{% endif %}> {{ item.name }}</label>{% endfor %}
                 </div>
               </div>
             </div>
-            <span class="pkg-display" style="font-family:'Space Mono',monospace;font-size:.85rem;color:var(--accent)">{{ pkg.base_price }} €</span>
-            <span style="font-size:.68rem;color:var(--muted)">{% if pkg.is_active %}aktiv{% else %}inaktiv{% endif %}</span>
+            <span class="pkg-display font-mono text-[.85rem] text-accent">{{ pkg.base_price }} €</span>
+            <span class="text-[.68rem] text-muted">{% if pkg.is_active %}aktiv{% else %}inaktiv{% endif %}</span>
             <button type="button" class="btn btn-ghost btn-sm pkg-edit-btn" onclick="toggleEditComp('pkg',{{ pkg.pk }})">&#9998;</button>
             <button type="button" class="btn btn-primary btn-sm pkg-save-btn" style="display:none" onclick="saveEditPkg({{ pkg.pk }})">&#10003;</button>
             <button type="button" class="btn btn-ghost btn-sm pkg-cancel-btn" style="display:none" onclick="cancelEditComp('pkg',{{ pkg.pk }})">&#10005;</button>
@@ -293,9 +293,9 @@
 
     <!-- ── Regeln ── -->
     <div id="comp-rules" class="wb-comp-panel">
-      <div class="card" style="margin-top:.5rem">
+      <div class="card mt-2">
         <div class="card-header">
-          <div class="card-title">Regeln <span style="font-weight:400;font-size:.72rem;color:var(--muted)">— Automatische Zuschläge basierend auf Event-Eigenschaften</span></div>
+          <div class="card-title">Regeln <span class="font-normal text-xs text-muted">— Automatische Zuschläge basierend auf Event-Eigenschaften</span></div>
           <button type="button" class="btn btn-primary btn-sm" onclick="toggleForm('rule-add')">+ Neue Regel</button>
         </div>
         <div id="rule-add" class="wb-add-form">
@@ -303,10 +303,10 @@
             <div class="form-group"><label class="form-label">Name</label><input type="text" id="rule-name" class="form-input" placeholder="z.B. Wochenend-Zuschlag"></div>
             <div class="form-group"><label class="form-label">Beschreibung</label><input type="text" id="rule-desc" class="form-input" placeholder="Wird dem Kunden angezeigt"></div>
           </div>
-          <div style="font-size:.72rem;color:var(--muted);margin-bottom:.5rem;font-family:'Space Mono',monospace">BEDINGUNG — Wann greift diese Regel?</div>
+          <div class="text-[.72rem] text-muted mb-2 font-mono">BEDINGUNG — Wann greift diese Regel?</div>
           <div class="form-row-3">
             <div class="form-group"><label class="form-label">Feld</label>
-              <select id="rule-cond-field" class="form-input" style="appearance:auto">
+              <select id="rule-cond-field" class="form-input appearance-auto">
                 <option value="guest_count">Gästeanzahl</option>
                 <option value="duration_hours">Dauer (Std.)</option>
                 <option value="date_weekday">Wochentag (0=Mo … 6=So)</option>
@@ -316,7 +316,7 @@
               </select>
             </div>
             <div class="form-group"><label class="form-label">Operator</label>
-              <select id="rule-cond-op" class="form-input" style="appearance:auto">
+              <select id="rule-cond-op" class="form-input appearance-auto">
                 <option value="gt">größer als</option>
                 <option value="gte">größer/gleich</option>
                 <option value="lt">kleiner als</option>
@@ -329,10 +329,10 @@
             </div>
             <div class="form-group"><label class="form-label">Wert</label><input type="text" id="rule-cond-val" class="form-input" placeholder="z.B. 100 oder 5,6"></div>
           </div>
-          <div style="font-size:.72rem;color:var(--muted);margin-bottom:.5rem;font-family:'Space Mono',monospace">EFFEKT — Was passiert wenn die Bedingung zutrifft?</div>
+          <div class="text-[.72rem] text-muted mb-2 font-mono">EFFEKT — Was passiert wenn die Bedingung zutrifft?</div>
           <div class="form-row-3">
             <div class="form-group"><label class="form-label">Typ</label>
-              <select id="rule-effect-type" class="form-input" style="appearance:auto">
+              <select id="rule-effect-type" class="form-input appearance-auto">
                 <option value="percent_add">Prozent-Aufschlag (%)</option>
                 <option value="flat_add">Pauschale hinzufügen (€)</option>
                 <option value="flat_set">Preis fest setzen (€)</option>
@@ -341,7 +341,7 @@
             <div class="form-group"><label class="form-label">Wert</label><input type="number" step="0.01" id="rule-effect-val" class="form-input" value="0"></div>
             <div class="form-group"><label class="form-label">Sortierung</label><input type="number" id="rule-sort" class="form-input" value="0" title="Niedrigere Werte werden zuerst ausgewertet"></div>
           </div>
-          <div style="display:flex;gap:.5rem">
+          <div class="flex gap-2">
             <button type="button" class="btn btn-primary btn-sm" onclick="saveRule()">Speichern</button>
             <button type="button" class="btn btn-ghost btn-sm" onclick="toggleForm('rule-add')">Abbrechen</button>
           </div>
@@ -349,29 +349,29 @@
         <div id="rule-list">
           {% for rule in pricing_rules %}
           <div class="wb-comp-row" id="rule-row-{{ rule.pk }}">
-            <div style="flex:1">
+            <div class="flex-1">
               <span class="rule-display">
                 <strong>{{ rule.name }}</strong>
-                <br><span style="font-size:.68rem;color:var(--muted)">{{ rule.description|default:"—" }} · {{ rule.get_effect_type_display }}: {{ rule.effect_value }}{% if rule.effect_type == 'percent_add' %}%{% else %} €{% endif %}</span>
+                <br><span class="text-[.68rem] text-muted">{{ rule.description|default:"—" }} · {{ rule.get_effect_type_display }}: {{ rule.effect_value }}{% if rule.effect_type == 'percent_add' %}%{% else %} €{% endif %}</span>
               </span>
               <div class="rule-edit" style="display:none">
-                <div style="display:flex;gap:.4rem;margin-bottom:.3rem;flex-wrap:wrap">
-                  <input type="text" data-field="name" class="form-input" value="{{ rule.name }}" style="flex:1;min-width:120px" placeholder="Name">
-                  <input type="text" data-field="description" class="form-input" value="{{ rule.description }}" style="flex:1;min-width:120px" placeholder="Beschreibung">
+                <div class="flex gap-1.5 mb-1 flex-wrap">
+                  <input type="text" data-field="name" class="form-input flex-1 min-w-[120px]" value="{{ rule.name }}" placeholder="Name">
+                  <input type="text" data-field="description" class="form-input flex-1 min-w-[120px]" value="{{ rule.description }}" placeholder="Beschreibung">
                 </div>
-                <div style="display:flex;gap:.4rem;flex-wrap:wrap">
-                  <select data-field="effect_type" class="form-input" style="appearance:auto;width:auto">
+                <div class="flex gap-1.5 flex-wrap">
+                  <select data-field="effect_type" class="form-input appearance-auto w-auto">
                     <option value="percent_add" {% if rule.effect_type == 'percent_add' %}selected{% endif %}>Prozent-Aufschlag</option>
                     <option value="flat_add" {% if rule.effect_type == 'flat_add' %}selected{% endif %}>Pauschale hinzu</option>
                     <option value="flat_set" {% if rule.effect_type == 'flat_set' %}selected{% endif %}>Pauschale setzen</option>
                   </select>
-                  <input type="number" step="0.01" data-field="effect_value" class="form-input" value="{{ rule.effect_value }}" style="width:80px" placeholder="Wert">
-                  <input type="number" data-field="sort_order" class="form-input" value="{{ rule.sort_order }}" style="width:60px" placeholder="Sort">
-                  <label style="font-size:.72rem;display:flex;align-items:center;gap:.2rem"><input type="checkbox" data-field="is_active" {% if rule.is_active %}checked{% endif %}> Aktiv</label>
+                  <input type="number" step="0.01" data-field="effect_value" class="form-input w-[80px]" value="{{ rule.effect_value }}" placeholder="Wert">
+                  <input type="number" data-field="sort_order" class="form-input w-[60px]" value="{{ rule.sort_order }}" placeholder="Sort">
+                  <label class="text-[.72rem] flex items-center gap-0.5"><input type="checkbox" data-field="is_active" {% if rule.is_active %}checked{% endif %}> Aktiv</label>
                 </div>
               </div>
             </div>
-            <span class="rule-display" style="font-size:.68rem;color:var(--muted)">{% if rule.is_active %}aktiv{% else %}inaktiv{% endif %}</span>
+            <span class="rule-display text-[.68rem] text-muted">{% if rule.is_active %}aktiv{% else %}inaktiv{% endif %}</span>
             <button type="button" class="btn btn-ghost btn-sm rule-edit-btn" onclick="toggleEditComp('rule',{{ rule.pk }})">&#9998;</button>
             <button type="button" class="btn btn-primary btn-sm rule-save-btn" style="display:none" onclick="saveEditRule({{ rule.pk }})">&#10003;</button>
             <button type="button" class="btn btn-ghost btn-sm rule-cancel-btn" style="display:none" onclick="cancelEditComp('rule',{{ rule.pk }})">&#10005;</button>
@@ -386,9 +386,9 @@
 
     <!-- ── Formeln ── -->
     <div id="comp-formulas" class="wb-comp-panel">
-      <div class="card" style="margin-top:.5rem">
+      <div class="card mt-2">
         <div class="card-header">
-          <div class="card-title">Formeln <span style="font-weight:400;font-size:.72rem;color:var(--muted)">— Eigene mathematische Berechnungen mit Variablen</span></div>
+          <div class="card-title">Formeln <span class="font-normal text-xs text-muted">— Eigene mathematische Berechnungen mit Variablen</span></div>
           <button type="button" class="btn btn-primary btn-sm" onclick="toggleForm('formula-add')">+ Neue Formel</button>
         </div>
         <div id="formula-add" class="wb-add-form">
@@ -398,8 +398,8 @@
           </div>
           <div class="form-group">
             <label class="form-label">Formel-Ausdruck</label>
-            <input type="text" id="formula-expr" class="form-input" placeholder="z.B. base + (guests * 5) + (hours * 50)" style="font-family:'Space Mono',monospace">
-            <div style="font-size:.68rem;color:var(--muted);margin-top:.35rem;line-height:1.6">
+            <input type="text" id="formula-expr" class="form-input font-mono" placeholder="z.B. base + (guests * 5) + (hours * 50)">
+            <div class="text-[.68rem] text-muted mt-1.5 leading-relaxed">
               <strong>Variablen:</strong>
               <code>base</code> = bisherige Zwischensumme,
               <code>guests</code> = Gästeanzahl,
@@ -411,7 +411,7 @@
               <strong>Beispiel:</strong> <code>base + (guests * 3) + (distance > 50) * 75</code> = Basis + 3 € pro Gast + 75 € Zuschlag ab 50 km
             </div>
           </div>
-          <div style="display:flex;gap:.5rem">
+          <div class="flex gap-2">
             <button type="button" class="btn btn-primary btn-sm" onclick="saveFormula()">Speichern</button>
             <button type="button" class="btn btn-ghost btn-sm" onclick="toggleForm('formula-add')">Abbrechen</button>
           </div>
@@ -419,15 +419,15 @@
         <div id="formula-list">
           {% for f in pricing_formulas %}
           <div class="wb-comp-row" id="formula-row-{{ f.pk }}">
-            <div style="flex:1">
+            <div class="flex-1">
               <span class="formula-display">
                 <strong>{{ f.name }}</strong>
-                <br><code style="font-size:.7rem;color:var(--accent)">{{ f.expression }}</code>
-                {% if f.description %}<br><span style="font-size:.68rem;color:var(--muted)">{{ f.description }}</span>{% endif %}
+                <br><code class="text-[.7rem] text-accent">{{ f.expression }}</code>
+                {% if f.description %}<br><span class="text-[.68rem] text-muted">{{ f.description }}</span>{% endif %}
               </span>
               <div class="formula-edit" style="display:none">
-                <input type="text" data-field="name" class="form-input" value="{{ f.name }}" placeholder="Name" style="margin-bottom:.2rem">
-                <input type="text" data-field="expression" class="form-input" value="{{ f.expression }}" placeholder="Formel" style="font-family:'Space Mono',monospace;margin-bottom:.2rem">
+                <input type="text" data-field="name" class="form-input mb-0.5" value="{{ f.name }}" placeholder="Name">
+                <input type="text" data-field="expression" class="form-input font-mono mb-0.5" value="{{ f.expression }}" placeholder="Formel">
                 <input type="text" data-field="description" class="form-input" value="{{ f.description }}" placeholder="Beschreibung">
               </div>
             </div>

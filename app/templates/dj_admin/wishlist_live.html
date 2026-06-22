@@ -69,12 +69,12 @@
          role="tabpanel"
          aria-labelledby="tab-live-nowplaying"
          class="lg:!block">
-      <div class="card" style="padding:.85rem">
-        <div style="font-size:.62rem;font-family:'Space Mono',monospace;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.5rem">
+      <div class="card p-[.85rem]">
+        <div class="text-[.62rem] font-mono text-accent tracking-[.1em] uppercase mb-2">
           Jetzt läuft
         </div>
-        <div id="np-live" style="display:flex;align-items:center;gap:.7rem">
-          <div style="font-size:.72rem;color:var(--muted)">Lade…</div>
+        <div id="np-live" class="flex items-center gap-3">
+          <div class="text-xs text-muted">Lade…</div>
         </div>
       </div>
     </div>
@@ -92,7 +92,7 @@
         <turbo-frame id="event-wishlist"
                      src="{% url 'dj_admin:wishlist_frame' pk=active_event.pk %}"
                      aria-live="polite">
-          <div style="text-align:center;padding:1rem;color:var(--muted)">Lade...</div>
+          <div class="text-center p-4 text-muted">Lade...</div>
         </turbo-frame>
       </div>
     </div>
@@ -142,7 +142,7 @@
         <turbo-frame id="blocked-clients"
                      src="{% url 'dj_admin:blocked_frame' %}"
                      aria-live="polite">
-          <div style="text-align:center;padding:1rem;color:var(--muted)">Lade...</div>
+          <div class="text-center p-4 text-muted">Lade...</div>
         </turbo-frame>
       </div>
 
@@ -163,7 +163,7 @@
         </div>
         <div class="form-group">
           <label class="form-label" for="manual-block-hours">Sperrdauer</label>
-          <select id="manual-block-hours" class="form-input" style="appearance:auto">
+          <select id="manual-block-hours" class="form-input appearance-auto">
             <option value="0">Permanent</option>
             <option value="1">1 Stunde</option>
             <option value="2">2 Stunden</option>
@@ -189,21 +189,21 @@
      role="dialog"
      aria-modal="true"
      aria-labelledby="block-dialog-title"
-     style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.7);align-items:center;justify-content:center">
-  <div class="w-[90%] max-w-[400px]" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.5rem">
-    <div id="block-dialog-title" style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;margin-bottom:1rem">🚫 Client blockieren</div>
+     class="fixed inset-0 z-drawer bg-black/70 items-center justify-center" style="display:none">
+  <div class="w-[90%] max-w-[400px] bg-card border border-border rounded p-6">
+    <div id="block-dialog-title" class="font-display text-xl mb-4">🚫 Client blockieren</div>
     <input type="hidden" id="block-wish-id">
-    <div style="margin-bottom:.75rem">
-      <label for="block-reason" style="display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem">Grund (nur für dich sichtbar)</label>
+    <div class="mb-3">
+      <label for="block-reason" class="block text-xs text-muted mb-1">Grund (nur für dich sichtbar)</label>
       <input type="text" id="block-reason" class="form-input" value="{{ active_event.default_block_reason|default:"Unangemessene Eingaben" }}">
     </div>
-    <div style="margin-bottom:.75rem">
-      <label for="block-message" style="display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem">Nachricht an den User</label>
+    <div class="mb-3">
+      <label for="block-message" class="block text-xs text-muted mb-1">Nachricht an den User</label>
       <input type="text" id="block-message" class="form-input" value="{{ active_event.default_block_message|default:"Du wurdest für diese Wishlist gesperrt." }}">
     </div>
-    <div style="margin-bottom:1rem">
-      <label for="block-hours" style="display:block;font-size:.75rem;color:var(--muted);margin-bottom:.25rem">Sperrdauer</label>
-      <select id="block-hours" class="form-input" style="appearance:auto">
+    <div class="mb-4">
+      <label for="block-hours" class="block text-xs text-muted mb-1">Sperrdauer</label>
+      <select id="block-hours" class="form-input appearance-auto">
         <option value="0">Permanent</option>
         <option value="1">1 Stunde</option>
         <option value="2">2 Stunden</option>
@@ -327,16 +327,16 @@ async function manualBlock() {
   if (!npEl) return;
   function renderNP(p) {
     if (!p) {
-      npEl.innerHTML = '<div style="font-size:.72rem;color:var(--muted)">Nichts läuft gerade</div>';
+      npEl.innerHTML = '<div class="text-xs text-muted">Nichts läuft gerade</div>';
       return;
     }
     var pct = p.duration_ms > 0 ? Math.round(p.progress_ms / p.duration_ms * 100) : 0;
     npEl.innerHTML =
-      '<img src="' + (p.cover || '') + '" style="width:42px;height:42px;border-radius:5px;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'">' +
-      '<div style="flex:1;min-width:0">' +
-        '<div style="font-weight:600;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + p.track_name + '</div>' +
-        '<div style="font-size:.7rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + p.artist + '</div>' +
-        '<progress value="' + pct + '" max="100" style="width:100%;height:2px;margin-top:.3rem;accent-color:var(--accent)"></progress>' +
+      '<img src="' + (p.cover || '') + '" class="w-[42px] h-[42px] rounded-sm object-cover shrink-0" onerror="this.style.display=\'none\'">' +
+      '<div class="flex-1 min-w-0">' +
+        '<div class="font-semibold text-sm truncate">' + p.track_name + '</div>' +
+        '<div class="text-xs text-muted truncate">' + p.artist + '</div>' +
+        '<progress value="' + pct + '" max="100" class="w-full h-[2px] mt-1" style="accent-color:#3b82f6"></progress>' +
       '</div>';
   }
   async function poll() {

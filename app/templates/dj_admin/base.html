@@ -183,11 +183,10 @@
 <body>
 <button
   id="drawer-toggle"
-  class="mobile-toggle"
+  class="mobile-toggle min-h-[44px] min-w-[44px]"
   aria-label="Menü öffnen"
   aria-expanded="false"
   aria-controls="main-sidebar"
-  style="min-height:44px;min-width:44px"
 >
   <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
 </button>
@@ -235,8 +234,8 @@
     </a>
   </nav>
   <div class="sidebar-footer">
-    <div style="margin-bottom:.35rem"><span class="status-dot" id="status-spotify"></span> Spotify <span id="status-spotify-label" style="font-size:.58rem;opacity:.6"></span></div>
-    <div><span class="status-dot" id="status-google"></span> Google <span id="status-google-label" style="font-size:.58rem;opacity:.6"></span></div>
+    <div class="mb-1.5"><span class="status-dot" id="status-spotify"></span> Spotify <span id="status-spotify-label" class="text-[.58rem] opacity-60"></span></div>
+    <div><span class="status-dot" id="status-google"></span> Google <span id="status-google-label" class="text-[.58rem] opacity-60"></span></div>
   </div>
 </aside>
 <main class="main">{% block content %}{% endblock %}</main>
