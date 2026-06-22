@@ -1,219 +1,213 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="turbo-visit-control" content="reload">
-  <title>{% if event %}{{ event.name }}{% else %}DJ Wishlist{% endif %}</title>
-  {% load static %}
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=Space+Mono&display=swap" rel="stylesheet">
-  <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{
-      --bg:#06060e;--surface:rgba(12,12,24,.85);--card:rgba(16,16,32,.65);--card-solid:#10102a;
-      --border:rgba(40,40,80,.4);--accent:#3b82f6;--accent-glow:rgba(59,130,246,.3);
-      --accent2:#a855f7;--green:#22c55e;--red:#ef4444;
-      --text:#e4e4ef;--text-bright:#f4f4ff;--muted:rgba(148,148,190,.7);
-      --radius:10px;--glass:saturate(1.5) blur(16px)
-    }
-    html{scroll-behavior:smooth}
-    body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-    body::before{content:'';position:fixed;inset:0;background:
-      radial-gradient(ellipse 70% 50% at 50% 0%,rgba(59,130,246,.08),transparent 70%),
-      radial-gradient(ellipse 50% 40% at 80% 100%,rgba(168,85,247,.06),transparent);
-      pointer-events:none;z-index:0}
+{% extends "wishlist/base.html" %}
+{% load static %}
 
-    /* Hero */
-    .hero{position:relative;padding:clamp(2rem,6vw,4rem) 1.5rem 2rem;text-align:center;overflow:hidden;z-index:1}
-    {% if event and event.cover_url %}.hero-bg{position:absolute;inset:0;background:url('{{ event.cover_url }}') center/cover no-repeat;filter:brightness(.12) saturate(.4) blur(2px);z-index:-1}{% endif %}
-    .hero::after{content:'';position:absolute;bottom:0;left:0;right:0;height:120px;background:linear-gradient(transparent,var(--bg));pointer-events:none}
-    .event-badge{display:inline-flex;align-items:center;gap:.4rem;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);color:var(--accent);font-family:'Space Mono',monospace;font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;padding:.3rem .9rem;border-radius:100px;margin-bottom:1.25rem}
-    .event-badge::before{content:'';width:6px;height:6px;background:var(--accent);border-radius:50%;animation:pulse 2s ease infinite}
-    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
-    h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(2.8rem,9vw,6.5rem);letter-spacing:.04em;line-height:.92;color:var(--text-bright);position:relative;z-index:1}
-    .event-meta{display:flex;justify-content:center;gap:1.5rem;margin-top:1.1rem;flex-wrap:wrap}
-    .event-meta span{font-size:.78rem;color:var(--muted);font-family:'Space Mono',monospace;display:flex;align-items:center;gap:.3rem}
-    .event-meta strong{color:var(--text)}
-    .event-desc{max-width:520px;margin:1.25rem auto 0;color:var(--muted);font-size:.88rem;line-height:1.7}
+{% block title %}{% if event %}{{ event.name }}{% else %}DJ Wishlist{% endif %}{% endblock %}
 
-    /* Search */
-    .search-section{max-width:640px;margin:0 auto;padding:0 1.5rem;position:relative;z-index:10}
-    .search-label{font-family:'Bebas Neue',sans-serif;font-size:1.35rem;letter-spacing:.06em;color:var(--muted);margin-bottom:.75rem;display:block}
-    .search-wrap{position:relative}
-    .search-wrap svg{position:absolute;left:1rem;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;z-index:2}
-    #search-input{width:100%;background:var(--card);backdrop-filter:var(--glass);border:1.5px solid var(--border);border-radius:var(--radius);padding:1rem 1rem 1rem 3rem;color:var(--text);font-family:'DM Sans',sans-serif;font-size:1rem;outline:none;transition:border-color .3s,box-shadow .3s}
-    #search-input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-glow),0 8px 30px rgba(0,0,0,.3)}
-    #search-input::placeholder{color:var(--muted)}
-    .name-input-wrap{margin-bottom:1rem}
-    #guest-name{width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:var(--radius);padding:.75rem 1rem;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.9rem;outline:none;transition:border-color .3s}
-    #guest-name:focus{border-color:var(--accent2)}#guest-name::placeholder{color:var(--muted)}
-    #search-results{position:absolute;top:calc(100% + 8px);left:0;right:0;background:var(--card-solid);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;display:none;max-height:440px;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.7);z-index:200}
-    #search-results.visible{display:block}
-    #search-results::-webkit-scrollbar{width:4px}#search-results::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
-    .result-item{display:flex;align-items:center;gap:.85rem;padding:.7rem 1rem;cursor:pointer;transition:background .15s;border-bottom:1px solid rgba(40,40,80,.25)}
-    .result-item:last-child{border-bottom:none}.result-item:hover{background:rgba(59,130,246,.06)}
-    .result-cover{width:44px;height:44px;border-radius:5px;object-fit:cover;flex-shrink:0;background:var(--border)}
-    .result-info{flex:1;min-width:0}.result-title{font-weight:500;font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-bright)}
-    .result-artist{font-size:.76rem;color:var(--muted)}.result-duration{font-family:'Space Mono',monospace;font-size:.68rem;color:var(--muted);flex-shrink:0}
-    .result-add-btn{background:var(--accent);border:none;border-radius:100px;color:#fff;font-family:'DM Sans',sans-serif;font-weight:600;font-size:.74rem;padding:.38rem .85rem;cursor:pointer;flex-shrink:0;transition:all .2s}
-    .result-add-btn:hover{box-shadow:0 2px 12px var(--accent-glow);transform:scale(1.03)}
-    .result-add-btn:disabled{background:var(--border);color:var(--muted);cursor:not-allowed;transform:none;box-shadow:none}
-    .search-loading,.no-results{padding:1.5rem;text-align:center;color:var(--muted);font-size:.84rem}
+{% block extra_head %}
+{% if event and event.cover_url %}
+<style>
+  .hero-bg{position:absolute;inset:0;background:url('{{ event.cover_url }}') center/cover no-repeat;filter:brightness(.12) saturate(.4) blur(2px);z-index:-1}
+</style>
+{% endif %}
+{% endblock %}
 
-    /* Toast */
-    #toast{position:fixed;bottom:2rem;left:50%;transform:translateX(-50%) translateY(100px);background:var(--card-solid);border:1px solid var(--accent);border-radius:var(--radius);padding:.85rem 1.5rem;font-size:.84rem;color:var(--accent);z-index:999;transition:transform .4s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;box-shadow:0 12px 40px rgba(0,0,0,.6)}
-    #toast.show{transform:translateX(-50%) translateY(0)}#toast.error{border-color:var(--red);color:var(--red)}
-
-    /* Wishlist */
-    .wishlist-section{max-width:860px;margin:3rem auto;padding:0 1.5rem 2rem}
-    .section-header{display:flex;align-items:baseline;gap:1rem;margin-bottom:1.5rem}
-    .section-header h2{font-family:'Bebas Neue',sans-serif;font-size:1.9rem;letter-spacing:.06em;color:var(--text-bright)}
-    .wish-count-badge{background:rgba(59,130,246,.12);color:var(--accent);font-family:'Space Mono',monospace;font-size:.68rem;padding:.22rem .7rem;border-radius:100px;border:1px solid rgba(59,130,246,.2)}
-
-    /* Compact wish cards */
-    .wishes-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:.5rem}
-    .wish-card{background:var(--card);backdrop-filter:var(--glass);border:1px solid var(--border);border-radius:8px;transition:border-color .25s,box-shadow .25s;animation:cardIn .4s ease both;display:flex;align-items:center;gap:.65rem;padding:.55rem .75rem}
-    .wish-card:hover{border-color:rgba(59,130,246,.25);box-shadow:0 4px 16px rgba(0,0,0,.2)}
-    @keyframes cardIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-    .wish-card-cover{width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;background:var(--border)}
-    .wish-card-cover-placeholder{width:44px;height:44px;border-radius:6px;background:rgba(59,130,246,.08);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0}
-    .wish-card-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:.12rem}
-    .wish-card-title{font-weight:600;font-size:.82rem;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-bright)}
-    .wish-card-artist{font-size:.7rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .wish-card-meta{display:flex;align-items:center;gap:.5rem;font-size:.6rem;font-family:'Space Mono',monospace;color:var(--muted);margin-top:.1rem}
-    .wish-card-guest{color:var(--accent2)}
-    .wish-card-side{display:flex;flex-direction:column;align-items:flex-end;gap:.2rem;flex-shrink:0}
-    .preview-btn{background:none;border:1px solid var(--border);border-radius:100px;color:var(--text);cursor:pointer;padding:.2rem .5rem;font-size:.6rem;display:flex;align-items:center;gap:.25rem;transition:all .2s}
-    .preview-btn:hover{border-color:var(--accent);color:var(--accent)}.preview-btn.playing{color:var(--accent);border-color:var(--accent)}
-    .played-section{opacity:.45}.played-label{font-family:'Space Mono',monospace;font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:1.2rem 0 .4rem;display:block}
-
-    @media(max-width:600px){
-      .wishes-grid{grid-template-columns:1fr;gap:.35rem}
-      .wish-card{padding:.45rem .55rem;gap:.5rem}
-      .wish-card-cover,.wish-card-cover-placeholder{width:38px;height:38px}
-      .wish-card-title{font-size:.78rem}.wish-card-artist{font-size:.66rem}
-      .event-meta{gap:.75rem}.hero{padding:2rem 1rem 1.5rem}
-    }
-
-    .empty-state{text-align:center;padding:3rem 2rem;color:var(--muted)}.empty-state .icon{font-size:2.5rem;margin-bottom:.75rem;opacity:.5}
-    .no-event{text-align:center;padding:clamp(3rem,10vw,6rem) 2rem}.no-event h2{font-family:'Bebas Neue',sans-serif;font-size:clamp(1.8rem,5vw,2.8rem);color:var(--text-bright);margin-bottom:.5rem}
-    .search-disabled{opacity:.35;pointer-events:none}
-    .limit-notice{text-align:center;margin-top:.75rem;font-size:.8rem;color:var(--accent2);font-family:'Space Mono',monospace}
-
-    /* Refresh bar */
-    .refresh-bar{max-width:640px;margin:2rem auto .75rem;padding:0 1.5rem;display:flex;justify-content:flex-end}
-    .refresh-btn{background:var(--card);border:1px solid var(--border);color:var(--muted);cursor:pointer;padding:.4rem .8rem;border-radius:6px;font-family:'Space Mono',monospace;font-size:.68rem;display:flex;align-items:center;gap:.4rem;transition:all .2s}
-    .refresh-btn:hover{border-color:var(--accent);color:var(--text)}
-    .refresh-btn.spinning svg{animation:spin 1s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-
-    /* Bottom counter */
-    .bottom-counter{max-width:860px;margin:0 auto 3rem;padding:0 1.5rem;text-align:center}
-    .bottom-counter-inner{background:var(--card);backdrop-filter:var(--glass);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.5rem;display:inline-flex;flex-direction:column;align-items:center;gap:.3rem}
-    .bottom-counter-num{font-family:'Bebas Neue',sans-serif;font-size:1.8rem;color:var(--accent)}
-    .bottom-counter-label{font-size:.72rem;color:var(--muted);font-family:'Space Mono',monospace}
-    .bottom-counter-msg{font-size:.8rem;color:var(--accent2);margin-top:.3rem;font-style:italic}
-    .blocked-notice{text-align:center;padding:1.5rem 1rem;color:var(--red);font-family:'Space Mono',monospace;font-size:.82rem;max-width:500px;margin:0 auto;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);border-radius:var(--radius)}
-
-    /* Booking CTA */
-    .booking-cta{display:inline-block;margin-top:1.5rem;background:var(--accent);color:#fff;padding:.8rem 2.2rem;border-radius:100px;text-decoration:none;font-weight:600;font-size:.92rem;transition:all .25s;box-shadow:0 4px 20px var(--accent-glow)}
-    .booking-cta:hover{transform:translateY(-2px);box-shadow:0 8px 30px var(--accent-glow)}
-  </style>
-</head>
-<body>
+{% block body %}
 {% if event %}
 
-<header class="hero">
+{# ── Hero ─────────────────────────────────────────────────────────────── #}
+<header class="relative text-center overflow-hidden z-10 px-6 pt-10 pb-8 sm:pt-16 sm:pb-12">
   {% if event.cover_url %}<div class="hero-bg"></div>{% endif %}
-  <div class="event-badge">Live Event</div>
-  <h1>{{ event.name }}</h1>
-  <div class="event-meta">
-    <span>📅 <strong>{{ event.date|date:"d. F Y" }}</strong></span>
-    <span>📍 <strong>{{ event.location }}</strong></span>
-    {% if event.time_start %}<span>🕐 <strong>{{ event.time_start|time:"H:i" }}{% if event.time_end %} – {{ event.time_end|time:"H:i" }}{% endif %}</strong></span>{% endif %}
+  {# fade-out bottom edge #}
+  <div class="absolute bottom-0 left-0 right-0 h-28 pointer-events-none"
+       style="background:linear-gradient(transparent,#06060e)"></div>
+
+  <div class="relative z-10">
+    <span class="inline-flex items-center gap-1.5 bg-accent/10 border border-accent/25 text-accent
+                 font-mono text-[.6rem] tracking-widest uppercase px-3 py-1 rounded-full mb-5">
+      <span class="w-1.5 h-1.5 bg-accent rounded-full animate-pulse"></span>
+      Live Event
+    </span>
+
+    <h1 class="font-display text-[clamp(2.8rem,9vw,6.5rem)] leading-none tracking-wide text-text-bright">
+      {{ event.name }}
+    </h1>
+
+    <div class="flex justify-center flex-wrap gap-4 mt-4">
+      <span class="flex items-center gap-1.5 font-mono text-[.72rem] text-muted">
+        📅 <strong class="text-text">{{ event.date|date:"d. F Y" }}</strong>
+      </span>
+      <span class="flex items-center gap-1.5 font-mono text-[.72rem] text-muted">
+        📍 <strong class="text-text">{{ event.location }}</strong>
+      </span>
+      {% if event.time_start %}
+      <span class="flex items-center gap-1.5 font-mono text-[.72rem] text-muted">
+        🕐 <strong class="text-text">{{ event.time_start|time:"H:i" }}{% if event.time_end %} – {{ event.time_end|time:"H:i" }}{% endif %}</strong>
+      </span>
+      {% endif %}
+    </div>
+
+    {% if event.wishlist_custom_message %}
+    <p class="max-w-lg mx-auto mt-4 text-muted text-sm leading-relaxed">{{ event.wishlist_custom_message }}</p>
+    {% elif event.description %}
+    <p class="max-w-lg mx-auto mt-4 text-muted text-sm leading-relaxed">{{ event.description }}</p>
+    {% endif %}
   </div>
-  {% if event.wishlist_custom_message %}
-  <p class="event-desc">{{ event.wishlist_custom_message }}</p>
-  {% elif event.description %}
-  <p class="event-desc">{{ event.description }}</p>
-  {% endif %}
 </header>
 
+{# ── Blocked notice ───────────────────────────────────────────────────── #}
 {% if is_blocked %}
-<div class="blocked-notice">🚫 {{ block_message|default:"Du wurdest für diese Wishlist gesperrt." }}</div>
+<div class="max-w-lg mx-auto px-6 mb-4">
+  <div class="text-center px-4 py-4 text-danger font-mono text-sm rounded
+              bg-danger/5 border border-danger/15">
+    🚫 {{ block_message|default:"Du wurdest für diese Wishlist gesperrt." }}
+  </div>
+</div>
 {% endif %}
 
-<!-- Now Playing (public) -->
-<div id="now-playing-public" style="max-width:640px;margin:.5rem auto 1.5rem;padding:0 1.5rem;display:none">
-  <div id="np-public-inner" style="display:flex;align-items:center;gap:.75rem;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);border-radius:10px;padding:.75rem 1rem">
+{# ── Now Playing (JS-driven, compact) ────────────────────────────────── #}
+<div id="now-playing-public" class="max-w-xl mx-auto px-6 mb-4 hidden">
+  <div id="np-public-inner"
+       class="glass flex items-center gap-3 px-4 py-2.5"
+       aria-live="polite" aria-atomic="true">
   </div>
 </div>
 
 {% if not is_blocked %}
-<div class="refresh-bar">
-  <button class="refresh-btn" id="refresh-btn" onclick="refreshWishes()" title="Aktualisieren">
-    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-    Aktualisieren
-  </button>
-</div>
 
-<section class="search-section {% if not can_add_more %}search-disabled{% endif %}">
-  <span class="search-label">🎶 Wunsch einreichen</span>
+{# ── Search section ───────────────────────────────────────────────────── #}
+<section class="max-w-xl mx-auto px-6 relative z-10 {% if not can_add_more %}opacity-40 pointer-events-none{% endif %}">
+
+  <span class="block font-display text-xl tracking-widest text-muted mb-3">🎶 Wunsch einreichen</span>
+
+  {# Guest name #}
   {% if event.wishlist_require_name %}
-  <div class="name-input-wrap">
-    <input type="text" id="guest-name" placeholder="Dein Name *" autocomplete="off" maxlength="100" {% if not can_add_more %}disabled{% endif %} />
+  <div class="mb-3">
+    <input type="text" id="guest-name"
+           placeholder="Dein Name *"
+           autocomplete="off" maxlength="100"
+           {% if not can_add_more %}disabled{% endif %}
+           class="field-input text-sm placeholder:text-subtle" />
   </div>
   {% endif %}
-  <!-- Search type tabs -->
-  <div style="display:flex;gap:.4rem;margin-bottom:.6rem">
-    <button type="button" id="tab-songs" onclick="setSearchType('track')" style="flex:1;padding:.45rem;border-radius:6px;border:1.5px solid var(--accent);background:rgba(59,130,246,.12);color:var(--accent);font-family:'DM Sans',sans-serif;font-size:.82rem;font-weight:600;cursor:pointer">🎵 Songs</button>
-    <button type="button" id="tab-artists" onclick="setSearchType('artist')" style="flex:1;padding:.45rem;border-radius:6px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:.82rem;font-weight:600;cursor:pointer">🎤 Künstler</button>
+
+  {# Search-type tabs — IDs preserved for setSearchType() JS #}
+  <div role="tablist" aria-label="Suchtyp" class="flex gap-1.5 mb-3">
+    <button type="button" id="tab-songs"
+            role="tab" aria-selected="true" aria-controls="panel-search-track"
+            onclick="setSearchType('track')"
+            class="flex-1 min-h-[44px] px-3 rounded-sm border font-sans text-sm font-semibold
+                   cursor-pointer transition-colors duration-150
+                   border-accent bg-accent/10 text-accent">
+      🎵 Songs
+    </button>
+    <button type="button" id="tab-artists"
+            role="tab" aria-selected="false" aria-controls="panel-search-track"
+            onclick="setSearchType('artist')"
+            class="flex-1 min-h-[44px] px-3 rounded-sm border font-sans text-sm font-semibold
+                   cursor-pointer transition-colors duration-150
+                   border-border bg-transparent text-muted">
+      🎤 Künstler
+    </button>
   </div>
-  <div class="search-wrap">
-    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-    <input type="text" id="search-input" placeholder="Künstler oder Songtitel suchen…" autocomplete="off" {% if not can_add_more %}disabled{% endif %} />
-    <div id="search-results"></div>
+
+  {# Search input + results dropdown — single tabpanel shared by both tabs #}
+  <div id="panel-search-track" role="tabpanel"
+       aria-labelledby="tab-songs tab-artists">
+  <div class="relative" id="search-wrap">
+    <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none z-10"
+         width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <input type="text" id="search-input"
+           placeholder="Künstler oder Songtitel suchen…"
+           autocomplete="off"
+           {% if not can_add_more %}disabled{% endif %}
+           class="field-input pl-10 text-base placeholder:text-subtle" />
+
+    {# Results dropdown #}
+    <div id="search-results"
+         role="listbox" aria-label="Suchergebnisse" aria-live="polite"
+         class="absolute top-[calc(100%+6px)] left-0 right-0 bg-card-solid border border-border
+                rounded shadow-glass-lg max-h-[440px] overflow-y-auto z-dropdown hidden
+                scrollbar-thin scrollbar-thumb-border">
+    </div>
   </div>
+
+  </div>{# /panel-search-track #}
+
   {% if not can_add_more %}
-  <p class="limit-notice">{{ config.wishlist_limit_message|default:"✓ Du hast deine Wünsche eingereicht" }}</p>
+  <p class="mt-3 text-center text-accent2 font-mono text-xs">
+    {{ config.wishlist_limit_message|default:"✓ Du hast deine Wünsche eingereicht" }}
+  </p>
   {% endif %}
+
+  {# Refresh button — right-aligned under search #}
+  <div class="flex justify-end mt-3">
+    <button id="refresh-btn" onclick="refreshWishes()"
+            title="Aktualisieren"
+            class="flex items-center gap-1.5 bg-card border border-border text-muted
+                   font-mono text-[.68rem] px-3 py-1.5 rounded-sm
+                   hover:border-border-hover hover:text-text transition-colors cursor-pointer">
+      <svg id="refresh-icon" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+      </svg>
+      Aktualisieren
+    </button>
+  </div>
+
 </section>
 {% endif %}
 
-<!-- Wishlist -->
-<section class="wishlist-section">
-  <div class="section-header">
-    <h2>Wunschliste</h2>
-    <span class="wish-count-badge">{{ wishes_pending.count }} Songs</span>
+{# ── Wishlist ─────────────────────────────────────────────────────────── #}
+<section class="max-w-3xl mx-auto px-6 mt-8 pb-8 relative z-10">
+  <div class="flex items-baseline gap-3 mb-4">
+    <h2 class="font-display text-3xl tracking-widest text-text-bright">Wunschliste</h2>
+    <span class="bg-accent/10 text-accent font-mono text-[.68rem] px-2.5 py-0.5
+                 rounded-full border border-accent/20">
+      {{ wishes_pending.count }} Songs
+    </span>
   </div>
+
   {% include "wishlist/_wishes_list.html" %}
 </section>
 
-<!-- Bottom counter -->
+{# ── Bottom counter ───────────────────────────────────────────────────── #}
 {% if wishes_left > 0 and not is_blocked %}
-<div class="bottom-counter" id="bottom-counter">
-  <div class="bottom-counter-inner">
-    <div class="bottom-counter-num" id="counter-num">{{ wishes_left }}</div>
-    <div class="bottom-counter-label">Wunsch{% if wishes_left != 1 %}wünsche{% endif %} übrig</div>
+<div id="bottom-counter" class="max-w-3xl mx-auto px-6 pb-10 text-center relative z-10">
+  <div class="inline-flex flex-col items-center gap-1 glass px-6 py-4">
+    <div id="counter-num" class="font-display text-3xl text-accent">{{ wishes_left }}</div>
+    <div class="font-mono text-[.72rem] text-muted">
+      Wunsch{% if wishes_left != 1 %}wünsche{% endif %} übrig
+    </div>
     {% if event.wishlist_dj_message %}
-    <div class="bottom-counter-msg">{{ event.wishlist_dj_message }}</div>
+    <div class="text-accent2 text-sm italic mt-1">{{ event.wishlist_dj_message }}</div>
     {% endif %}
   </div>
 </div>
 {% endif %}
 
 {% else %}
-<div class="no-event">
-  <div style="font-size:3.5rem;margin-bottom:1.25rem;opacity:.7">🎧</div>
-  <h2>{{ config.no_event_message|default:"Aktuell ist kein Event aktiv." }}</h2>
-  <p style="color:var(--muted);margin-top:.75rem;font-size:.88rem;max-width:400px;margin-left:auto;margin-right:auto;line-height:1.6">Schaue später wieder vorbei oder buche deinen DJ.</p>
-  <a href="/buchen/" class="booking-cta">🎵 Jetzt DJ buchen</a>
+{# ── No active event ──────────────────────────────────────────────────── #}
+<div class="relative z-10 text-center px-6 py-20 sm:py-32">
+  <div class="text-5xl mb-5 opacity-70">🎧</div>
+  <h2 class="font-display text-[clamp(1.8rem,5vw,2.8rem)] text-text-bright mb-2">
+    {{ config.no_event_message|default:"Aktuell ist kein Event aktiv." }}
+  </h2>
+  <p class="text-muted text-sm max-w-sm mx-auto leading-relaxed mt-3">
+    Schaue später wieder vorbei oder buche deinen DJ.
+  </p>
+  <a href="/buchen/"
+     class="inline-block mt-6 btn-primary px-8 py-3 rounded-full font-semibold text-sm
+            shadow-[0_4px_20px_theme(colors.accent.glow)] hover:-translate-y-0.5 transition-transform">
+    🎵 Jetzt DJ buchen
+  </a>
 </div>
 {% endif %}
 
-<div id="toast"></div>
-<audio id="preview-audio" style="display:none"></audio>
+{# ── Toast + audio ────────────────────────────────────────────────────── #}
+{% include "components/toast.html" %}
+<audio id="preview-audio" class="hidden"></audio>
 
 <script>
 var CSRF = "{{ csrf_token }}";
@@ -226,38 +220,41 @@ var resultsBox = document.getElementById('search-results');
 var nameInput = document.getElementById('guest-name');
 var currentSearchType = 'track';
 
+// Tab active/inactive Tailwind classes toggled via JS
+var TAB_ACTIVE   = ['border-accent','bg-accent/10','text-accent'];
+var TAB_INACTIVE = ['border-border','bg-transparent','text-muted'];
+
 function setSearchType(type) {
   currentSearchType = type;
-  var songs = document.getElementById('tab-songs');
+  var songs   = document.getElementById('tab-songs');
   var artists = document.getElementById('tab-artists');
   if (songs && artists) {
-    if (type === 'track') {
-      songs.style.cssText += ';border-color:var(--accent);background:rgba(59,130,246,.12);color:var(--accent)';
-      artists.style.cssText += ';border-color:var(--border);background:transparent;color:var(--muted)';
-    } else {
-      artists.style.cssText += ';border-color:var(--accent);background:rgba(59,130,246,.12);color:var(--accent)';
-      songs.style.cssText += ';border-color:var(--border);background:transparent;color:var(--muted)';
-    }
+    var activeTab   = type === 'track' ? songs   : artists;
+    var inactiveTab = type === 'track' ? artists : songs;
+    TAB_ACTIVE.forEach(function(c)   { activeTab.classList.add(c);    inactiveTab.classList.remove(c); });
+    TAB_INACTIVE.forEach(function(c) { inactiveTab.classList.add(c);  activeTab.classList.remove(c); });
+    activeTab.setAttribute('aria-selected','true');
+    inactiveTab.setAttribute('aria-selected','false');
   }
   if (input && input.value.trim().length >= 2) doSearch(input.value.trim());
-  else resultsBox.classList.remove('visible');
+  else if (resultsBox) resultsBox.classList.add('hidden');
 }
 
 if (input) {
   input.addEventListener('input', function() {
     clearTimeout(debounceTimer);
     var q = input.value.trim();
-    if (q.length < 2) { resultsBox.classList.remove('visible'); return; }
-    debounceTimer = setTimeout(function(){ doSearch(q) }, 350);
+    if (q.length < 2) { resultsBox.classList.add('hidden'); return; }
+    debounceTimer = setTimeout(function(){ doSearch(q); }, 350);
   });
   document.addEventListener('click', function(e) {
-    if (!e.target.closest('.search-wrap')) resultsBox.classList.remove('visible');
+    if (!e.target.closest('#search-wrap')) resultsBox.classList.add('hidden');
   });
 }
 
 async function doSearch(q) {
-  resultsBox.innerHTML = '<div class="search-loading">Suche…</div>';
-  resultsBox.classList.add('visible');
+  resultsBox.innerHTML = '<div class="px-4 py-5 text-center text-muted text-sm">Suche…</div>';
+  resultsBox.classList.remove('hidden');
   try {
     var url = '/api/search/?q=' + encodeURIComponent(q) + (currentSearchType === 'artist' ? '&type=artist' : '');
     var res = await fetch(url);
@@ -267,43 +264,52 @@ async function doSearch(q) {
     } else {
       renderResults(data.tracks || []);
     }
-  } catch(e) { resultsBox.innerHTML = '<div class="no-results">Fehler bei der Suche</div>'; }
+  } catch(e) { resultsBox.innerHTML = '<div class="px-4 py-5 text-center text-muted text-sm">Fehler bei der Suche</div>'; }
 }
 
 function renderResults(tracks) {
-  if (!tracks.length) { resultsBox.innerHTML = '<div class="no-results">Keine Ergebnisse</div>'; return; }
-  resultsBox.innerHTML = tracks.map(function(t) { return '<div class="result-item">' +
-    '<img class="result-cover" src="' + (t.cover_small || t.cover || '') + '" onerror="this.style.display=\'none\'" alt="" />' +
-    '<div class="result-info"><div class="result-title">' + escHtml(t.name) + '</div><div class="result-artist">' + escHtml(t.artists) + '</div></div>' +
-    (SHOW_DURATION ? '<span class="result-duration">' + formatMs(t.duration_ms) + '</span>' : '') +
-    '<button class="result-add-btn" onclick="addWish(this,' + JSON.stringify(t).replace(/"/g,'&quot;') + ')">+ Wunsch</button></div>';
+  if (!tracks.length) { resultsBox.innerHTML = '<div class="px-4 py-5 text-center text-muted text-sm">Keine Ergebnisse</div>'; return; }
+  resultsBox.innerHTML = tracks.map(function(t) {
+    return '<div class="result-item flex items-center gap-3 px-4 py-2.5 cursor-pointer border-b border-border/40 last:border-0 hover:bg-accent/5 transition-colors" role="option">' +
+      '<img src="' + (t.cover_small || t.cover || '') + '" onerror="this.style.display=\'none\'" alt="" class="w-[44px] h-[44px] rounded-sm object-cover flex-shrink-0 bg-border" />' +
+      '<div class="flex-1 min-w-0"><div class="font-medium text-sm text-text-bright truncate">' + escHtml(t.name) + '</div>' +
+      '<div class="text-xs text-muted truncate">' + escHtml(t.artists) + '</div></div>' +
+      (SHOW_DURATION ? '<span class="font-mono text-[.68rem] text-muted flex-shrink-0">' + formatMs(t.duration_ms) + '</span>' : '') +
+      '<button class="flex-shrink-0 bg-accent text-white font-sans font-semibold text-xs px-3 py-1.5 rounded-full min-h-[36px] hover:shadow-[0_2px_12px_theme(colors.accent.glow)] hover:scale-105 transition-all disabled:bg-border disabled:text-muted disabled:cursor-not-allowed disabled:transform-none" onclick="addWish(this,' + JSON.stringify(t).replace(/"/g,'&quot;') + ')">+ Wunsch</button>' +
+      '</div>';
   }).join('');
 }
 
 function renderArtists(artists) {
-  if (!artists.length) { resultsBox.innerHTML = '<div class="no-results">Keine Künstler gefunden</div>'; return; }
-  resultsBox.innerHTML = artists.map(function(a) { return '<div class="result-item" style="cursor:pointer" onclick="loadArtistTracks(\'' + a.id + '\',\'' + escHtml(a.name) + '\')">' +
-    '<img class="result-cover" src="' + (a.image || '') + '" onerror="this.style.display=\'none\'" alt="" style="border-radius:50%" />' +
-    '<div class="result-info"><div class="result-title">' + escHtml(a.name) + '</div><div class="result-artist">' + (a.genres && a.genres.length ? escHtml(a.genres.join(', ')) : '') + '</div></div>' +
-    '<span style="font-size:.65rem;color:var(--muted);font-family:\'Space Mono\',monospace">Top Songs ›</span></div>';
+  if (!artists.length) { resultsBox.innerHTML = '<div class="px-4 py-5 text-center text-muted text-sm">Keine Künstler gefunden</div>'; return; }
+  resultsBox.innerHTML = artists.map(function(a) {
+    return '<div class="flex items-center gap-3 px-4 py-2.5 cursor-pointer border-b border-border/40 last:border-0 hover:bg-accent/5 transition-colors" role="option" onclick="loadArtistTracks(\'' + a.id + '\',\'' + escHtml(a.name) + '\')">' +
+      '<img src="' + (a.image || '') + '" onerror="this.style.display=\'none\'" alt="" class="w-[44px] h-[44px] rounded-full object-cover flex-shrink-0 bg-border" />' +
+      '<div class="flex-1 min-w-0"><div class="font-medium text-sm text-text-bright truncate">' + escHtml(a.name) + '</div>' +
+      '<div class="text-xs text-muted truncate">' + (a.genres && a.genres.length ? escHtml(a.genres.join(', ')) : '') + '</div></div>' +
+      '<span class="font-mono text-[.65rem] text-muted flex-shrink-0">Top Songs ›</span>' +
+      '</div>';
   }).join('');
 }
 
 async function loadArtistTracks(artistId, artistName) {
-  resultsBox.innerHTML = '<div class="search-loading">Lade Top Songs von ' + escHtml(artistName) + '…</div>';
+  resultsBox.innerHTML = '<div class="px-4 py-5 text-center text-muted text-sm">Lade Top Songs von ' + escHtml(artistName) + '…</div>';
   try {
     var res = await fetch('/api/artist-top-tracks/?artist_id=' + encodeURIComponent(artistId));
     var data = await res.json();
     var tracks = data.tracks || [];
-    if (!tracks.length) { resultsBox.innerHTML = '<div class="no-results">Keine Songs gefunden</div>'; return; }
-    var backBtn = '<div style="padding:.5rem 1rem;font-size:.75rem;color:var(--accent);cursor:pointer;border-bottom:1px solid var(--border)" onclick="doSearch(document.getElementById(\'search-input\').value)">‹ Zurück zur Suche</div>';
-    resultsBox.innerHTML = backBtn + tracks.map(function(t) { return '<div class="result-item">' +
-      '<img class="result-cover" src="' + (t.cover_small || t.cover || '') + '" onerror="this.style.display=\'none\'" alt="" />' +
-      '<div class="result-info"><div class="result-title">' + escHtml(t.name) + '</div><div class="result-artist">' + escHtml(artistName) + '</div></div>' +
-      (SHOW_DURATION ? '<span class="result-duration">' + formatMs(t.duration_ms) + '</span>' : '') +
-      '<button class="result-add-btn" onclick="addWish(this,' + JSON.stringify(t).replace(/"/g,'&quot;') + ')">+ Wunsch</button></div>';
+    if (!tracks.length) { resultsBox.innerHTML = '<div class="px-4 py-5 text-center text-muted text-sm">Keine Songs gefunden</div>'; return; }
+    var backBtn = '<div class="px-4 py-2.5 font-mono text-xs text-accent cursor-pointer border-b border-border hover:bg-accent/5" onclick="doSearch(document.getElementById(\'search-input\').value)">‹ Zurück zur Suche</div>';
+    resultsBox.innerHTML = backBtn + tracks.map(function(t) {
+      return '<div class="result-item flex items-center gap-3 px-4 py-2.5 cursor-pointer border-b border-border/40 last:border-0 hover:bg-accent/5 transition-colors" role="option">' +
+        '<img src="' + (t.cover_small || t.cover || '') + '" onerror="this.style.display=\'none\'" alt="" class="w-[44px] h-[44px] rounded-sm object-cover flex-shrink-0 bg-border" />' +
+        '<div class="flex-1 min-w-0"><div class="font-medium text-sm text-text-bright truncate">' + escHtml(t.name) + '</div>' +
+        '<div class="text-xs text-muted truncate">' + escHtml(artistName) + '</div></div>' +
+        (SHOW_DURATION ? '<span class="font-mono text-[.68rem] text-muted flex-shrink-0">' + formatMs(t.duration_ms) + '</span>' : '') +
+        '<button class="flex-shrink-0 bg-accent text-white font-sans font-semibold text-xs px-3 py-1.5 rounded-full min-h-[36px] hover:shadow-[0_2px_12px_theme(colors.accent.glow)] hover:scale-105 transition-all disabled:bg-border disabled:text-muted disabled:cursor-not-allowed disabled:transform-none" onclick="addWish(this,' + JSON.stringify(t).replace(/"/g,'&quot;') + ')">+ Wunsch</button>' +
+        '</div>';
     }).join('');
-  } catch(e) { resultsBox.innerHTML = '<div class="no-results">Fehler beim Laden</div>'; }
+  } catch(e) { resultsBox.innerHTML = '<div class="px-4 py-5 text-center text-muted text-sm">Fehler beim Laden</div>'; }
 }
 
 async function addWish(btn, track) {
@@ -321,15 +327,13 @@ async function addWish(btn, track) {
     if (data.success) {
       btn.textContent = '✓';
       showToast('"' + track.name + '" hinzugefügt!');
-      resultsBox.classList.remove('visible'); input.value = '';
-      setTimeout(function(){ window.location.reload() }, 800);
+      resultsBox.classList.add('hidden'); input.value = '';
+      setTimeout(function(){ window.location.reload(); }, 800);
     } else { btn.disabled = false; btn.textContent = '+ Wunsch'; showToast(data.error || 'Fehler', true); }
   } catch(e) { btn.disabled = false; btn.textContent = '+ Wunsch'; showToast('Netzwerkfehler', true); }
 }
 
 function refreshWishes() {
-  var btn = document.getElementById('refresh-btn');
-  if (btn) btn.classList.add('spinning');
   window.location.reload();
 }
 
@@ -342,13 +346,29 @@ function togglePreview(btn, url) {
     audio.onended = function() { btn.classList.remove('playing'); btn.querySelector('.play-icon').textContent = '▶'; };
   }
 }
-function showToast(msg, isError) { var t=document.getElementById('toast'); t.textContent=msg; t.className=isError?'error show':'show'; setTimeout(function(){t.className=''},3500); }
-function formatMs(ms) { var s=Math.floor(ms/1000); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+
+function showToast(msg, isError) {
+  var t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  // Toggle error/success colour classes without touching base layout classes
+  t.classList.remove('border-danger', 'text-danger', 'border-accent', 'text-accent');
+  if (isError) {
+    t.classList.add('border-danger', 'text-danger');
+  } else {
+    t.classList.add('border-accent', 'text-accent');
+  }
+  t.classList.remove('hidden');
+  clearTimeout(t._hideTimer);
+  t._hideTimer = setTimeout(function(){ t.classList.add('hidden'); }, 3500);
+}
+
+function formatMs(ms) { var s = Math.floor(ms/1000); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-// ── Now Playing (public) ─────────────────────────────────────────────────────
+// ── Now Playing (public) — JS polling, aria-live on container ────────────
 (function() {
-  var wrap = document.getElementById('now-playing-public');
+  var wrap  = document.getElementById('now-playing-public');
   var inner = document.getElementById('np-public-inner');
   if (!wrap || !inner) return;
   async function poll() {
@@ -356,22 +376,28 @@ function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'
       var r = await fetch('/api/now-playing/');
       var d = await r.json();
       var p = d.playing;
-      if (!p) { wrap.style.display = 'none'; return; }
-      wrap.style.display = 'block';
+      if (!p) { wrap.classList.add('hidden'); return; }
+      wrap.classList.remove('hidden');
       var pct = p.duration_ms > 0 ? Math.round(p.progress_ms / p.duration_ms * 100) : 0;
       inner.innerHTML =
-        '<img src="' + (p.cover || '') + '" style="width:40px;height:40px;border-radius:5px;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'">' +
-        '<div style="flex:1;min-width:0">' +
-          '<div style="font-size:.58rem;font-family:\'Space Mono\',monospace;color:var(--accent);letter-spacing:.1em">' + (p.is_playing ? '▶ JETZT LÄUFT' : '⏸ PAUSIERT') + '</div>' +
-          '<div style="font-weight:600;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(p.track_name) + '</div>' +
-          '<div style="font-size:.7rem;color:var(--muted)">' + escHtml(p.artist) + '</div>' +
-          '<progress value="' + pct + '" max="100" style="width:100%;height:2px;margin-top:.3rem;accent-color:var(--accent)"></progress>' +
+        '<img src="' + (p.cover || '') + '" class="w-10 h-10 rounded-sm object-cover flex-shrink-0" onerror="this.style.display=\'none\'" alt="Cover">' +
+        '<div class="flex-1 min-w-0">' +
+          '<div class="font-mono text-[.58rem] text-accent tracking-widest">' + (p.is_playing ? '▶ JETZT LÄUFT' : '⏸ PAUSIERT') + '</div>' +
+          '<div class="font-medium text-sm text-text-bright truncate">' + escHtml(p.track_name) + '</div>' +
+          '<div class="text-xs text-muted truncate">' + escHtml(p.artist) + '</div>' +
+          '<div class="mt-1.5 w-full h-[2px] bg-border rounded-full overflow-hidden">' +
+            '<div class="h-full bg-accent rounded-full" style="width:' + pct + '%"></div>' +
+          '</div>' +
         '</div>';
-    } catch(e) { wrap.style.display = 'none'; }
+    } catch(e) { wrap.classList.add('hidden'); }
   }
   poll();
   setInterval(poll, 5000);
 })();
+
+// Spin keyframe for refresh icon
+var _style = document.createElement('style');
+_style.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+document.head.appendChild(_style);
 </script>
-</body>
-</html>
+{% endblock %}

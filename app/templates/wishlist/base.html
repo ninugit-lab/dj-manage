@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="turbo-visit-control" content="reload">
+  <title>{% block title %}DJ Wishlist{% endblock %}</title>
+  {% load static tailwind_tags %}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=Space+Mono&display=swap" rel="stylesheet">
+  {% tailwind_css %}
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-bg text-text font-sans min-h-screen overflow-x-hidden antialiased">
+  {# Ambient background gradients #}
+  <div class="fixed inset-0 pointer-events-none z-0"
+       style="background:radial-gradient(ellipse 70% 50% at 50% 0%,rgba(59,130,246,.08),transparent 70%),radial-gradient(ellipse 50% 40% at 80% 100%,rgba(168,85,247,.06),transparent)">
+  </div>
+  {% block body %}{% endblock %}
+</body>
+</html>

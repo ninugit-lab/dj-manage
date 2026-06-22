@@ -1,54 +1,32 @@
-<div class="wishes-grid" id="wishes-grid">
+<div class="grid gap-1.5 sm:grid-cols-2" id="wishes-grid" aria-live="polite" aria-atomic="false">
   {% for wish in wishes_pending %}
-  <div class="wish-card" id="card-{{ wish.id }}">
-    {% if event.wishlist_show_cover %}
-      {% if wish.album_cover_url %}
-        <img class="wish-card-cover" src="{{ wish.album_cover_url }}" alt="" loading="lazy" />
-      {% else %}
-        <div class="wish-card-cover-placeholder">🎵</div>
-      {% endif %}
-    {% endif %}
-    <div class="wish-card-body">
-      <div class="wish-card-title" title="{{ wish.track_name }}">{{ wish.track_name }}</div>
-      {% if event.wishlist_show_artist %}<div class="wish-card-artist">{{ wish.artist_name }}</div>{% endif %}
-      <div class="wish-card-meta">
-        {% if wish.guest_name %}<span class="wish-card-guest">{{ wish.guest_name }}</span>{% endif %}
-        <span>{{ wish.created_at|time:"H:i" }}</span>
-        {% if event.wishlist_show_duration and wish.duration_ms %}<span>{{ wish.duration_formatted }}</span>{% endif %}
-      </div>
-    </div>
+  <div>
+    {% include "components/wish_card.html" with wish=wish event=event %}
     {% if event.wishlist_show_preview and wish.preview_url %}
-    <div class="wish-card-side">
-      <button class="preview-btn" onclick="togglePreview(this, '{{ wish.preview_url }}')"><span class="play-icon">▶</span></button>
+    <div class="flex justify-end -mt-0.5 mb-1 px-3">
+      <button class="preview-btn flex items-center gap-1 bg-transparent border border-border text-text
+                     font-mono text-[.6rem] px-2 py-1 rounded-full min-h-[36px]
+                     hover:border-accent hover:text-accent transition-colors cursor-pointer"
+              onclick="togglePreview(this, '{{ wish.preview_url }}')">
+        <span class="play-icon">▶</span>
+      </button>
     </div>
     {% endif %}
   </div>
   {% empty %}
-  <div class="empty-state" id="empty-state" style="grid-column:1/-1">
-    <div class="icon">🎧</div><p>Noch keine Wünsche.<br>Sei der Erste!</p>
+  <div class="col-span-full text-center py-12 text-muted" id="empty-state">
+    <div class="text-4xl mb-3 opacity-50">🎧</div>
+    <p>Noch keine Wünsche.<br>Sei der Erste!</p>
   </div>
   {% endfor %}
 </div>
+
 {% if wishes_played and event.wishlist_show_played %}
-<span class="played-label">✅ Gespielt</span>
-<div class="wishes-grid played-section">
+<span class="block font-mono text-[.66rem] tracking-widest uppercase text-muted pt-5 pb-2">✅ Gespielt</span>
+<div class="grid gap-1.5 sm:grid-cols-2 opacity-45">
   {% for wish in wishes_played %}
-  <div class="wish-card">
-    {% if event.wishlist_show_cover %}
-      {% if wish.album_cover_url %}
-        <img class="wish-card-cover" src="{{ wish.album_cover_url }}" alt="" loading="lazy" />
-      {% else %}
-        <div class="wish-card-cover-placeholder">🎵</div>
-      {% endif %}
-    {% endif %}
-    <div class="wish-card-body">
-      <div class="wish-card-title">{{ wish.track_name }}</div>
-      {% if event.wishlist_show_artist %}<div class="wish-card-artist">{{ wish.artist_name }}</div>{% endif %}
-      <div class="wish-card-meta">
-        {% if wish.guest_name %}<span class="wish-card-guest">{{ wish.guest_name }}</span>{% endif %}
-        <span>{{ wish.created_at|time:"H:i" }}</span>
-      </div>
-    </div>
+  <div>
+    {% include "components/wish_card.html" with wish=wish event=event %}
   </div>
   {% endfor %}
 </div>
