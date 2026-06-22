@@ -1,0 +1,11 @@
+{% comment %} include: id label name type value required help error placeholder {% endcomment %}
+<div class="mb-4">
+  <label for="{{ id }}" class="field-label">{{ label }}{% if required %} <span aria-hidden="true">*</span>{% endif %}</label>
+  <input id="{{ id }}" name="{{ name }}" type="{{ type|default:'text' }}"
+         value="{{ value|default:'' }}" placeholder="{{ placeholder|default:'' }}"
+         class="field-input{% if error %} border-danger{% endif %}"
+         {% if required %}required aria-required="true"{% endif %}
+         {% if error %}aria-invalid="true" aria-describedby="{{ id }}-err"{% elif help %}aria-describedby="{{ id }}-help"{% endif %}>
+  {% if help and not error %}<small id="{{ id }}-help" class="text-subtle text-xs">{{ help }}</small>{% endif %}
+  {% if error %}<small id="{{ id }}-err" role="alert" class="text-danger text-xs">{{ error }}</small>{% endif %}
+</div>
