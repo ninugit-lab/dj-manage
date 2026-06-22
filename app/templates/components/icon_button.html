@@ -1,0 +1,5 @@
+{% comment %} include: icon aria_label variant onclick extra (aria_label PFLICHT) {% endcomment %}
+<button type="button" class="btn-{{ variant|default:'ghost' }} !min-w-[44px] !px-2 {{ extra }}"
+        aria-label="{{ aria_label }}"{% if onclick %} onclick="{{ onclick }}"{% endif %}>
+  <span aria-hidden="true">{{ icon }}</span>
+</button>
