@@ -1,19 +1,26 @@
 {% extends "dj_admin/base.html" %}
+{% load static %}
 {% block title %}Konfiguration — DJ Admin{% endblock %}
 {% block nav_config %}active{% endblock %}
 
 {% block content %}
 <div class="page-header">
-  <h2>Konfiguration</h2>
+  <h2 class="font-display text-2xl text-bright">Konfiguration</h2>
 </div>
 
-<div class="tabs">
-  <button type="button" class="tab active" onclick="switchTab(this,'person')">Person</button>
-  <button type="button" class="tab" onclick="switchTab(this,'defaults')">Wishlist Defaults</button>
-  <button type="button" class="tab" onclick="switchTab(this,'email')">E-Mail Templates</button>
-  <button type="button" class="tab" onclick="switchTab(this,'form')">Event-Formular</button>
-  <button type="button" class="tab" onclick="switchTab(this,'logs')">E-Mail Logs</button>
-  <button type="button" class="tab" onclick="switchTab(this,'api')">API Keys & Verbindungen</button>
+<div class="flex gap-1 border-b border-border mb-4 overflow-x-auto" role="tablist" data-tabs="config">
+  <button role="tab" id="tab-config-person" aria-controls="panel-config-person" aria-selected="true" tabindex="0"
+          class="min-h-[44px] px-4 font-mono text-sm whitespace-nowrap border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">Person</button>
+  <button role="tab" id="tab-config-defaults" aria-controls="panel-config-defaults" aria-selected="false" tabindex="-1"
+          class="min-h-[44px] px-4 font-mono text-sm whitespace-nowrap border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">Wishlist Defaults</button>
+  <button role="tab" id="tab-config-email" aria-controls="panel-config-email" aria-selected="false" tabindex="-1"
+          class="min-h-[44px] px-4 font-mono text-sm whitespace-nowrap border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">E-Mail Templates</button>
+  <button role="tab" id="tab-config-form" aria-controls="panel-config-form" aria-selected="false" tabindex="-1"
+          class="min-h-[44px] px-4 font-mono text-sm whitespace-nowrap border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">Event-Formular</button>
+  <button role="tab" id="tab-config-logs" aria-controls="panel-config-logs" aria-selected="false" tabindex="-1"
+          class="min-h-[44px] px-4 font-mono text-sm whitespace-nowrap border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">E-Mail Logs</button>
+  <button role="tab" id="tab-config-api" aria-controls="panel-config-api" aria-selected="false" tabindex="-1"
+          class="min-h-[44px] px-4 font-mono text-sm whitespace-nowrap border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">API Keys & Verbindungen</button>
 </div>
 
 <form method="post" action="">
@@ -21,249 +28,183 @@
 <input type="hidden" name="action" value="save_config">
 
 <!-- Person -->
-<div id="tab-person" class="tab-content active">
-  <div class="card">
-    <div class="card-title" style="margin-bottom:1rem">Deine Angaben</div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">DJ Name / Künstlername</label>
-        <input type="text" name="dj_name" class="form-input" value="{{ config.dj_name }}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Echter Name</label>
-        <input type="text" name="dj_real_name" class="form-input" value="{{ config.dj_real_name }}">
-      </div>
+<div id="panel-config-person" role="tabpanel" aria-labelledby="tab-config-person">
+  <div class="glass p-4 md:p-6">
+    <div class="font-display text-lg text-bright mb-4">Deine Angaben</div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {% include "components/form_field.html" with id="cfg-dj-name" name="dj_name" label="DJ Name / Künstlername" value=config.dj_name %}
+      {% include "components/form_field.html" with id="cfg-dj-real" name="dj_real_name" label="Echter Name" value=config.dj_real_name %}
+      {% include "components/form_field.html" with id="cfg-dj-email" name="dj_email" type="email" label="E-Mail" value=config.dj_email %}
+      {% include "components/form_field.html" with id="cfg-dj-phone" name="dj_phone" type="tel" label="Telefon" value=config.dj_phone %}
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">E-Mail</label>
-        <input type="email" name="dj_email" class="form-input" value="{{ config.dj_email }}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Telefon</label>
-        <input type="tel" name="dj_phone" class="form-input" value="{{ config.dj_phone }}">
-      </div>
+    <div class="mb-4">
+      <label for="cfg-dj-address" class="field-label">Adresse</label>
+      <textarea id="cfg-dj-address" name="dj_address" class="field-input min-h-[60px]">{{ config.dj_address }}</textarea>
     </div>
-    <div class="form-group">
-      <label class="form-label">Adresse</label>
-      <textarea name="dj_address" class="form-textarea" style="min-height:60px">{{ config.dj_address }}</textarea>
-    </div>
-      <div class="form-group" style="position:relative">
-        <label class="form-label">Standort für Anfahrts-Berechnung</label>
-        <input type="text" id="cfg-addr-search" class="form-input" placeholder="Adresse suchen, um Koordinaten zu setzen…" autocomplete="off">
-        <div id="cfg-addr-results" style="display:none;position:absolute;left:0;right:0;z-index:50;background:var(--card-solid,#1a1a2e);border:1px solid var(--border);border-radius:var(--radius);max-height:220px;overflow-y:auto"></div>
-        <div style="display:flex;gap:.75rem;margin-top:.5rem">
-          <div style="flex:1"><label class="form-label" style="font-size:.7rem">Breitengrad</label>
-            <input type="text" name="dj_home_lat" id="cfg-home-lat" class="form-input" value="{{ config.dj_home_lat|default_if_none:'' }}"></div>
-          <div style="flex:1"><label class="form-label" style="font-size:.7rem">Längengrad</label>
-            <input type="text" name="dj_home_lon" id="cfg-home-lon" class="form-input" value="{{ config.dj_home_lon|default_if_none:'' }}"></div>
+    <div class="mb-4 relative">
+      <label for="cfg-addr-search" class="field-label">Standort für Anfahrts-Berechnung</label>
+      <input type="text" id="cfg-addr-search" class="field-input" placeholder="Adresse suchen, um Koordinaten zu setzen…" autocomplete="off">
+      <div id="cfg-addr-results" class="hidden absolute left-0 right-0 z-dropdown bg-card-solid border border-border rounded max-h-[220px] overflow-y-auto"></div>
+      <div class="flex gap-3 mt-2">
+        <div class="flex-1">
+          <label for="cfg-home-lat" class="field-label text-xs">Breitengrad</label>
+          <input type="text" name="dj_home_lat" id="cfg-home-lat" class="field-input" value="{{ config.dj_home_lat|default_if_none:'' }}">
         </div>
-        <div style="font-size:.72rem;color:var(--muted);margin-top:.3rem">Wird genutzt, um Kunden im Buchungsformular die Anfahrt live einzupreisen.</div>
+        <div class="flex-1">
+          <label for="cfg-home-lon" class="field-label text-xs">Längengrad</label>
+          <input type="text" name="dj_home_lon" id="cfg-home-lon" class="field-input" value="{{ config.dj_home_lon|default_if_none:'' }}">
+        </div>
       </div>
-    <div class="form-group">
-      <label class="form-label">Website</label>
-      <input type="url" name="dj_website" class="form-input" value="{{ config.dj_website }}">
+      <div class="text-xs text-muted mt-1">Wird genutzt, um Kunden im Buchungsformular die Anfahrt live einzupreisen.</div>
     </div>
+    {% include "components/form_field.html" with id="cfg-dj-website" name="dj_website" type="url" label="Website" value=config.dj_website %}
   </div>
 </div>
 
 <!-- Wishlist Defaults -->
-<div id="tab-defaults" class="tab-content">
-  <div class="card">
-    <div class="card-title" style="margin-bottom:1rem">Standard-Einstellungen für neue Events</div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Standard Max. Wünsche pro Session</label>
-        <input type="number" name="default_max_wishes" class="form-input" value="{{ config.default_max_wishes }}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Standard Spotify Playlist</label>
-        <input type="text" name="default_playlist_id" class="form-input" value="{{ config.default_playlist_id }}" placeholder="URL oder ID">
-      </div>
+<div id="panel-config-defaults" role="tabpanel" aria-labelledby="tab-config-defaults" hidden>
+  <div class="glass p-4 md:p-6 mb-4">
+    <div class="font-display text-lg text-bright mb-4">Standard-Einstellungen für neue Events</div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {% include "components/form_field.html" with id="cfg-max-wishes" name="default_max_wishes" type="number" label="Standard Max. Wünsche pro Session" value=config.default_max_wishes %}
+      {% include "components/form_field.html" with id="cfg-playlist" name="default_playlist_id" label="Standard Spotify Playlist" value=config.default_playlist_id placeholder="URL oder ID" %}
     </div>
-    <div style="margin-top:.75rem">
-      <div class="form-check">
+    <div class="mt-3 space-y-2">
+      <div class="flex items-center gap-2 min-h-[44px]">
         <input type="checkbox" name="default_show_cover" id="dc" {% if config.default_show_cover %}checked{% endif %}>
-        <label for="dc">Cover anzeigen</label>
+        <label for="dc" class="text-text">Cover anzeigen</label>
       </div>
-      <div class="form-check">
+      <div class="flex items-center gap-2 min-h-[44px]">
         <input type="checkbox" name="default_show_artist" id="da" {% if config.default_show_artist %}checked{% endif %}>
-        <label for="da">Künstler anzeigen</label>
+        <label for="da" class="text-text">Künstler anzeigen</label>
       </div>
-      <div class="form-check">
+      <div class="flex items-center gap-2 min-h-[44px]">
         <input type="checkbox" name="default_show_preview" id="dp" {% if config.default_show_preview %}checked{% endif %}>
-        <label for="dp">Preview anzeigen</label>
+        <label for="dp" class="text-text">Preview anzeigen</label>
       </div>
-      <div class="form-check">
+      <div class="flex items-center gap-2 min-h-[44px]">
         <input type="checkbox" name="default_show_duration" id="dd" {% if config.default_show_duration %}checked{% endif %}>
-        <label for="dd">Dauer anzeigen</label>
+        <label for="dd" class="text-text">Dauer anzeigen</label>
       </div>
-      <div class="form-check">
+      <div class="flex items-center gap-2 min-h-[44px]">
         <input type="checkbox" name="default_require_name" id="dn" {% if config.default_require_name %}checked{% endif %}>
-        <label for="dn">Name als Pflichtfeld</label>
+        <label for="dn" class="text-text">Name als Pflichtfeld</label>
       </div>
     </div>
-    <div class="form-group" style="margin-top:1rem">
-      <label class="form-label">Wunschlimit-Nachricht</label>
-      <input type="text" name="wishlist_limit_message" class="form-input" value="{{ config.wishlist_limit_message }}" placeholder="z.B. Danke für deine Wünsche! 🎶">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Kein-Event-Nachricht (Wishlist Startseite)</label>
-      <input type="text" name="no_event_message" class="form-input" value="{{ config.no_event_message }}" placeholder="z.B. Aktuell ist kein Event aktiv.">
+    <div class="mt-4">
+      {% include "components/form_field.html" with id="cfg-limit-msg" name="wishlist_limit_message" label="Wunschlimit-Nachricht" value=config.wishlist_limit_message placeholder="z.B. Danke für deine Wünsche! 🎶" %}
+      {% include "components/form_field.html" with id="cfg-no-event-msg" name="no_event_message" label="Kein-Event-Nachricht (Wishlist Startseite)" value=config.no_event_message placeholder="z.B. Aktuell ist kein Event aktiv." %}
     </div>
   </div>
-  <div class="card">
-    <div class="card-title" style="margin-bottom:1rem">Sperrung Defaults</div>
-    <div class="form-group">
-      <label class="form-label">Standard Sperrgrund (intern)</label>
-      <input type="text" name="default_block_reason" class="form-input" value="{{ config.default_block_reason }}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Standard Sperrnachricht (öffentlich)</label>
-      <input type="text" name="default_block_message" class="form-input" value="{{ config.default_block_message }}">
-    </div>
+  <div class="glass p-4 md:p-6">
+    <div class="font-display text-lg text-bright mb-4">Sperrung Defaults</div>
+    {% include "components/form_field.html" with id="cfg-block-reason" name="default_block_reason" label="Standard Sperrgrund (intern)" value=config.default_block_reason %}
+    {% include "components/form_field.html" with id="cfg-block-msg" name="default_block_message" label="Standard Sperrnachricht (öffentlich)" value=config.default_block_message %}
   </div>
 </div>
 
 <!-- E-Mail Templates -->
-<div id="tab-email" class="tab-content">
-  <div class="card">
-    <div class="card-title" style="margin-bottom:1rem">Bestätigungs-E-Mail an Kunden</div>
-    <div class="form-group">
-      <label class="form-label">Betreff</label>
-      <input type="text" name="confirmation_email_subject" class="form-input" value="{{ config.confirmation_email_subject }}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Text</label>
-      <textarea name="confirmation_email_body" class="form-textarea" style="min-height:150px">{{ config.confirmation_email_body }}</textarea>
-      <div style="font-size:.72rem;color:var(--muted);margin-top:.3rem">Platzhalter: {client_name}, {event_name}, {event_date}, {event_time}, {location}, {dj_name}</div>
+<div id="panel-config-email" role="tabpanel" aria-labelledby="tab-config-email" hidden>
+  <div class="glass p-4 md:p-6 mb-4">
+    <div class="font-display text-lg text-bright mb-4">Bestätigungs-E-Mail an Kunden</div>
+    {% include "components/form_field.html" with id="cfg-conf-subject" name="confirmation_email_subject" label="Betreff" value=config.confirmation_email_subject %}
+    <div class="mb-4">
+      <label for="cfg-conf-body" class="field-label">Text</label>
+      <textarea id="cfg-conf-body" name="confirmation_email_body" class="field-input min-h-[150px]">{{ config.confirmation_email_body }}</textarea>
+      <div class="text-xs text-muted mt-1">Platzhalter: {client_name}, {event_name}, {event_date}, {event_time}, {location}, {dj_name}</div>
     </div>
   </div>
-  <div class="card">
-    <div class="card-title" style="margin-bottom:1rem">Anfrage-Eingangsbestätigung</div>
-    <div class="form-group">
-      <label class="form-label">Betreff</label>
-      <input type="text" name="inquiry_email_subject" class="form-input" value="{{ config.inquiry_email_subject }}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Text</label>
-      <textarea name="inquiry_email_body" class="form-textarea" style="min-height:150px">{{ config.inquiry_email_body }}</textarea>
-      <div style="font-size:.72rem;color:var(--muted);margin-top:.3rem">Platzhalter: {client_name}, {event_name}, {event_date}, {location}, {dj_name}</div>
+  <div class="glass p-4 md:p-6">
+    <div class="font-display text-lg text-bright mb-4">Anfrage-Eingangsbestätigung</div>
+    {% include "components/form_field.html" with id="cfg-inq-subject" name="inquiry_email_subject" label="Betreff" value=config.inquiry_email_subject %}
+    <div class="mb-4">
+      <label for="cfg-inq-body" class="field-label">Text</label>
+      <textarea id="cfg-inq-body" name="inquiry_email_body" class="field-input min-h-[150px]">{{ config.inquiry_email_body }}</textarea>
+      <div class="text-xs text-muted mt-1">Platzhalter: {client_name}, {event_name}, {event_date}, {location}, {dj_name}</div>
     </div>
   </div>
 </div>
 
 <!-- Event-Formular Settings -->
-<div id="tab-form" class="tab-content">
-  <div class="card">
-    <div class="card-title" style="margin-bottom:1rem">Öffentliches Buchungsformular</div>
-    <div class="form-check">
+<div id="panel-config-form" role="tabpanel" aria-labelledby="tab-config-form" hidden>
+  <div class="glass p-4 md:p-6">
+    <div class="font-display text-lg text-bright mb-4">Öffentliches Buchungsformular</div>
+    <div class="flex items-center gap-2 min-h-[44px]">
       <input type="checkbox" name="event_form_enabled" id="fe" {% if config.event_form_enabled %}checked{% endif %}>
-      <label for="fe">Formular aktiv (erreichbar unter /buchen/)</label>
+      <label for="fe" class="text-text">Formular aktiv (erreichbar unter /buchen/)</label>
     </div>
-    <div class="form-group" style="margin-top:1rem">
-      <label class="form-label">Einleitungstext</label>
-      <textarea name="event_form_intro" class="form-textarea">{{ config.event_form_intro }}</textarea>
+    <div class="mb-4 mt-4">
+      <label for="cfg-form-intro" class="field-label">Einleitungstext</label>
+      <textarea id="cfg-form-intro" name="event_form_intro" class="field-input">{{ config.event_form_intro }}</textarea>
     </div>
-    <div class="form-group">
-      <label class="form-label">Datum-Aufforderung</label>
-      <input type="text" name="event_form_date_prompt" class="form-input" value="{{ config.event_form_date_prompt }}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Nicht-verfügbar-Nachricht</label>
-      <input type="text" name="event_form_unavailable_msg" class="form-input" value="{{ config.event_form_unavailable_msg }}">
-    </div>
+    {% include "components/form_field.html" with id="cfg-form-date" name="event_form_date_prompt" label="Datum-Aufforderung" value=config.event_form_date_prompt %}
+    {% include "components/form_field.html" with id="cfg-form-unavail" name="event_form_unavailable_msg" label="Nicht-verfügbar-Nachricht" value=config.event_form_unavailable_msg %}
   </div>
 </div>
 
 <!-- E-Mail Logs -->
-<div id="tab-logs" class="tab-content">
-  <div class="card">
-    <div class="card-title" style="margin-bottom:1rem">Gesendete E-Mails</div>
+<div id="panel-config-logs" role="tabpanel" aria-labelledby="tab-config-logs" hidden>
+  <div class="glass p-4 md:p-6">
+    <div class="font-display text-lg text-bright mb-4">Gesendete E-Mails</div>
     {% if email_logs %}
-    <div class="table-wrap"><table>
-      <thead><tr><th>Datum</th><th>Empfänger</th><th>Betreff</th><th>Status</th></tr></thead>
+    <div class="overflow-x-auto"><table class="w-full text-sm">
+      <thead><tr class="text-left text-muted font-mono text-xs">
+        <th class="py-2 px-3">Datum</th><th class="py-2 px-3">Empfänger</th><th class="py-2 px-3">Betreff</th><th class="py-2 px-3">Status</th>
+      </tr></thead>
       <tbody>
       {% for log in email_logs %}
-      <tr>
-        <td style="font-family:'Space Mono',monospace;font-size:.72rem">{{ log.sent_at|date:"d.m.Y H:i" }}</td>
-        <td>{{ log.recipient }}</td>
-        <td>{{ log.subject }}</td>
-        <td>{% if log.success %}<span style="color:var(--accent)">✓</span>{% else %}<span style="color:var(--red)">✕ {{ log.error_message|truncatewords:5 }}</span>{% endif %}</td>
+      <tr class="border-t border-border">
+        <td class="py-2 px-3 font-mono text-xs">{{ log.sent_at|date:"d.m.Y H:i" }}</td>
+        <td class="py-2 px-3">{{ log.recipient }}</td>
+        <td class="py-2 px-3">{{ log.subject }}</td>
+        <td class="py-2 px-3">{% if log.success %}<span class="text-success">✓</span>{% else %}<span class="text-danger">✕ {{ log.error_message|truncatewords:5 }}</span>{% endif %}</td>
       </tr>
       {% endfor %}
       </tbody>
     </table></div>
     {% else %}
-    <div class="empty-state" style="padding:1rem"><p>Noch keine E-Mails gesendet</p></div>
+    <div class="text-muted p-4">Noch keine E-Mails gesendet</div>
     {% endif %}
   </div>
 </div>
 
-<!-- API Keys & Verbindungen (letzter Tab) -->
-<div id="tab-api" class="tab-content">
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Spotify</div>
+<!-- API Keys & Verbindungen -->
+<div id="panel-config-api" role="tabpanel" aria-labelledby="tab-config-api" hidden>
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="glass p-4 md:p-6">
+      <div class="flex items-center justify-between mb-4">
+        <div class="font-display text-lg text-bright">Spotify</div>
         <span class="status-dot" id="cfg-spotify-dot"></span>
       </div>
-      <div class="form-group">
-        <label class="form-label">Client ID</label>
-        <input type="text" name="spotify_client_id" class="form-input" value="{{ config.spotify_client_id }}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Client Secret</label>
-        <input type="password" name="spotify_client_secret" class="form-input" value="{{ config.spotify_client_secret }}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Redirect URI</label>
-        <input type="url" name="spotify_redirect_uri" class="form-input" value="{{ config.spotify_redirect_uri }}">
-      </div>
-      <a href="{% url 'spotify_login' %}" class="btn btn-primary btn-sm">Spotify verbinden →</a>
+      {% include "components/form_field.html" with id="cfg-spotify-id" name="spotify_client_id" label="Client ID" value=config.spotify_client_id %}
+      {% include "components/form_field.html" with id="cfg-spotify-secret" name="spotify_client_secret" type="password" label="Client Secret" value=config.spotify_client_secret %}
+      {% include "components/form_field.html" with id="cfg-spotify-uri" name="spotify_redirect_uri" type="url" label="Redirect URI" value=config.spotify_redirect_uri %}
+      <a href="{% url 'spotify_login' %}" class="btn-primary">Spotify verbinden →</a>
     </div>
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Google</div>
+    <div class="glass p-4 md:p-6">
+      <div class="flex items-center justify-between mb-4">
+        <div class="font-display text-lg text-bright">Google</div>
         <span class="status-dot" id="cfg-google-dot"></span>
       </div>
-      <div class="form-group">
-        <label class="form-label">Client ID</label>
-        <input type="text" name="google_client_id" class="form-input" value="{{ config.google_client_id }}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Client Secret</label>
-        <input type="password" name="google_client_secret" class="form-input" value="{{ config.google_client_secret }}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Redirect URI</label>
-        <input type="url" name="google_redirect_uri" class="form-input" value="{{ config.google_redirect_uri }}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Google Sheets ID (Backup)</label>
-        <input type="text" name="google_sheets_id" class="form-input" value="{{ config.google_sheets_id }}">
-      </div>
-      <a href="{% url 'google_login' %}" class="btn btn-purple btn-sm">Google verbinden →</a>
+      {% include "components/form_field.html" with id="cfg-google-id" name="google_client_id" label="Client ID" value=config.google_client_id %}
+      {% include "components/form_field.html" with id="cfg-google-secret" name="google_client_secret" type="password" label="Client Secret" value=config.google_client_secret %}
+      {% include "components/form_field.html" with id="cfg-google-uri" name="google_redirect_uri" type="url" label="Redirect URI" value=config.google_redirect_uri %}
+      {% include "components/form_field.html" with id="cfg-google-sheets" name="google_sheets_id" label="Google Sheets ID (Backup)" value=config.google_sheets_id %}
+      <a href="{% url 'google_login' %}" class="btn-purple">Google verbinden →</a>
     </div>
   </div>
 </div>
 
-<div style="margin-top:1.5rem">
-  <button type="submit" class="btn btn-primary">💾 Konfiguration speichern</button>
+<div class="mt-6">
+  <button type="submit" class="btn-primary">💾 Konfiguration speichern</button>
 </div>
 </form>
 
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{% static 'js/tabs.js' %}" defer></script>
 <script>
-function switchTab(btn, name) {
-  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
-  document.querySelectorAll('.tab-content').forEach(function(t){t.classList.remove('active')});
-  btn.classList.add('active');
-  document.getElementById('tab-' + name).classList.add('active');
-}
-// Update connection dots on config page too
 fetch('/spotify/status/').then(function(r){return r.json()}).then(function(d){
   var dot = document.getElementById('cfg-spotify-dot');
   if(dot) dot.className = 'status-dot ' + (d.connected ? 'ok' : 'err');
@@ -278,29 +219,29 @@ fetch('/google/status/').then(function(r){return r.json()}).then(function(d){
   if(!si)return;
   si.addEventListener('input',function(){
     clearTimeout(dt);var q=this.value.trim();
-    if(q.length<3){rb.style.display='none';return}
+    if(q.length<3){rb.classList.add('hidden');return}
     dt=setTimeout(function(){
       fetch('https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=de,at,ch&q='+encodeURIComponent(q))
       .then(function(r){return r.json()})
       .then(function(data){
-        if(!data.length){rb.style.display='none';return}
+        if(!data.length){rb.classList.add('hidden');return}
         rb.innerHTML='';
         data.forEach(function(item){
           var d=document.createElement('div');
           d.textContent=item.display_name;
-          d.style.cssText='padding:.5rem .75rem;font-size:.82rem;cursor:pointer;border-bottom:1px solid var(--border)';
+          d.className='px-3 py-2 text-sm cursor-pointer border-b border-border hover:bg-card';
           d.onclick=function(){
             document.getElementById('cfg-home-lat').value=parseFloat(item.lat).toFixed(6);
             document.getElementById('cfg-home-lon').value=parseFloat(item.lon).toFixed(6);
-            si.value=item.display_name;rb.style.display='none';
+            si.value=item.display_name;rb.classList.add('hidden');
           };
           rb.appendChild(d);
         });
-        rb.style.display='block';
-      }).catch(function(){rb.style.display='none'});
+        rb.classList.remove('hidden');
+      }).catch(function(){rb.classList.add('hidden')});
     },350);
   });
-  document.addEventListener('click',function(e){if(!si.contains(e.target)&&!rb.contains(e.target))rb.style.display='none'});
+  document.addEventListener('click',function(e){if(!si.contains(e.target)&&!rb.contains(e.target))rb.classList.add('hidden')});
 })();
 </script>
 {% endblock %}
