@@ -11,6 +11,8 @@ from wishlist.models import (
     SongWish,
     EventOffer,
     BlockedClient,
+    PriceItem,
+    EventPriceCalculation,
     _extract_spotify_id,
 )
 
@@ -134,3 +136,25 @@ def test_is_blocked_deactivates_expired():
     BlockedClient.objects.create(session_key="abc", is_active=True, expires_at=past)
     assert BlockedClient.is_blocked(session_key="abc") is None
     assert BlockedClient.objects.get(session_key="abc").is_active is False
+
+
+# ── EventPriceCalculation ────────────────────────────────────
+@pytest.mark.django_db
+def test_price_calculation_subtotal_combines_items_and_custom():
+    ev = Event.objects.create(name="E", date=datetime.date(2999, 1, 1), location="X")
+    i1 = PriceItem.objects.create(name="A", category="tech", price=Decimal("100"))
+    i2 = PriceItem.objects.create(name="B", category="extra", price=Decimal("50"))
+    calc = EventPriceCalculation.objects.create(
+        event=ev, custom_items_json=[{"name": "c", "price": "25"}, {"name": "bad", "price": "xx"}])
+    calc.selected_items.add(i1, i2)
+    # 100 + 50 + 25 (invalid custom skipped)
+    assert calc.subtotal == Decimal("175")
+
+
+@pytest.mark.django_db
+def test_price_calculation_total_applies_discount():
+    ev = Event.objects.create(name="E", date=datetime.date(2999, 1, 1), location="X")
+    item = PriceItem.objects.create(name="A", category="tech", price=Decimal("200"))
+    calc = EventPriceCalculation.objects.create(event=ev, discount_percent=Decimal("10"))
+    calc.selected_items.add(item)
+    assert calc.total == Decimal("180")

@@ -134,6 +134,20 @@ def test_formula_overrides_subtotal(event):
     assert r["grand_total"] == Decimal("900")
 
 
+def test_full_discount_zeroes_total(event):
+    pkg = PricingPackage.objects.create(name="P", base_price=Decimal("1000"))
+    r = PriceEngine.calculate(event, package_id=pkg.pk, discount_percent=100)
+    assert r["grand_total"] == Decimal("0")
+
+
+def test_formula_division_by_zero_keeps_subtotal(event):
+    pkg = PricingPackage.objects.create(name="P", base_price=Decimal("1000"))
+    formula = PricingFormula.objects.create(name="F", expression="base / 0")
+    r = PriceEngine.calculate(event, package_id=pkg.pk, formula_id=formula.pk)
+    assert r["formula_result"] is None
+    assert r["grand_total"] == Decimal("1000")
+
+
 def test_full_combination(event):
     pkg = PricingPackage.objects.create(name="P", base_price=Decimal("1000"))
     item = PriceItem.objects.create(name="Extra", category="extra", price=Decimal("200"))
