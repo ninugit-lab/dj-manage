@@ -26,9 +26,9 @@ Zwei Entwickler (rene, mike) arbeiten gleichzeitig. Stack: Python 3.13, Django, 
 
 ```
 Du (Orchestrator / Claude Sonnet)
-├── @code-creator    → Schreibt neuen Code        (GLM-5 via Bifrost)
-├── @code-reviewer   → Prüft Code auf Bugs        (GLM-4.7-Flash via Bifrost)
-├── @explorer        → Durchsucht Codebase         (Haiku, read-only)
+├── @code-creator    → Schreibt neuen Code        Sonnet
+├── @code-reviewer   → Prüft Code auf Bugs        
+├── @explorer        → Durchsucht Codebase         qmd
 ├── @debugger        → Analysiert Fehler + Fix     (Haiku)
 ├── @django-monitor  → Überwacht Django-Server     (Haiku)
 └── @test-runner     → Führt Tests aus + filtert   (Haiku)
@@ -58,19 +58,14 @@ Du (Orchestrator / Claude Sonnet)
 
 | Agent | Modell | Warum |
 |---|---|---|
-| Orchestrator (du) | Claude Sonnet (nativ) oder `glm/glm-5` | Planung + Koordination |
-| @code-creator | `glm/glm-5` | Code-Erstellung, günstig |
-| @code-reviewer | `glm/glm-4.7-flash` | Review, kostenlos |
-| @explorer | Haiku oder `glm/glm-4.7-flash` | Read-only, minimal |
-| @debugger | Haiku oder `glm/glm-4.7-flash`| Fehleranalyse |
-| @test-runner | Haiku oder `glm/glm-4.7-flash` | Tests filtern |
-| @django-monitor | Haiku oder `glm/glm-4.7-flash`| Server-Status |
+| Orchestrator (du) | Claude Opus (nativ) | Planung + Koordination |
+| @code-creator | Sonnet | Code-Erstellung, günstig |
+| @code-reviewer | Haiku | Review, kostenlos |
+| @explorer | Haiku  | Read-only, minimal |
+| @debugger | Haiku | Fehleranalyse |
+| @test-runner | Haiku  | Tests filtern |
+| @django-monitor | Haiku | Server-Status |
 
-## Modell-Fallback
-
-- Wenn Anthropic nicht erreichbar → automatisch GLM-5 nutzen
-- Wenn GLM nicht erreichbar → Fehlermeldung an User
-- **Bei jedem Modellwechsel den User benachrichtigen:** "⚠️ Fallback: nutze GLM-5 statt Claude"
 
 ## MCP-Server
 

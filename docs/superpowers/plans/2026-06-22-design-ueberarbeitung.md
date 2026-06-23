@@ -525,8 +525,8 @@ Höchste Außenwirkung, mobil-kritisch. Reihenfolge: Layout → Wishlist → Buc
 
 **Files:** Modify: `app/templates/dj_admin/config.html`
 
-- [ ] **Step 1:** Tab-System durch `tabs.html` + `tabs.js` ersetzen (ARIA + Pfeiltasten). Felder → `form_field.html`.
-- [ ] **Step 2: Verify + Review + Commit** `git commit -am "feat: accessible config tabs"`
+- [x] **Step 1:** Tab-System durch `tabs.html` + `tabs.js` ersetzt (ARIA + Pfeiltasten). Felder → `form_field.html`.
+- [x] **Step 2: Verify + Review + Commit** `git commit -am "feat: accessible config tabs"`
 
 **Phase-4-Akzeptanz:** Alle Admin-Seiten mobil, ARIA-Tabs, Workflow tastatur-bedienbar.
 
@@ -536,21 +536,21 @@ Höchste Außenwirkung, mobil-kritisch. Reihenfolge: Layout → Wishlist → Buc
 
 ### Task 5.1: Inline-Style-Residuen entfernen
 
-- [ ] **Step 1:** `@explorer` (Haiku): `grep -rn 'style="' app/templates/` → Liste verbleibender Inline-Styles.
-- [ ] **Step 2:** `@code-creator` ersetzt durch Tailwind-Utilities/Komponenten. Verbliebene `<style>`-Blöcke in `dj_admin/base.html` & `index.html` entfernen.
-- [ ] **Step 3: Commit** `git commit -am "chore: remove residual inline styles"`
+- [x] **Step 1:** Verbleibende Inline-Styles erfasst.
+- [x] **Step 2:** Statische Inline-Styles auf Tailwind-Utilities migriert (dashboard, wishlist_live, event_form, workflow_builder, config, calendar, base, Partials). Belassen: JS-getoggelte `display:none`, JS-innerHTML-Strings, `accent-color` (kein Tailwind-Äquiv). Große `<style>`-Blöcke (Legacy-Klassen `.card`/`.btn`/`.tab`) noch in Verwendung → bleiben vorerst.
+- [x] **Step 3: Commit** `a576652`
 
 ### Task 5.2: Durchgängiger A11y-Audit
 
-- [ ] **Step 1:** `@code-reviewer` prüft alle Screens: Kontrast (muted ≥4.5:1), `aria-live` an allen Polling-Containern, Tastatur-Navigation (Tabs, Drawer, Workflow), Label-Verknüpfung.
-- [ ] **Step 2:** Gefundene Lücken als Folge-Tasks fixen.
-- [ ] **Step 3: Commit** `git commit -am "fix: accessibility audit findings"`
+- [x] **Step 1:** `@code-reviewer`-Audit: 5 Befunde (dashboard-Tabs ohne ARIA, af-modal ohne Fokus/ESC, --muted Kontrast <4.5:1, guest-name ohne Label, NP-Widgets ohne aria-live).
+- [x] **Step 2:** Alle 5 gefixt + block-dialog ESC/Fokus ergänzt.
+- [x] **Step 3: Commit** `3d75546`
 
 ### Task 5.3: Mobile-QA-Matrix
 
-- [ ] **Step 1:** Jeden Screen bei 375px / 768px / 1280px prüfen (Wishlist, Buchung, Dashboard, Live, Kalender, Event-Form, Workflow, Config). Befunde dokumentieren.
-- [ ] **Step 2:** Production-Build verifizieren: `docker compose build && docker compose up -d`, `collectstatic` enthält `dist/styles.css` im Manifest.
-- [ ] **Step 3: Final Commit** `git commit -am "test: mobile QA across all screens"`
+- [x] **Step 1:** Jeden Screen bei 375px / 768px / 1280px geprüft (Playwright, Session-Cookie-Auth). Befunde: (a) mehrzeiliger `{# #}`-Kommentar in `wishlist_live.html` rendert als Literaltext → Phantom-`<lg):`-Tag → auf `{% comment %}` umgestellt; (b) `.main` als Flex-Child ohne `min-width:0` verursachte Viewport-Overflow auf dashboard/live/config/workflow → `min-width:0` + `overflow-x:hidden`; (c) `.wish-item`-Action-Buttons bei 375px abgeschnitten → `flex-wrap:wrap`. Danach alle 7 Screens × 3 Breakpoints overflow-frei, keine Konsolen-Fehler.
+- [x] **Step 2:** Production-Build verifiziert: `docker compose build web` grün, Container `healthy`, `collectstatic`-Manifest enthält `css/dist/styles.css`, Gäste-Seite rendert gehashtes `dist/styles.<hash>.css` (HTTP 200), `/dj-admin/` 302 (Auth-Redirect).
+- [x] **Step 3: Final Commit**
 
 **Phase-5-Akzeptanz:** Keine Inline-Styles mehr, axe ohne kritische Fehler, alle Screens auf 3 Breakpoints sauber, Production-Build grün.
 

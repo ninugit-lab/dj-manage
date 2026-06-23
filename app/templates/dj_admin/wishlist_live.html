@@ -14,7 +14,7 @@
 </div>
 
 {% if active_event %}
-{#
+{% comment %}
   Layout-Strategie: EINMALIGER DOM — kein Content doppelt.
   Mobil (<lg): ARIA-Tabs steuern Sichtbarkeit via panel.hidden (tabs.js).
   Desktop (lg+): lg:!block auf jedem Panel überschreibt panel.hidden.
@@ -22,7 +22,7 @@
   Turbo-Frames (id=event-wishlist, id=blocked-clients) existieren je EINMAL.
   IDs block-ip, manual-block-reason, block-wish-id etc. je EINMAL.
   Keine ID-Duplikate.
-#}
+{% endcomment %}
 
 {# ── Tab-Navigation: nur sichtbar auf Mobil ── #}
 <div class="lg:hidden mb-4">
@@ -54,11 +54,11 @@
   </div>
 </div>
 
-{#
+{% comment %}
   Desktop-Layout-Container: 2-Spalten-Grid.
   Panels 1+2 → linke Spalte; Panels 3+4 → rechte Spalte.
   Auf Mobil: kein Grid, Panels gestapelt, tabs.js steuert hidden.
-#}
+{% endcomment %}
 <div class="lg:grid lg:grid-cols-2 lg:gap-6">
 
   {# ── Linke Spalte (Desktop) ── #}
