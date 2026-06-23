@@ -73,7 +73,7 @@
         <div class="text-[.62rem] font-mono text-accent tracking-[.1em] uppercase mb-2">
           Jetzt läuft
         </div>
-        <div id="np-live" class="flex items-center gap-3">
+        <div id="np-live" class="flex items-center gap-3" aria-live="polite" aria-atomic="true">
           <div class="text-xs text-muted">Lade…</div>
         </div>
       </div>
@@ -263,15 +263,26 @@ async function deleteWish(id) {
 }
 
 // ── Block Dialog (lives outside turbo-frame) ──
+var blockLastFocus = null;
 function openBlockDialog(wishId) {
   dialogOpen = true;
+  blockLastFocus = document.activeElement;
   document.getElementById('block-wish-id').value = wishId;
   document.getElementById('block-dialog').style.display = 'flex';
+  var first = document.getElementById('block-reason');
+  if (first) first.focus();
 }
 function closeBlockDialog() {
   document.getElementById('block-dialog').style.display = 'none';
   dialogOpen = false;
+  if (blockLastFocus && blockLastFocus.focus) blockLastFocus.focus();
 }
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') {
+    var d = document.getElementById('block-dialog');
+    if (d && d.style.display === 'flex') closeBlockDialog();
+  }
+});
 
 async function submitBlock() {
   const wishId = document.getElementById('block-wish-id').value;

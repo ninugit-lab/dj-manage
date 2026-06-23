@@ -82,10 +82,11 @@
   {# Guest name #}
   {% if event.wishlist_require_name %}
   <div class="mb-3">
+    <label for="guest-name" class="field-label">Dein Name <span aria-hidden="true">*</span></label>
     <input type="text" id="guest-name"
            placeholder="Dein Name *"
-           autocomplete="off" maxlength="100"
-           {% if not can_add_more %}disabled{% endif %}
+           autocomplete="off" maxlength="100" required aria-required="true"
+           {% if not can_add_more %}disabled aria-disabled="true"{% endif %}
            class="field-input text-sm placeholder:text-subtle" />
   </div>
   {% endif %}

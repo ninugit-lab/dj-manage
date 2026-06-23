@@ -71,8 +71,9 @@
 {% endif %}
 
 <!-- Audio Features Modal -->
-<div id="af-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
+<div id="af-modal" role="dialog" aria-modal="true" aria-labelledby="af-title" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
   <div style="background:var(--card-solid);border:1px solid var(--border);border-radius:12px;padding:1.5rem;max-width:340px;width:calc(100% - 2rem);position:relative">
+    <h2 id="af-title" class="sr-only">Audio-Features</h2>
     <button onclick="closeAF()" style="position:absolute;top:.75rem;right:.75rem;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;min-width:44px;min-height:44px" aria-label="Audio-Features schließen">
       <span aria-hidden="true">✕</span>
     </button>
@@ -81,10 +82,14 @@
 </div>
 
 <script>
+var afLastFocus = null;
 function showAudioFeatures(wishId) {
   var modal = document.getElementById('af-modal');
   var content = document.getElementById('af-content');
+  afLastFocus = document.activeElement;
   modal.style.display = 'flex';
+  var closeBtn = modal.querySelector('button[aria-label]');
+  if (closeBtn) closeBtn.focus();
   content.innerHTML = '<div style="text-align:center;color:var(--muted);padding:1rem">Lade…</div>';
   fetch('/dj-admin/wishes/' + wishId + '/audio-features/')
     .then(function(r){ return r.json(); })
@@ -113,7 +118,16 @@ function showAudioFeatures(wishId) {
     })
     .catch(function(){ content.innerHTML = '<div style="color:var(--muted);text-align:center">Fehler beim Laden</div>'; });
 }
-function closeAF() { document.getElementById('af-modal').style.display = 'none'; }
+function closeAF() {
+  document.getElementById('af-modal').style.display = 'none';
+  if (afLastFocus && afLastFocus.focus) afLastFocus.focus();
+}
 document.getElementById('af-modal').addEventListener('click', function(e){ if (e.target === this) closeAF(); });
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') {
+    var m = document.getElementById('af-modal');
+    if (m && m.style.display === 'flex') closeAF();
+  }
+});
 </script>
 </turbo-frame>

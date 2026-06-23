@@ -1,4 +1,5 @@
 {% extends "dj_admin/base.html" %}
+{% load static %}
 {% block title %}Dashboard — DJ Admin{% endblock %}
 {% block nav_dashboard %}active{% endblock %}
 
@@ -31,7 +32,7 @@
   </div>
   <!-- Now Playing Widget -->
   <div id="now-playing-dashboard" class="mt-4 pt-4 border-t border-border">
-    <div id="np-inner" class="flex items-center gap-3">
+    <div id="np-inner" class="flex items-center gap-3" aria-live="polite" aria-atomic="true">
       <div class="text-xs text-muted font-mono">Lade Spotify…</div>
     </div>
   </div>
@@ -43,14 +44,17 @@
 {% endif %}
 
 <!-- Tabs: Bestätigt zuerst -->
-<div class="tabs">
-  <button type="button" class="tab active" onclick="switchTab(this,'confirmed')">Bestätigt ({{ events_confirmed.count }})</button>
-  <button type="button" class="tab" onclick="switchTab(this,'inquiry')">Angefragt ({{ events_inquiry.count }})</button>
-  <button type="button" class="tab" onclick="switchTab(this,'past')">Vergangen ({{ events_past.count }})</button>
+<div class="flex gap-1 border-b border-border mb-4 overflow-x-auto" role="tablist" data-tabs="events">
+  <button role="tab" id="tab-events-confirmed" aria-controls="panel-events-confirmed" aria-selected="true" tabindex="0"
+          class="min-h-[44px] px-4 font-mono text-sm whitespace-nowrap border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">Bestätigt ({{ events_confirmed.count }})</button>
+  <button role="tab" id="tab-events-inquiry" aria-controls="panel-events-inquiry" aria-selected="false" tabindex="-1"
+          class="min-h-[44px] px-4 font-mono text-sm whitespace-nowrap border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">Angefragt ({{ events_inquiry.count }})</button>
+  <button role="tab" id="tab-events-past" aria-controls="panel-events-past" aria-selected="false" tabindex="-1"
+          class="min-h-[44px] px-4 font-mono text-sm whitespace-nowrap border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">Vergangen ({{ events_past.count }})</button>
 </div>
 
 <!-- Bestätigt (default sichtbar) -->
-<div id="tab-confirmed" class="tab-content active">
+<div id="panel-events-confirmed" role="tabpanel" aria-labelledby="tab-events-confirmed">
   {% if events_confirmed %}
   <table class="w-full text-sm">
     <caption class="sr-only">Bestätigte Events</caption>
@@ -92,7 +96,7 @@
 </div>
 
 <!-- Angefragt -->
-<div id="tab-inquiry" class="tab-content">
+<div id="panel-events-inquiry" role="tabpanel" aria-labelledby="tab-events-inquiry" hidden>
   {% if events_inquiry %}
   <table class="w-full text-sm">
     <caption class="sr-only">Angefragte Events</caption>
@@ -128,7 +132,7 @@
 </div>
 
 <!-- Vergangen -->
-<div id="tab-past" class="tab-content">
+<div id="panel-events-past" role="tabpanel" aria-labelledby="tab-events-past" hidden>
   {% if events_past %}
   <table class="w-full text-sm">
     <caption class="sr-only">Vergangene Events</caption>
@@ -161,14 +165,8 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{% static 'js/tabs.js' %}" defer></script>
 <script>
-function switchTab(btn, name) {
-  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
-  document.querySelectorAll('.tab-content').forEach(function(t){t.classList.remove('active')});
-  btn.classList.add('active');
-  document.getElementById('tab-' + name).classList.add('active');
-}
-
 async function confirmEvent(pk) {
   if (!confirm('Event bestätigen? E-Mail + Kalendereintrag werden erstellt.')) return;
   try {
