@@ -203,16 +203,32 @@ def _save_event_from_post(request, config, event=None):
         offer.full_clean()
         offer.save()
 
-    # Package/Formula/Workflow in EventPriceCalculation speichern
+    # Preis-Kalkulation in EventPriceCalculation speichern
     pkg_id = request.POST.get('pricing_package_id') or None
     formula_id = request.POST.get('pricing_formula_id') or None
     workflow_id = request.POST.get('pricing_workflow_id') or None
-    if pkg_id or formula_id or workflow_id:
+    item_ids = request.POST.getlist('selected_items')
+    discount_raw = request.POST.get('pricing_discount_percent')
+    has_pricing_data = (
+        pkg_id or formula_id or workflow_id or item_ids
+        or discount_raw not in (None, '')
+    )
+    existing_calc = EventPriceCalculation.objects.filter(event=event).exists()
+    if has_pricing_data or existing_calc:
+        from decimal import Decimal, InvalidOperation
         calc, _ = EventPriceCalculation.objects.get_or_create(event=event)
         calc.package_id = int(pkg_id) if pkg_id else None
         calc.formula_id = int(formula_id) if formula_id else None
         calc.workflow_id = int(workflow_id) if workflow_id else None
+        try:
+            calc.discount_percent = Decimal(discount_raw) if discount_raw else Decimal('0')
+        except InvalidOperation:
+            calc.discount_percent = Decimal('0')
         calc.save()
+        valid_ids = list(
+            PriceItem.objects.filter(pk__in=item_ids).values_list('pk', flat=True)
+        )
+        calc.selected_items.set(valid_ids)
 
     return event
 

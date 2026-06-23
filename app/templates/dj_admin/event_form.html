@@ -257,10 +257,10 @@
               <div class="text-[.65rem] text-muted tracking-widest uppercase mb-1">{{ cat.grouper }}</div>
               {% for item in cat.list %}
               <label class="flex items-center gap-2 px-2 py-2.5 min-h-[44px] rounded cursor-pointer text-sm hover:bg-purple-500/5 transition-colors">
-                <input type="checkbox" class="admin-price-cb" data-price="{{ item.price }}" value="{{ item.pk }}"
+                <input type="checkbox" name="selected_items" class="admin-price-cb w-[18px] h-[18px] min-w-[18px]" data-price="{{ item.price }}" value="{{ item.pk }}"
                   {% if item.is_required %}checked disabled{% endif %}
                   {% if calculation %}{% for ci in calculation.selected_items.all %}{% if ci.pk == item.pk %}checked{% endif %}{% endfor %}{% elif item.is_default %}checked{% endif %}
-                  onchange="calcAdminTotal()" class="w-[18px] h-[18px] min-w-[18px]" style="accent-color:#3b82f6">
+                  onchange="calcAdminTotal()" style="accent-color:#3b82f6">
                 <span class="flex-1">{{ item.name }}{% if item.description %} <span class="text-muted text-xs">— {{ item.description }}</span>{% endif %}</span>
                 <span class="font-mono text-xs text-accent">{{ item.price }}€</span>
               </label>
@@ -360,6 +360,13 @@
       <div class="pt-3 mt-3 border-t border-border">
         <div class="text-xs text-muted mb-2 font-mono tracking-widest uppercase">Automatische Regeln</div>
         <div id="rules-display" class="text-sm text-muted">Keine Regeln aktiv</div>
+      </div>
+
+      <!-- Rabatt -->
+      <div class="form-group pt-3 mt-3 border-t border-border">
+        <label class="form-label" for="pricing-discount">Rabatt (%)</label>
+        <input type="number" step="0.01" min="0" max="100" name="pricing_discount_percent" id="pricing-discount"
+          class="form-input max-w-[150px]" value="{{ calculation.discount_percent|default:'0' }}" onchange="recalculate()">
       </div>
 
       <!-- Gesamt-Übersicht (unified) -->
@@ -588,12 +595,15 @@ function doRecalculate() {
   var wfEl = document.getElementById('workflow-select');
   var workflowId = wfEl ? (parseInt(wfEl.value) || null) : null;
 
+  var discEl = document.getElementById('pricing-discount');
+  var discount = discEl ? (parseFloat(discEl.value) || 0) : 0;
+
   var body = {
     event_id: eventId,
     package_id: pkgId,
     selected_item_ids: itemIds,
     formula_id: formulaId,
-    discount_percent: 0,
+    discount_percent: discount,
     workflow_id: workflowId,
   };
 
