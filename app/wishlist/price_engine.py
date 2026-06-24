@@ -37,7 +37,37 @@ class SafeFormulaEvaluator:
         if len(expression) > self.MAX_LEN:
             raise ValueError(f"Formel zu lang (max {self.MAX_LEN} Zeichen)")
         tree = ast.parse(expression, mode='eval')
+        self._validate(tree.body)
         return self._eval_node(tree.body, variables)
+
+    def _validate(self, node):
+        # Whitelist den GESAMTEN Baum vorab, nicht nur ausgefuehrte Zweige.
+        # Verhindert, dass bösartige Knoten in totem Code (z.B. else-Zweig
+        # eines IfExp) der Laufzeitpruefung entgehen.
+        if isinstance(node, (ast.operator, ast.unaryop, ast.cmpop, ast.expr_context)):
+            return  # Operator-/Kontextknoten werden ueber ihren Eltern geprueft
+        if isinstance(node, ast.Name):
+            if node.id not in self.allowed_vars:
+                raise ValueError(f"Unbekannte Variable: {node.id}")
+        elif isinstance(node, ast.Constant):
+            if not isinstance(node.value, (int, float)) or isinstance(node.value, bool):
+                raise ValueError(f"Unerlaubte Konstante: {node.value!r}")
+        elif isinstance(node, ast.BinOp):
+            if type(node.op) not in ALLOWED_OPERATORS:
+                raise ValueError(f"Unerlaubter Operator: {type(node.op).__name__}")
+        elif isinstance(node, ast.UnaryOp):
+            if type(node.op) not in ALLOWED_OPERATORS:
+                raise ValueError(f"Unerlaubter Operator: {type(node.op).__name__}")
+        elif isinstance(node, ast.Compare):
+            if len(node.ops) != 1 or not all(
+                isinstance(op, (ast.Gt, ast.GtE, ast.Lt, ast.LtE, ast.Eq, ast.NotEq))
+                for op in node.ops
+            ):
+                raise ValueError("Unerlaubter Vergleich")
+        elif not isinstance(node, ast.IfExp):
+            raise ValueError(f"Unerlaubter Ausdruck: {type(node).__name__}")
+        for child in ast.iter_child_nodes(node):
+            self._validate(child)
 
     def _eval_node(self, node, variables):
         if isinstance(node, ast.Expression):
