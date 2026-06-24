@@ -11,10 +11,17 @@ LOGIN_URL = '/admin/login/'
 _secure_cookies = os.environ.get('SECURE_COOKIES', 'False') == 'True'
 CSRF_COOKIE_SECURE = _secure_cookies
 SESSION_COOKIE_SECURE = _secure_cookies
+
+# Hinter Reverse-Proxy/Cloudflare: Original-Schema aus Header lesen
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'False') == 'True'
+SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
+SECURE_HSTS_PRELOAD = SECURE_HSTS_SECONDS > 0
+
 CSRF_TRUSTED_ORIGINS = [
-    "https://*.ngrok.io",
+    "https://app.djredoo.de",
     "https://*.ngrok-free.dev",
-    "http://100.74.102.46:8500",
     "http://localhost:8500",
 ]
 
