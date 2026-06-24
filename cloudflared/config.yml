@@ -1,0 +1,12 @@
+# cloudflared/config.yml — nur fuer credentials-basierten Tunnel.
+# Im Token-Modus (siehe docker-compose) wird Ingress im CF-Dashboard
+# konfiguriert und diese Datei nicht verwendet.
+tunnel: <TUNNEL-ID>
+credentials-file: /etc/cloudflared/<TUNNEL-ID>.json
+
+ingress:
+  - hostname: djredoo.de
+    service: http://nginx:80
+  - hostname: app.djredoo.de
+    service: http://nginx:80
+  - service: http_status:404
