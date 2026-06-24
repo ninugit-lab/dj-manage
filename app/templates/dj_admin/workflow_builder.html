@@ -91,9 +91,10 @@
       <select id="wf-select" class="form-control" onchange="loadWorkflow()">
         <option value="">— Neuer Workflow —</option>
         {% for wf in workflows %}
-        <option value="{{ wf.pk }}" data-json='{{ wf.workflow_json|escapejs }}' data-default="{{ wf.is_default|yesno:'1,0' }}"{% if selected_wf_id == wf.pk %} selected{% endif %}>{{ wf.name }}{% if wf.is_default %} (Standard){% endif %}</option>
+        <option value="{{ wf.pk }}" data-default="{{ wf.is_default|yesno:'1,0' }}"{% if selected_wf_id == wf.pk %} selected{% endif %}>{{ wf.name }}{% if wf.is_default %} (Standard){% endif %}</option>
         {% endfor %}
       </select>
+      {{ workflow_blocks|json_script:"wf-blocks-data" }}
       <button class="btn btn-sm" onclick="deleteWorkflow()" id="btn-delete-wf" style="display:none" title="Workflow löschen">&#x1f5d1;</button>
     </div>
 
@@ -448,6 +449,8 @@
 
 <script>
 var CSRF='{{ csrf_token }}';
+var WF_BLOCKS={};
+try{WF_BLOCKS=JSON.parse(document.getElementById('wf-blocks-data').textContent)||{};}catch(e){WF_BLOCKS={};}
 var currentWfId=null;
 var steps=[];
 var wfContext=null;
@@ -473,8 +476,15 @@ fetch('/dj-admin/api/price/workflow-context/',{headers:{'X-CSRFToken':CSRF}})
   if(hr) hr.textContent=ctx.rules_count?ctx.rules_count+' aktiv':'—';
   var hf=document.getElementById('hint-formula');
   if(hf) hf.textContent=ctx.formulas.length?ctx.formulas.length+' verf.':'—';
-  renderSteps();
-}).catch(function(){});
+  initSelectedWorkflow();
+}).catch(function(){initSelectedWorkflow();});
+
+// Beim Laden den vorausgewählten Workflow (?wf=ID) in den Canvas laden
+function initSelectedWorkflow(){
+  var sel=document.getElementById('wf-select');
+  if(sel && sel.value){loadWorkflow();}
+  else{renderSteps();}
+}
 
 // Drag from palette
 document.querySelectorAll('.wb-block[draggable]').forEach(function(b){
@@ -625,7 +635,8 @@ function loadWorkflow(){
   document.getElementById('wf-default').checked=opt.dataset.default==='1';
   document.getElementById('wf-title').textContent=opt.textContent;
   delBtn.style.display='';
-  try{steps=JSON.parse(opt.dataset.json)||[]}catch(e){steps=[]}
+  var blocks=(WF_BLOCKS&&WF_BLOCKS[opt.value])||[];
+  steps=JSON.parse(JSON.stringify(blocks));
   renderSteps();
 }
 

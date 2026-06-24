@@ -868,8 +868,10 @@ def api_pricing_formula_detail(request, pk):
 def workflow_builder(request):
     workflows = PricingWorkflow.objects.all().order_by('-is_default', 'name')
     selected_wf_id = request.GET.get('wf')
+    workflow_blocks = {str(w.pk): (w.workflow_json or []) for w in workflows}
     return render(request, 'dj_admin/workflow_builder.html', {
         'workflows': workflows,
+        'workflow_blocks': workflow_blocks,
         'selected_wf_id': int(selected_wf_id) if selected_wf_id and selected_wf_id.isdigit() else None,
         'price_items': PriceItem.objects.all().order_by('sort_order'),
         'pricing_packages': PricingPackage.objects.all().order_by('sort_order'),
