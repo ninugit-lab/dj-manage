@@ -64,7 +64,7 @@
         <summary>Kurzanleitung</summary>
         <div class="wb-guide-body">
           <strong>So funktioniert der Preis-Workflow:</strong><br><br>
-          1. <strong>Blöcke ziehen</strong> — Ziehe die gewünschten Berechnungsschritte von links in den Workflow-Bereich.<br><br>
+          1. <strong>Blöcke hinzufügen</strong> — Ziehe die gewünschten Berechnungsschritte von links in den Workflow-Bereich, oder <strong>tippe</strong> sie an (mobil).<br><br>
           2. <strong>Reihenfolge bestimmt Berechnung</strong> — Die Blöcke werden von oben nach unten abgearbeitet. Jeder Block addiert seinen Betrag auf die bisherige Summe.<br><br>
           3. <strong>Umsortieren</strong> — Blöcke im Workflow per Drag & Drop verschieben. Die Reihenfolge beeinflusst das Ergebnis (z.B. Rabatt vor oder nach Regeln).<br><br>
           4. <strong>Als Standard setzen</strong> — Ein Standard-Workflow wird automatisch bei neuen Events und auf der öffentlichen Buchungsseite verwendet.<br><br>
@@ -447,7 +447,7 @@
 </div>
 
 <script>
-var CSRF=csrfToken();
+var CSRF='{{ csrf_token }}';
 var currentWfId=null;
 var steps=[];
 var wfContext=null;
@@ -479,6 +479,11 @@ fetch('/dj-admin/api/price/workflow-context/',{headers:{'X-CSRFToken':CSRF}})
 // Drag from palette
 document.querySelectorAll('.wb-block[draggable]').forEach(function(b){
   b.addEventListener('dragstart',function(e){e.dataTransfer.setData('text/plain',b.dataset.type);e.dataTransfer.effectAllowed='copy'});
+  // Tap/click adds the block — Touch-Fallback, da HTML5-DnD auf Touch nicht feuert
+  b.addEventListener('click',function(){addStep(b.dataset.type)});
+  b.setAttribute('role','button');
+  b.setAttribute('tabindex','0');
+  b.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();addStep(b.dataset.type)}});
 });
 
 var canvas=document.getElementById('wf-canvas');

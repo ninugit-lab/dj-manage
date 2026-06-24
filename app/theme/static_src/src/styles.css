@@ -35,9 +35,10 @@
     @apply cursor-pointer opacity-40 text-sm transition-opacity flex-shrink-0 hover:opacity-100 hover:text-danger;
   }
   .wb-block {
-    @apply flex items-center gap-2 px-3 py-2 bg-surface border border-border rounded-sm mb-1 cursor-grab text-[0.8rem] transition-all;
+    @apply flex items-center gap-2 px-3 py-2 min-h-[44px] bg-surface border border-border rounded-sm mb-1 cursor-grab text-[0.8rem] transition-all;
   }
   .wb-block:hover { @apply border-accent bg-accent/5; }
+  .wb-block:focus-visible { @apply outline-none border-accent ring-2 ring-accent/50; }
   .wb-block svg { @apply w-[14px] h-[14px] opacity-50 flex-shrink-0; }
   .wb-block .wb-hint { @apply text-[0.62rem] text-muted ml-auto whitespace-nowrap; }
   .wb-canvas {
