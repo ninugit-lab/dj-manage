@@ -91,6 +91,19 @@ def test_rules_block_percent(event):
     assert r["grand_total"] == Decimal("1100")
 
 
+def test_rules_block_only_selected(event):
+    pkg = PricingPackage.objects.create(name="P", base_price=Decimal("1000"))
+    r1 = PricingRule.objects.create(name="A", condition_json=[], effect_type="flat_add",
+                                    effect_value=Decimal("100"))
+    PricingRule.objects.create(name="B", condition_json=[], effect_type="flat_add",
+                               effect_value=Decimal("200"))
+    wf = make_workflow([{"type": "package"},
+                        {"type": "rules", "config": {"rule_ids": [r1.pk]}}])
+    r = PriceEngine.calculate_workflow(event, workflow_id=wf.pk, package_id=pkg.pk)
+    assert len(r["rules_applied"]) == 1
+    assert r["grand_total"] == Decimal("1100")
+
+
 def test_formula_block_uses_running_subtotal(event):
     pkg = PricingPackage.objects.create(name="P", base_price=Decimal("500"))
     formula = PricingFormula.objects.create(name="F", expression="base + guests * 5")

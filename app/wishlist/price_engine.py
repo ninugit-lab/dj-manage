@@ -400,7 +400,11 @@ class PriceEngine:
             elif btype == 'rules':
                 rules_total = Decimal('0')
                 pre_rules = subtotal
-                for rule in PricingRule.objects.filter(is_active=True).order_by('sort_order'):
+                rule_qs = PricingRule.objects.filter(is_active=True).order_by('sort_order')
+                selected_ids = block.get('config', {}).get('rule_ids')
+                if selected_ids:
+                    rule_qs = rule_qs.filter(pk__in=selected_ids)
+                for rule in rule_qs:
                     if RuleEvaluator.evaluate(rule, context):
                         amount = Decimal('0')
                         if rule.effect_type == 'percent_add':

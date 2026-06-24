@@ -936,9 +936,10 @@ def api_workflow_context(request):
                 for p in PricingPackage.objects.filter(is_active=True).order_by('sort_order')]
     formulas = [{'id': f.pk, 'name': f.name, 'expression': f.expression}
                 for f in PricingFormula.objects.filter(is_active=True)]
-    rules_count = PricingRule.objects.filter(is_active=True).count()
+    rules = [{'id': r.pk, 'name': r.name}
+             for r in PricingRule.objects.filter(is_active=True).order_by('sort_order')]
     items_count = PriceItem.objects.filter(is_active=True).count()
     return JsonResponse({
         'packages': packages, 'formulas': formulas,
-        'rules_count': rules_count, 'items_count': items_count,
+        'rules': rules, 'rules_count': len(rules), 'items_count': items_count,
     })

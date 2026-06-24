@@ -569,6 +569,19 @@ function renderSteps(){
       });
       configHtml+='</select></div>';
     }
+    if(s.type==='rules' && wfContext && wfContext.rules && wfContext.rules.length){
+      var sel=s.config.rule_ids||[];
+      var allSel=!sel.length;
+      configHtml='<div style="margin-top:.4rem;display:flex;flex-direction:column;gap:.25rem">'
+        +'<label style="display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:var(--muted)">'
+        +'<input type="checkbox"'+(allSel?' checked':'')+' onchange="toggleAllRules('+i+',this.checked)"> Alle aktiven Regeln</label>';
+      wfContext.rules.forEach(function(r){
+        var on=sel.indexOf(r.id)!==-1;
+        configHtml+='<label style="display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:var(--text);padding-left:.8rem">'
+          +'<input type="checkbox"'+(on?' checked':'')+(allSel?' disabled':'')+' onchange="toggleRule('+i+','+r.id+',this.checked)"> '+r.name+'</label>';
+      });
+      configHtml+='</div>';
+    }
     if(s.type==='formula' && wfContext && wfContext.formulas.length){
       var selFid=s.config.formula_id||'';
       configHtml='<div style="margin-top:.4rem"><select style="width:100%;padding:.2rem .4rem;border:1px solid var(--border);border-radius:4px;font-size:.78rem;background:var(--surface);color:var(--text);appearance:auto" onchange="updateStepConfig('+i+',\'formula_id\',parseInt(this.value)||null)">'
@@ -616,6 +629,22 @@ function renderSteps(){
   });
 }
 function updateStepConfig(idx,key,val){if(steps[idx]){if(!steps[idx].config)steps[idx].config={};steps[idx].config[key]=val}}
+function toggleAllRules(idx,checked){
+  if(!steps[idx])return;
+  if(!steps[idx].config)steps[idx].config={};
+  if(checked) delete steps[idx].config.rule_ids;
+  else steps[idx].config.rule_ids=wfContext.rules.map(function(r){return r.id});
+  renderSteps();
+}
+function toggleRule(idx,ruleId,checked){
+  if(!steps[idx])return;
+  if(!steps[idx].config)steps[idx].config={};
+  var ids=steps[idx].config.rule_ids||[];
+  if(checked){if(ids.indexOf(ruleId)===-1)ids.push(ruleId);}
+  else{ids=ids.filter(function(x){return x!==ruleId});}
+  steps[idx].config.rule_ids=ids;
+  renderSteps();
+}
 
 function loadWorkflow(){
   var sel=document.getElementById('wf-select');
