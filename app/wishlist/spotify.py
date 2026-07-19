@@ -73,7 +73,7 @@ class SpotifyService:
         return base64.b64encode(raw.encode()).decode()
 
     @staticmethod
-    def get_auth_url():
+    def get_auth_url(state=None):
         from urllib.parse import urlencode
         params = {
             "client_id": settings.SPOTIFY_CLIENT_ID,
@@ -81,6 +81,8 @@ class SpotifyService:
             "redirect_uri": settings.SPOTIFY_REDIRECT_URI,
             "scope": SpotifyService.SCOPES,
         }
+        if state:
+            params["state"] = state
         return f"{SpotifyService.AUTH_URL}?{urlencode(params)}"
 
     @staticmethod
@@ -318,34 +320,31 @@ class SpotifyService:
         }
 
         try:
-            session = requests.Session()
-            response = session.request(
-                method="DELETE",
-                url=url,
+            response = _request_with_retry(
+                "DELETE", url,
                 data=json.dumps(payload),
                 headers={
                     "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json"
                 },
-                timeout=REQUEST_TIMEOUT,
             )
 
             logger.debug("Spotify DELETE %s from %s → %s", track_uri, playlist_id, response.status_code)
 
             if response.status_code == 401:
                 token = SpotifyService.get_valid_token(force_refresh=True)
-                response = session.request(
-                    method="DELETE",
-                    url=url,
+                if not token:
+                    return False, "Spotify-Token abgelaufen — bitte neu verbinden."
+                response = _request_with_retry(
+                    "DELETE", url,
                     data=json.dumps(payload),
                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                    timeout=REQUEST_TIMEOUT,
                 )
 
             if response.status_code in (200, 201):
                 return True, "Erfolgreich entfernt"
 
-            return False, f"Spotify-Fehler {response.status_code}: {response.text}"
+            return False, f"Spotify-Fehler {response.status_code}: {response.text[:200]}"
 
         except Exception as e:
             logger.error("Spotify remove_from_playlist error: %s", e)

@@ -1,11 +1,17 @@
 import json
 import logging
-from datetime import timedelta
+import secrets
+import threading
+from datetime import datetime, timedelta
 
 from django.shortcuts import render, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST, require_GET
 from django.contrib.admin.views.decorators import staff_member_required
+from django.core.cache import cache
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.utils import timezone
 
 from .models import Event, SongWish, SpotifyToken, AppConfig, PriceItem, EventPriceCalculation, EmailLog, EventStatus, BlockedClient, PricingPackage, PricingRule
@@ -17,9 +23,13 @@ logger = logging.getLogger(__name__)
 
 
 def _get_client_ip(request):
-    xff = request.META.get('HTTP_X_FORWARDED_FOR')
-    if xff:
-        return xff.split(',')[0].strip()
+    # X-Forwarded-For ist vom Client fälschbar — nur vertrauenswürdige Header nutzen
+    cf_ip = request.META.get('HTTP_CF_CONNECTING_IP')
+    if cf_ip:
+        return cf_ip.strip()
+    real_ip = request.META.get('HTTP_X_REAL_IP')
+    if real_ip:
+        return real_ip.strip()
     return request.META.get('REMOTE_ADDR')
 
 
@@ -142,7 +152,7 @@ def add_wish(request):
             'error': f'Du hast bereits {event.max_wishes_per_session} Wünsche abgegeben.',
         }, status=429)
 
-    track_id = data.get('track_id', '').strip()
+    track_id = str(data.get('track_id', '') or '').strip()
     if not track_id:
         return JsonResponse({'success': False, 'error': 'Track ID fehlt'}, status=400)
 
@@ -168,6 +178,9 @@ def add_wish(request):
             ip_address=client_ip,
             session_key=session_key,
         )
+    except IntegrityError:
+        # Race Condition: gleicher Wunsch wurde parallel eingereicht
+        return JsonResponse({'success': False, 'error': 'Dieses Lied wurde bereits gewünscht!'}, status=409)
     except Exception:
         logger.exception("Error creating SongWish")
         return JsonResponse({'success': False, 'error': 'Datenbankfehler'}, status=500)
@@ -288,10 +301,25 @@ def submit_event_form(request):
     except (json.JSONDecodeError, ValueError):
         return JsonResponse({'success': False, 'error': 'Ungültige Anfrage'}, status=400)
 
+    # IP-basiertes Throttling: max 3 Anfragen pro IP pro Stunde
+    client_ip = _get_client_ip(request) or 'unknown'
+    throttle_key = f'event_form_throttle:{client_ip}'
+    submission_count = cache.get(throttle_key, 0)
+    if submission_count >= 3:
+        return JsonResponse({'success': False, 'error': 'Zu viele Anfragen. Bitte versuche es später erneut.'}, status=429)
+    cache.set(throttle_key, submission_count + 1, timeout=3600)
+
     required = ['name', 'date', 'location', 'client_name', 'client_email']
     for field in required:
-        if not data.get(field, '').strip():
+        value = data.get(field, '')
+        if not isinstance(value, str) or not value.strip():
             return JsonResponse({'success': False, 'error': f'Feld "{field}" ist erforderlich'}, status=400)
+
+    # E-Mail-Adresse validieren
+    try:
+        validate_email(data['client_email'].strip())
+    except ValidationError:
+        return JsonResponse({'success': False, 'error': 'Ungültige E-Mail-Adresse'}, status=400)
 
     config = AppConfig.load()
 
@@ -316,6 +344,11 @@ def submit_event_form(request):
         except ValueError:
             pass
 
+    try:
+        guest_count = int(data['guest_count']) if data.get('guest_count') else None
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'error': 'Ungültige Gästezahl'}, status=400)
+
     event = Event.objects.create(
         name=data['name'],
         date=parsed_date,
@@ -331,7 +364,7 @@ def submit_event_form(request):
         client_email=data['client_email'],
         client_phone=data.get('client_phone', ''),
         client_company=data.get('client_company', ''),
-        guest_count=int(data['guest_count']) if data.get('guest_count') else None,
+        guest_count=guest_count,
         distance_km=data.get('distance_km') if data.get('distance_km') is not None else None,
         special_requests=data.get('special_requests', ''),
         status=EventStatus.INQUIRY,
@@ -377,62 +410,68 @@ def submit_event_form(request):
         event.total_price = calc.total
     event.save(update_fields=['total_price'])
 
-    # Backup to Google Sheets
-    try:
-        GoogleService.backup_event_to_sheets(event)
-    except Exception:
-        logger.warning("Sheets backup failed for event %s", event.pk)
+    # Admin-Link vor dem Thread-Start bauen (request ist im Thread nicht sicher nutzbar)
+    admin_link = request.build_absolute_uri(f'/dj-admin/events/{event.pk}/edit/?token={event.admin_token}')
 
-    # Send inquiry confirmation email to customer
-    if event.client_email:
+    def _post_submit_tasks():
+        """Sheets-Backup und E-Mail-Versand im Hintergrund — blockiert die Response nicht."""
+        # Backup to Google Sheets
         try:
-            inquiry_subject = config.inquiry_email_subject
-            inquiry_body = config.inquiry_email_body.format(
-                client_name=event.client_name or "Kunde",
-                event_name=event.name,
-                event_date=event.date if isinstance(event.date, str) else event.date.strftime('%d.%m.%Y'),
-                location=event.location,
-                dj_name=config.dj_name,
-            )
-            success, msg = GoogleService.send_email(
-                event.client_email, inquiry_subject, inquiry_body, sender_name=config.dj_name)
-            EmailLog.objects.create(
-                event=event, recipient=event.client_email,
-                subject=inquiry_subject, body=inquiry_body,
-                success=success, error_message="" if success else msg)
+            GoogleService.backup_event_to_sheets(event)
         except Exception:
-            logger.warning("Inquiry email to customer failed")
+            logger.warning("Sheets backup failed for event %s", event.pk, exc_info=True)
 
-    # Send notification email to DJ
-    if config.dj_email:
-        admin_link = request.build_absolute_uri(f'/dj-admin/events/{event.pk}/edit/?token={event.admin_token}')
-        body = (
-            f"Neue Event-Anfrage!\n\n"
-            f"Event: {event.name}\n"
-            f"Datum: {event.date.strftime('%d.%m.%Y')}\n"
-            f"Location: {event.location}\n"
-            f"Kunde: {event.client_name} ({event.client_email})\n"
-            f"Telefon: {event.client_phone}\n"
-            f"Typ: {event.event_type}\n"
-            f"Gäste: {event.guest_count or 'k.A.'}\n"
-            f"Preis: {event.total_price or 'k.A.'} €\n\n"
-            f"Zum Event im Admin:\n{admin_link}\n"
-        )
-        try:
-            success, msg = GoogleService.send_email(
-                config.dj_email,
-                f"Neue Anfrage: {event.name} am {event.date.strftime('%d.%m.%Y')}",
-                body,
-                sender_name=config.dj_name
+        # Send inquiry confirmation email to customer
+        if event.client_email:
+            try:
+                inquiry_subject = config.inquiry_email_subject
+                inquiry_body = config.inquiry_email_body.format(
+                    client_name=event.client_name or "Kunde",
+                    event_name=event.name,
+                    event_date=event.date if isinstance(event.date, str) else event.date.strftime('%d.%m.%Y'),
+                    location=event.location,
+                    dj_name=config.dj_name,
+                )
+                success, msg = GoogleService.send_email(
+                    event.client_email, inquiry_subject, inquiry_body, sender_name=config.dj_name)
+                EmailLog.objects.create(
+                    event=event, recipient=event.client_email,
+                    subject=inquiry_subject, body=inquiry_body,
+                    success=success, error_message="" if success else msg)
+            except Exception:
+                logger.warning("Inquiry email to customer failed", exc_info=True)
+
+        # Send notification email to DJ
+        if config.dj_email:
+            body = (
+                f"Neue Event-Anfrage!\n\n"
+                f"Event: {event.name}\n"
+                f"Datum: {event.date.strftime('%d.%m.%Y')}\n"
+                f"Location: {event.location}\n"
+                f"Kunde: {event.client_name} ({event.client_email})\n"
+                f"Telefon: {event.client_phone}\n"
+                f"Typ: {event.event_type}\n"
+                f"Gäste: {event.guest_count or 'k.A.'}\n"
+                f"Preis: {event.total_price or 'k.A.'} €\n\n"
+                f"Zum Event im Admin:\n{admin_link}\n"
             )
-            EmailLog.objects.create(
-                event=event, recipient=config.dj_email,
-                subject=f"Neue Anfrage: {event.name}",
-                body=body, success=success,
-                error_message="" if success else msg
-            )
-        except Exception:
-            logger.warning("DJ notification email failed")
+            try:
+                success, msg = GoogleService.send_email(
+                    config.dj_email,
+                    f"Neue Anfrage: {event.name} am {event.date.strftime('%d.%m.%Y')}",
+                    body,
+                    sender_name=config.dj_name
+                )
+                EmailLog.objects.create(
+                    event=event, recipient=config.dj_email,
+                    subject=f"Neue Anfrage: {event.name}",
+                    body=body, success=success,
+                    error_message="" if success else msg
+                )
+            except Exception:
+                logger.warning("DJ notification email failed", exc_info=True)
+
+    threading.Thread(target=_post_submit_tasks, daemon=True).start()
 
     return JsonResponse({'success': True, 'event_id': event.pk})
 
@@ -441,13 +480,23 @@ def submit_event_form(request):
 
 @staff_member_required
 def spotify_login(request):
-    auth_url = SpotifyService.get_auth_url()
+    # CSRF-Schutz für OAuth-Flow: zufälliges state in Session speichern
+    state = secrets.token_urlsafe(32)
+    request.session['spotify_oauth_state'] = state
+    auth_url = SpotifyService.get_auth_url(state=state)
     return redirect(auth_url)
 
 
+@staff_member_required
 def spotify_callback(request):
     code = request.GET.get('code')
     error = request.GET.get('error')
+    # State gegen Session-Wert prüfen (constant-time)
+    state = request.GET.get('state', '')
+    session_state = request.session.pop('spotify_oauth_state', '')
+    if not session_state or not secrets.compare_digest(state, session_state):
+        return render(request, 'wishlist/spotify_error.html',
+                      {'error': 'Ungültiger OAuth-State — bitte Login erneut starten.'})
     if error or not code:
         return render(request, 'wishlist/spotify_error.html',
                       {'error': error or 'Kein Autorisierungs-Code erhalten'})
@@ -477,14 +526,24 @@ def spotify_status(request):
 
 @staff_member_required
 def google_login(request):
-    auth_url = GoogleService.get_auth_url()
+    # CSRF-Schutz für OAuth-Flow: zufälliges state in Session speichern
+    state = secrets.token_urlsafe(32)
+    request.session['google_oauth_state'] = state
+    auth_url = GoogleService.get_auth_url(state=state)
     return redirect(auth_url)
 
 
+@staff_member_required
 def google_callback(request):
     from .models import GoogleToken
     code = request.GET.get('code')
     error = request.GET.get('error')
+    # State gegen Session-Wert prüfen (constant-time)
+    state = request.GET.get('state', '')
+    session_state = request.session.pop('google_oauth_state', '')
+    if not session_state or not secrets.compare_digest(state, session_state):
+        return render(request, 'wishlist/google_error.html',
+                      {'error': 'Ungültiger OAuth-State — bitte Login erneut starten.'})
     if error or not code:
         return render(request, 'wishlist/google_error.html',
                       {'error': error or 'Kein Autorisierungs-Code erhalten'})
@@ -550,15 +609,30 @@ def api_price_estimate(request):
     from .models import Event, PricingPackage, PriceItem
     from decimal import Decimal, InvalidOperation
 
-    data = _json.loads(request.body)
+    try:
+        data = _json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Ungültige Anfrage'}, status=400)
+    if not isinstance(data, dict):
+        return JsonResponse({'error': 'Ungültige Anfrage'}, status=400)
+
     event = Event()
-    event.date = datetime.strptime(data['date'], '%Y-%m-%d').date() if data.get('date') else None
-    event.guest_count = int(data['guest_count']) if data.get('guest_count') else None
+    try:
+        event.date = datetime.strptime(data['date'], '%Y-%m-%d').date() if data.get('date') else None
+    except (ValueError, TypeError):
+        return JsonResponse({'error': 'Ungültiges Datum'}, status=400)
+    try:
+        event.guest_count = int(data['guest_count']) if data.get('guest_count') else None
+    except (ValueError, TypeError):
+        return JsonResponse({'error': 'Ungültige Gästezahl'}, status=400)
     event.event_type = data.get('event_type', '')
-    ts = data.get('time_start')
-    event.time_start = datetime.strptime(ts, '%H:%M').time() if ts else None
-    te = data.get('time_end')
-    event.time_end = datetime.strptime(te, '%H:%M').time() if te else None
+    try:
+        ts = data.get('time_start')
+        event.time_start = datetime.strptime(ts, '%H:%M').time() if ts else None
+        te = data.get('time_end')
+        event.time_end = datetime.strptime(te, '%H:%M').time() if te else None
+    except (ValueError, TypeError):
+        return JsonResponse({'error': 'Ungültige Uhrzeit'}, status=400)
     try:
         event.distance_km = Decimal(str(data['distance_km'])) if data.get('distance_km') is not None else None
     except (InvalidOperation, ValueError):

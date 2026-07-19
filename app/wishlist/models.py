@@ -506,6 +506,11 @@ class BlockedClient(models.Model):
         if not client_q:
             return None
         scope_q = Q(event=event) | Q(event__isnull=True)
-        # Deactivate expired blocks atomically before querying
-        cls.objects.filter(scope_q & client_q, is_active=True, expires_at__lte=timezone.now()).update(is_active=False)
-        return cls.objects.filter(scope_q & client_q, is_active=True).first()
+        # Expiry direkt im Query filtern — kein UPDATE pro Aufruf
+        not_expired_q = Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
+        return cls.objects.filter(scope_q & client_q & not_expired_q, is_active=True).first()
+
+    @classmethod
+    def cleanup_expired(cls):
+        """Deaktiviert abgelaufene Sperren (z.B. per Cronjob/Management-Command)."""
+        return cls.objects.filter(is_active=True, expires_at__lte=timezone.now()).update(is_active=False)

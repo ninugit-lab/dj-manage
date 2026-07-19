@@ -1,9 +1,21 @@
 import os
+import shutil as _shutil
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 BASE_DIR = Path(__file__).resolve().parent.parent
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-secret-key-change-in-production')
-DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', '')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'dev-secret-key-change-in-production'
+    else:
+        raise ImproperlyConfigured(
+            'DJANGO_SECRET_KEY muss gesetzt sein, wenn DEBUG=False '
+            '(Sessions laufen ueber signierte Cookies).'
+        )
 
 LOGIN_REDIRECT_URL = '/dj-admin/'
 LOGIN_URL = '/admin/login/'
@@ -19,11 +31,13 @@ SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '0'))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
 SECURE_HSTS_PRELOAD = SECURE_HSTS_SECONDS > 0
 
-CSRF_TRUSTED_ORIGINS = [
-    "https://app.djredoo.de",
-    "https://*.ngrok-free.dev",
-    "http://localhost:8500",
+# Zusaetzliche Origins via Env (kommagetrennt), z.B. fuer lokale Dev-Ports
+_csrf_env = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
+CSRF_TRUSTED_ORIGINS = ["https://app.dj-redoo.de"] + [
+    o.strip() for o in _csrf_env.split(',') if o.strip()
 ]
+if DEBUG:
+    CSRF_TRUSTED_ORIGINS += ["http://localhost:8500", "http://127.0.0.1:8500"]
 
 _hosts_env = os.environ.get('ALLOWED_HOSTS', '')
 if _hosts_env:
@@ -45,7 +59,6 @@ INSTALLED_APPS = [
 
 TAILWIND_APP_NAME = 'theme'
 INTERNAL_IPS = ['127.0.0.1']
-import shutil as _shutil
 NPM_BIN_PATH = _shutil.which('npm') or '/usr/bin/npm'
 
 MIDDLEWARE = [

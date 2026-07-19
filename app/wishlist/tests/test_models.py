@@ -135,6 +135,7 @@ def test_is_blocked_deactivates_expired():
     past = timezone.now() - datetime.timedelta(hours=1)
     BlockedClient.objects.create(session_key="abc", is_active=True, expires_at=past)
     assert BlockedClient.is_blocked(session_key="abc") is None
+    BlockedClient.cleanup_expired()
     assert BlockedClient.objects.get(session_key="abc").is_active is False
 
 
