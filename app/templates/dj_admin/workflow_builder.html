@@ -17,6 +17,33 @@
   details.wb-palette-acc > summary { display:none; }
   details.wb-palette-acc > * { display:block !important; }
 }
+/* Tablet Portrait: Palette als 2-spaltiges Grid statt untereinander */
+@media(min-width:640px) and (max-width:1023px){
+  .wb-palette .card { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; }
+  .wb-palette .card h3 { grid-column:1 / -1; margin-bottom:.25rem; }
+  .wb-block { margin-bottom:0; }
+}
+/* Entfernen-Button im Step (span → button) */
+.wb-rm-btn { background:none; border:none; color:inherit; font:inherit; cursor:pointer; }
+/* Komponenten-Tabs horizontal scrollbar */
+.wb-comp-tabs { overflow-x:auto; -webkit-overflow-scrolling:touch; flex-wrap:nowrap; }
+.wb-comp-tab { white-space:nowrap; flex-shrink:0; }
+/* Regel-Checkbox-Zeilen gut tappbar */
+.wb-step .wb-label label { padding:.3rem 0; }
+/* Touch-Optimierung Preiskalkulator */
+@media(pointer:coarse){
+  .wb-block { min-height:48px; padding:.7rem .8rem; cursor:pointer; }
+  .wb-move-btn { min-width:44px; min-height:44px; }
+  .wb-rm { min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; font-size:1.3rem; }
+  .wb-comp-tab { min-height:44px; padding:.75rem 1.1rem; }
+  .wb-step input[type="number"] { font-size:16px !important; width:90px !important; min-height:40px; }
+  .wb-step select { font-size:16px !important; min-height:44px; }
+  .wb-actions { row-gap:.75rem; }
+  .wb-actions .btn, .wb-wf-select .btn { min-height:44px; }
+}
+@media(max-width:768px){
+  .wb-actions #wf-name { max-width:100%; width:100%; flex-basis:100%; }
+}
 </style>
 
 <div class="page-header"><h2>Preiskalkulation</h2></div>
@@ -600,7 +627,7 @@ function renderSteps(){
       +'</span>'
       +'<span class="wb-num">'+(i+1)+'</span>'
       +'<span class="wb-label">'+s.label+detailHtml+configHtml+'</span>'
-      +'<span class="wb-rm" onclick="removeStep('+i+')">&times;</span>';
+      +'<button type="button" class="wb-rm wb-rm-btn" aria-label="Schritt entfernen" onclick="removeStep('+i+')">&times;</button>';
     // Prevent drag on interactive elements (select, input, buttons)
     el.querySelectorAll('select,input,.wb-move-btn,.wb-rm').forEach(function(inp){
       inp.addEventListener('mousedown',function(e){e.stopPropagation()});
