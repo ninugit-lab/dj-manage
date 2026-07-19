@@ -37,41 +37,15 @@ services:
     command: sh -c "npm install && npx tailwindcss -i ./src/styles.css -o ../static/css/dist/styles.css --watch"
     profiles: ["dev"]
 
-  wordpress_db:
-    image: mysql:8.0
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: ${WP_DB_NAME:-wordpress}
-      MYSQL_USER: ${WP_DB_USER:-wordpress}
-      MYSQL_PASSWORD: ${WP_DB_PASSWORD:-wordpress}
-      MYSQL_ROOT_PASSWORD: ${WP_DB_ROOT_PASSWORD:-rootpassword}
-    volumes:
-      - wordpress_db_data:/var/lib/mysql
-
-  wordpress:
-    image: wordpress:latest
-    restart: unless-stopped
-    expose:
-      - "80"
-    environment:
-      WORDPRESS_DB_HOST: wordpress_db:3306
-      WORDPRESS_DB_NAME: ${WP_DB_NAME:-wordpress}
-      WORDPRESS_DB_USER: ${WP_DB_USER:-wordpress}
-      WORDPRESS_DB_PASSWORD: ${WP_DB_PASSWORD:-wordpress}
-    volumes:
-      - wordpress_data:/var/www/html
-    depends_on:
-      - wordpress_db
-
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./site:/usr/share/nginx/site:ro
     depends_on:
       - web
-      - wordpress
     security_opt:
       - no-new-privileges:true
     tmpfs:
@@ -87,7 +61,3 @@ services:
       - nginx
     security_opt:
       - no-new-privileges:true
-
-volumes:
-  wordpress_db_data:
-  wordpress_data:

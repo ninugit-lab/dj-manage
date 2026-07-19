@@ -5,8 +5,8 @@ tunnel: <TUNNEL-ID>
 credentials-file: /etc/cloudflared/<TUNNEL-ID>.json
 
 ingress:
-  - hostname: djredoo.de
+  - hostname: dj-redoo.de
     service: http://nginx:80
-  - hostname: app.djredoo.de
+  - hostname: app.dj-redoo.de
     service: http://nginx:80
   - service: http_status:404
