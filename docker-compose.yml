@@ -22,7 +22,8 @@ services:
     tmpfs:
       - /dev/shm:size=64M
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/spotify/status/')"]
+      # X-Forwarded-Proto, damit der Check bei SECURE_SSL_REDIRECT=True nicht auf 301 läuft
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen(urllib.request.Request('http://localhost:8000/spotify/status/', headers={'X-Forwarded-Proto': 'https'}))"]
       interval: 60s
       timeout: 5s
       retries: 3
