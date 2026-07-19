@@ -158,3 +158,42 @@ def test_full_workflow_pipeline(event):
     assert r["grand_total"] == Decimal("1170")
     assert r["subtotal"] == Decimal("1300")
     assert len(r["steps"]) == 4
+
+
+def test_multiple_discount_blocks_sum_discount_amount(event):
+    # discount_amount summiert sich ueber mehrere discount-Bloecke
+    pkg = PricingPackage.objects.create(name="P", base_price=Decimal("1000"))
+    wf = make_workflow([
+        {"type": "package"},
+        {"type": "discount", "config": {"percent": 10}},   # -100 -> 900
+        {"type": "discount", "config": {"percent": 10}},   # -90  -> 810
+    ])
+    r = PriceEngine.calculate_workflow(event, workflow_id=wf.pk, package_id=pkg.pk)
+    assert r["discount_amount"] == Decimal("190")
+    assert r["grand_total"] == Decimal("810")
+    # subtotal = grand_total + discount_amount (Preis vor Rabatten)
+    assert r["subtotal"] == Decimal("1000")
+
+
+def test_multiple_flat_set_rules_last_wins(event):
+    # flat_set stapelt nicht — letzte zutreffende Regel (sort_order) gewinnt
+    pkg = PricingPackage.objects.create(name="P", base_price=Decimal("500"))
+    PricingRule.objects.create(name="Fix1", condition_json=[], effect_type="flat_set",
+                               effect_value=Decimal("800"), sort_order=1)
+    PricingRule.objects.create(name="Fix2", condition_json=[], effect_type="flat_set",
+                               effect_value=Decimal("999"), sort_order=2)
+    wf = make_workflow([{"type": "package"}, {"type": "rules"}])
+    r = PriceEngine.calculate_workflow(event, workflow_id=wf.pk, package_id=pkg.pk)
+    assert r["grand_total"] == Decimal("999")
+
+
+def test_flat_set_with_other_rules_sets_final_price(event):
+    # flat_set setzt den Endpreis des Regel-Blocks, auch mit flat_add daneben
+    pkg = PricingPackage.objects.create(name="P", base_price=Decimal("500"))
+    PricingRule.objects.create(name="Add", condition_json=[], effect_type="flat_add",
+                               effect_value=Decimal("100"), sort_order=1)
+    PricingRule.objects.create(name="Fix", condition_json=[], effect_type="flat_set",
+                               effect_value=Decimal("777"), sort_order=2)
+    wf = make_workflow([{"type": "package"}, {"type": "rules"}])
+    r = PriceEngine.calculate_workflow(event, workflow_id=wf.pk, package_id=pkg.pk)
+    assert r["grand_total"] == Decimal("777")

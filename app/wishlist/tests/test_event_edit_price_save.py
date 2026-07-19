@@ -74,3 +74,30 @@ def test_clearing_items_removes_them(staff_client, event):
     staff_client.post(reverse("dj_admin:event_edit", args=[event.pk]), data)
     calc.refresh_from_db()
     assert calc.selected_items.count() == 0
+
+
+def test_invalid_date_on_edit_keeps_existing_date(staff_client, event):
+    data = _base_post(event)
+    data["date"] = "not-a-date"
+    resp = staff_client.post(reverse("dj_admin:event_edit", args=[event.pk]), data)
+    assert resp.status_code == 302
+    event.refresh_from_db()
+    assert event.date == datetime.date(2999, 6, 20)
+
+
+def test_missing_date_on_create_returns_form_error(staff_client):
+    data = {"name": "Neu", "date": "", "location": "X",
+            "status": "inquiry", "max_wishes_per_session": "3"}
+    resp = staff_client.post(reverse("dj_admin:event_create"), data)
+    # kein 500/IntegrityError — Formular wird mit Fehlermeldung erneut angezeigt
+    assert resp.status_code == 200
+    assert resp.context["form_error"] is not None
+    assert "Datum" in resp.context["form_error"]
+    assert not Event.objects.filter(name="Neu").exists()
+
+
+def test_invalid_guest_count_is_skipped(staff_client, event):
+    data = _base_post(event)
+    data["guest_count"] = "abc"
+    resp = staff_client.post(reverse("dj_admin:event_edit", args=[event.pk]), data)
+    assert resp.status_code == 302

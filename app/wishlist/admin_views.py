@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
@@ -17,6 +17,28 @@ from .models import (
 from .google_services import GoogleService
 
 logger = logging.getLogger(__name__)
+
+
+# ── JSON/Parsing Helpers ─────────────────────────────────────────────────────
+
+class EventFormError(Exception):
+    """Validierungsfehler beim Speichern eines Events (zurueck zum Formular)."""
+
+def _parse_json_body(request):
+    """JSON-Body parsen. Gibt (data, None) oder (None, JsonResponse 400) zurueck."""
+    try:
+        return json.loads(request.body), None
+    except (json.JSONDecodeError, ValueError):
+        return None, JsonResponse({'error': 'Ungültiger JSON-Body'}, status=400)
+
+
+def _parse_decimal(value, field_name):
+    """Wert als Decimal parsen. Gibt (dec, None) oder (None, JsonResponse 400) zurueck."""
+    try:
+        return Decimal(str(value)), None
+    except (InvalidOperation, TypeError, ValueError):
+        return None, JsonResponse(
+            {'error': f'Ungültiger Zahlenwert für "{field_name}"'}, status=400)
 
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
@@ -64,12 +86,17 @@ def admin_wishlist_view(request):
 def event_create(request):
     config = AppConfig.load()
     price_items = PriceItem.objects.filter(is_active=True)
+    form_error = None
     if request.method == 'POST':
-        event = _save_event_from_post(request, config)
-        return redirect('dj_admin:event_edit', pk=event.pk)
+        try:
+            event = _save_event_from_post(request, config)
+            return redirect('dj_admin:event_edit', pk=event.pk)
+        except EventFormError as e:
+            form_error = str(e)
     default_wf = PricingWorkflow.objects.filter(is_default=True, is_active=True).first()
     return render(request, 'dj_admin/event_form.html', {
         'config': config, 'price_items': price_items, 'event': None,
+        'form_error': form_error,
         'pricing_packages': PricingPackage.objects.filter(is_active=True).order_by('sort_order'),
         'pricing_formulas': PricingFormula.objects.filter(is_active=True),
         'pricing_workflows': PricingWorkflow.objects.filter(is_active=True).order_by('-is_default', 'name'),
@@ -82,15 +109,20 @@ def event_edit(request, pk):
     event = get_object_or_404(Event, pk=pk)
     config = AppConfig.load()
     price_items = PriceItem.objects.filter(is_active=True)
+    form_error = None
     if request.method == 'POST':
-        _save_event_from_post(request, config, event=event)
-        return redirect('dj_admin:event_edit', pk=event.pk)
+        try:
+            _save_event_from_post(request, config, event=event)
+            return redirect('dj_admin:event_edit', pk=event.pk)
+        except EventFormError as e:
+            form_error = str(e)
     wishes_pending = event.wishes.filter(played=False).order_by('-created_at')
     wishes_played = event.wishes.filter(played=True).order_by('-created_at')
     offer = getattr(event, 'offer', None)
     calc = getattr(event, 'price_calculation', None)
     return render(request, 'dj_admin/event_form.html', {
         'event': event, 'config': config, 'price_items': price_items,
+        'form_error': form_error,
         'wishes_pending': wishes_pending, 'wishes_played': wishes_played,
         'calculation': calc,
         'offer': offer,
@@ -110,12 +142,29 @@ def _save_event_from_post(request, config, event=None):
         event = Event()
 
     event.name = request.POST.get('name', '')
+    # Datum ist Pflichtfeld — bei fehlendem/ungueltigem Wert zurueck zum Formular
+    # (verhindert IntegrityError durch date=None)
     date_str = request.POST.get('date', '')
-    event.date = datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else None
+    try:
+        parsed_date = datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else None
+    except ValueError:
+        parsed_date = None
+    if parsed_date is None:
+        if is_new or not event.date:
+            raise EventFormError('Bitte ein gültiges Datum angeben (Format JJJJ-MM-TT).')
+        # Bestehendes Datum behalten, Feld ueberspringen
+    else:
+        event.date = parsed_date
     ts = request.POST.get('time_start') or None
-    event.time_start = datetime.strptime(ts, '%H:%M').time() if ts else None
+    try:
+        event.time_start = datetime.strptime(ts, '%H:%M').time() if ts else None
+    except ValueError:
+        pass  # Ungueltige Uhrzeit: Feld ueberspringen
     te = request.POST.get('time_end') or None
-    event.time_end = datetime.strptime(te, '%H:%M').time() if te else None
+    try:
+        event.time_end = datetime.strptime(te, '%H:%M').time() if te else None
+    except ValueError:
+        pass  # Ungueltige Uhrzeit: Feld ueberspringen
     event.location = request.POST.get('location', '')
     event.address_street = request.POST.get('address_street', '')
     event.address_zip = request.POST.get('address_zip', '')
@@ -126,7 +175,10 @@ def _save_event_from_post(request, config, event=None):
     event.client_email = request.POST.get('client_email', '')
     event.client_phone = request.POST.get('client_phone', '')
     event.client_company = request.POST.get('client_company', '')
-    event.guest_count = int(request.POST['guest_count']) if request.POST.get('guest_count') else None
+    try:
+        event.guest_count = int(request.POST['guest_count']) if request.POST.get('guest_count') else None
+    except (ValueError, TypeError):
+        pass  # Ungueltige Gaestezahl: Feld ueberspringen
     event.special_requests = request.POST.get('special_requests', '')
     event.cover_image_url = request.POST.get('cover_image_url', '')
     # Spotify URL → ID (auto-parsed in model.save())
@@ -134,7 +186,10 @@ def _save_event_from_post(request, config, event=None):
     event.spotify_preselection_playlist_id = request.POST.get('spotify_preselection_playlist_id', '') or event.spotify_preselection_playlist_id
     event.status = request.POST.get('status', event.status)
     event.is_active = request.POST.get('is_active') == 'on'
-    event.max_wishes_per_session = max(1, int(request.POST.get('max_wishes_per_session', 3) or 3))
+    try:
+        event.max_wishes_per_session = max(1, int(request.POST.get('max_wishes_per_session', 3) or 3))
+    except (ValueError, TypeError):
+        event.max_wishes_per_session = 3
     event.wishlist_show_cover = request.POST.get('wishlist_show_cover') == 'on'
     event.wishlist_show_artist = request.POST.get('wishlist_show_artist') == 'on'
     event.wishlist_show_preview = request.POST.get('wishlist_show_preview') == 'on'
@@ -146,9 +201,15 @@ def _save_event_from_post(request, config, event=None):
     event.wishlist_dj_message = request.POST.get('wishlist_dj_message', '')
     event.default_block_reason = request.POST.get('default_block_reason', '')
     event.default_block_message = request.POST.get('default_block_message', '')
-    event.total_price = request.POST.get('total_price') or None
+    try:
+        event.total_price = Decimal(request.POST['total_price']) if request.POST.get('total_price') else None
+    except (InvalidOperation, ValueError):
+        pass  # Ungueltiger Preis: Feld ueberspringen
     event.price_notes = request.POST.get('price_notes', '')
-    event.distance_km = request.POST.get('distance_km') or None
+    try:
+        event.distance_km = Decimal(request.POST['distance_km']) if request.POST.get('distance_km') else None
+    except (InvalidOperation, ValueError):
+        pass  # Ungueltige Entfernung: Feld ueberspringen
 
     # File upload for cover image
     if 'cover_image' in request.FILES:
@@ -451,7 +512,10 @@ def block_client(request):
     reason = data.get('reason', 'Vom Admin blockiert')
     public_message = data.get('public_message', 'Du wurdest für diese Wishlist gesperrt.')
     event_id = data.get('event_id')
-    hours = int(data.get('hours', 0))
+    try:
+        hours = int(data.get('hours', 0) or 0)
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'error': 'Ungültiger Wert für "hours"'}, status=400)
     if not session_key and not ip_address:
         return JsonResponse({'success': False, 'error': 'Session oder IP benötigt'}, status=400)
     event = Event.objects.filter(pk=event_id).first() if event_id else None
@@ -624,7 +688,9 @@ def api_audio_features(request, wish_id):
 @require_POST
 def api_price_calculate(request):
     from .price_engine import PriceEngine
-    data = json.loads(request.body)
+    data, err = _parse_json_body(request)
+    if err:
+        return err
     event_id = data.get('event_id')
     event = get_object_or_404(Event, pk=event_id) if event_id else Event()
 
@@ -677,12 +743,19 @@ def api_price_items(request):
             for i in items
         ]})
     if request.method == 'POST':
-        data = json.loads(request.body)
+        data, err = _parse_json_body(request)
+        if err:
+            return err
+        if not data.get('name'):
+            return JsonResponse({'error': 'Name erforderlich'}, status=400)
+        price, err = _parse_decimal(data.get('price', 0), 'price')
+        if err:
+            return err
         item = PriceItem.objects.create(
             name=data['name'],
             category=data.get('category', 'extra'),
             description=data.get('description', ''),
-            price=data.get('price', 0),
+            price=price,
             is_default=data.get('is_default', False),
             is_required=data.get('is_required', False),
             is_public=data.get('is_public', True),
@@ -703,7 +776,9 @@ def api_price_item_detail(request, pk):
             'is_public': item.is_public, 'sort_order': item.sort_order,
         })
     if request.method == 'PUT':
-        data = json.loads(request.body)
+        data, err = _parse_json_body(request)
+        if err:
+            return err
         if 'name' in data:
             item.name = data['name']
         if 'category' in data:
@@ -711,7 +786,10 @@ def api_price_item_detail(request, pk):
         if 'description' in data:
             item.description = data.get('description', '')
         if 'price' in data:
-            item.price = Decimal(str(data['price']))
+            price, err = _parse_decimal(data['price'], 'price')
+            if err:
+                return err
+            item.price = price
         if 'is_default' in data:
             item.is_default = data['is_default']
         if 'is_required' in data:
@@ -740,14 +818,18 @@ def api_pricing_rules(request):
             for r in rules
         ]})
     if request.method == 'POST':
-        data = json.loads(request.body)
-        from decimal import Decimal
+        data, err = _parse_json_body(request)
+        if err:
+            return err
+        effect_value, err = _parse_decimal(data.get('effect_value', 0), 'effect_value')
+        if err:
+            return err
         rule = PricingRule.objects.create(
             name=data.get('name', ''),
             description=data.get('description', ''),
             condition_json=data.get('condition_json', []),
             effect_type=data.get('effect_type', 'flat_add'),
-            effect_value=Decimal(str(data.get('effect_value', 0))),
+            effect_value=effect_value,
             applies_to=data.get('applies_to', 'subtotal'),
             is_active=data.get('is_active', True),
             sort_order=data.get('sort_order', 0),
@@ -760,13 +842,17 @@ def api_pricing_rules(request):
 def api_pricing_rule_detail(request, pk):
     rule = get_object_or_404(PricingRule, pk=pk)
     if request.method == 'PUT':
-        data = json.loads(request.body)
-        from decimal import Decimal
+        data, err = _parse_json_body(request)
+        if err:
+            return err
         for field in ('name', 'description', 'condition_json', 'effect_type', 'applies_to', 'is_active', 'sort_order'):
             if field in data:
                 setattr(rule, field, data[field])
         if 'effect_value' in data:
-            rule.effect_value = Decimal(str(data['effect_value']))
+            effect_value, err = _parse_decimal(data['effect_value'], 'effect_value')
+            if err:
+                return err
+            rule.effect_value = effect_value
         rule.save()
         return JsonResponse({'success': True})
     if request.method == 'DELETE':
@@ -788,12 +874,16 @@ def api_pricing_packages(request):
             for p in pkgs
         ]})
     if request.method == 'POST':
-        data = json.loads(request.body)
-        from decimal import Decimal
+        data, err = _parse_json_body(request)
+        if err:
+            return err
+        base_price, err = _parse_decimal(data.get('base_price', 0), 'base_price')
+        if err:
+            return err
         pkg = PricingPackage.objects.create(
             name=data.get('name', ''),
             description=data.get('description', ''),
-            base_price=Decimal(str(data.get('base_price', 0))),
+            base_price=base_price,
             badge_label=data.get('badge_label', ''),
             badge_color=data.get('badge_color', ''),
             is_active=data.get('is_active', True),
@@ -810,13 +900,17 @@ def api_pricing_packages(request):
 def api_pricing_package_detail(request, pk):
     pkg = get_object_or_404(PricingPackage, pk=pk)
     if request.method == 'PUT':
-        data = json.loads(request.body)
-        from decimal import Decimal
+        data, err = _parse_json_body(request)
+        if err:
+            return err
         for field in ('name', 'description', 'badge_label', 'badge_color', 'is_active', 'is_public', 'sort_order'):
             if field in data:
                 setattr(pkg, field, data[field])
         if 'base_price' in data:
-            pkg.base_price = Decimal(str(data['base_price']))
+            base_price, err = _parse_decimal(data['base_price'], 'base_price')
+            if err:
+                return err
+            pkg.base_price = base_price
         pkg.save()
         if 'included_item_ids' in data:
             pkg.included_items.set(data['included_item_ids'])
@@ -837,10 +931,16 @@ def api_pricing_formulas(request):
             for f in formulas
         ]})
     if request.method == 'POST':
-        data = json.loads(request.body)
+        data, err = _parse_json_body(request)
+        if err:
+            return err
+        expression = data.get('expression', '')
+        err = _validate_formula_expression(expression)
+        if err:
+            return err
         formula = PricingFormula.objects.create(
             name=data.get('name', ''),
-            expression=data.get('expression', ''),
+            expression=expression,
             description=data.get('description', ''),
             is_active=data.get('is_active', True),
         )
@@ -848,11 +948,29 @@ def api_pricing_formulas(request):
     return JsonResponse({'error': 'Method not allowed'}, status=405)
 
 
+def _validate_formula_expression(expression):
+    """Formel per Probeauswertung mit Dummy-Variablen pruefen.
+    Gibt None oder JsonResponse 400 mit deutscher Fehlermeldung zurueck."""
+    from .price_engine import SafeFormulaEvaluator, FORMULA_VARS
+    dummy_vars = {v: 1 for v in FORMULA_VARS}
+    try:
+        SafeFormulaEvaluator(FORMULA_VARS).evaluate(expression, dummy_vars)
+    except (ValueError, SyntaxError) as e:
+        return JsonResponse({'error': f'Ungültige Formel: {e}'}, status=400)
+    return None
+
+
 @staff_member_required
 def api_pricing_formula_detail(request, pk):
     formula = get_object_or_404(PricingFormula, pk=pk)
     if request.method == 'PUT':
-        data = json.loads(request.body)
+        data, err = _parse_json_body(request)
+        if err:
+            return err
+        if 'expression' in data:
+            err = _validate_formula_expression(data['expression'])
+            if err:
+                return err
         for field in ('name', 'expression', 'description', 'is_active'):
             if field in data:
                 setattr(formula, field, data[field])
@@ -888,7 +1006,9 @@ def api_pricing_workflows(request):
                  'is_active': w.is_active, 'is_default': w.is_default} for w in wfs]
         return JsonResponse(data, safe=False)
     if request.method == 'POST':
-        data = json.loads(request.body)
+        data, err = _parse_json_body(request)
+        if err:
+            return err
         name = data.get('name', '').strip()
         if not name:
             return JsonResponse({'error': 'Name erforderlich'}, status=400)
@@ -910,7 +1030,9 @@ def api_pricing_workflows(request):
 def api_pricing_workflow_detail(request, pk):
     wf = get_object_or_404(PricingWorkflow, pk=pk)
     if request.method == 'PUT':
-        data = json.loads(request.body)
+        data, err = _parse_json_body(request)
+        if err:
+            return err
         name = data.get('name', '').strip()
         if name and name != wf.name and PricingWorkflow.objects.filter(name=name).exclude(pk=pk).exists():
             return JsonResponse({'error': f'Workflow "{name}" existiert bereits'}, status=400)
