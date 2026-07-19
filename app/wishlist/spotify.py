@@ -97,6 +97,9 @@ class SpotifyService:
                 },
                 headers={"Authorization": f"Basic {SpotifyService._b64_credentials()}"},
             )
+            if resp.status_code != 200:
+                logger.error("Spotify exchange_code %s: %s", resp.status_code, resp.text[:200])
+                return {"error": f"token_exchange_failed_{resp.status_code}"}
             return resp.json()
         except Exception as e:
             logger.error("Spotify exchange_code error: %s", e)
@@ -117,7 +120,10 @@ class SpotifyService:
                 data={"grant_type": "refresh_token", "refresh_token": token.refresh_token},
                 headers={"Authorization": f"Basic {SpotifyService._b64_credentials()}"},
             )
-            data = resp.json() if resp is not None else {}
+            try:
+                data = resp.json()
+            except ValueError:
+                data = {}
         except Exception as e:
             logger.error("Spotify refresh network error: %s", e)
             return False
@@ -515,9 +521,15 @@ class SpotifyService:
 
     # ── Audio Features ───────────────────────────────────────────────────────
 
+    # Seit 27.11.2024 ist /audio-features fuer neue bzw. Dev-Mode-Apps
+    # deprecated und liefert 403. Nach dem ersten 403 nicht weiter anfragen.
+    _audio_features_unavailable = False
+
     @staticmethod
     def get_audio_features(track_id):
         """Returns audio features for a track. Uses client credentials (no user scope needed)."""
+        if SpotifyService._audio_features_unavailable:
+            return None
         cc_token = SpotifyService._get_client_credentials_token()
         if not cc_token:
             return None
@@ -535,6 +547,13 @@ class SpotifyService:
                     "GET", f"{SpotifyService.API_BASE}/audio-features/{track_id}",
                     headers={"Authorization": f"Bearer {cc_token}"},
                 )
+            if resp.status_code == 403:
+                SpotifyService._audio_features_unavailable = True
+                logger.warning(
+                    "Spotify audio-features 403 — Endpoint fuer diese App deprecated "
+                    "(Web-API-Aenderung 27.11.2024), weitere Aufrufe werden uebersprungen"
+                )
+                return None
             if resp.status_code != 200:
                 logger.error("Spotify get_audio_features returned %s", resp.status_code)
                 return None

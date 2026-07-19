@@ -679,7 +679,10 @@ def api_audio_features(request, wish_id):
             'instrumentalness': wish.audio_instrumentalness,
         })
 
-    return JsonResponse({'error': 'Audio Features nicht verfügbar'}, status=404)
+    return JsonResponse({
+        'error': 'Audio-Features nicht verfügbar — Spotify hat diesen Endpoint '
+                 'für neue Apps eingestellt (Nov 2024).'
+    }, status=404)
 
 
 # ── Pricing API ─────────────────────────────────────────────────────────────
