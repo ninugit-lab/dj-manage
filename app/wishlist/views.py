@@ -316,6 +316,9 @@ def submit_event_form(request):
         if not isinstance(value, str) or not value.strip():
             return JsonResponse({'success': False, 'error': f'Feld "{field}" ist erforderlich'}, status=400)
 
+    if not data.get('privacy_consent'):
+        return JsonResponse({'success': False, 'error': 'Bitte der Datenschutzerklärung zustimmen'}, status=400)
+
     # E-Mail-Adresse validieren
     try:
         validate_email(data['client_email'].strip())

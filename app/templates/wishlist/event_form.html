@@ -274,6 +274,16 @@
         </div>
       </div>
 
+      {# Datenschutz-Einwilligung #}
+      <label class="addon-label items-start">
+        <input type="checkbox" id="f-privacy-consent" onchange="updateSubmitButton()" class="mt-0.5">
+        <span class="text-xs text-subtle">
+          Ich habe die
+          <a href="https://dj-redoo.de/datenschutz.html" target="_blank" rel="noopener" class="underline">Datenschutzerklärung</a>
+          gelesen und bin mit der Verarbeitung meiner Daten zur Bearbeitung dieser Anfrage einverstanden. *
+        </span>
+      </label>
+
       <div class="mt-6 flex justify-between">
         <button type="button" onclick="goStep(4)" class="btn-ghost min-h-[44px] px-5">&lsaquo; Zurück</button>
         <button type="button" id="submit-btn" onclick="submitForm()"
@@ -468,8 +478,9 @@ function updateSubmitButton() {
   var en = document.getElementById('f-name').value.trim();
   var d = document.getElementById('f-date').value;
   var l = document.getElementById('f-location').value.trim();
+  var consent = document.getElementById('f-privacy-consent').checked;
   var btn = document.getElementById('submit-btn');
-  var ok = !!(n && e && en && d && l && dateAvailable);
+  var ok = !!(n && e && en && d && l && dateAvailable && consent);
   btn.disabled = !ok;
   btn.setAttribute('aria-disabled', ok ? 'false' : 'true');
   if (ok) btn.classList.remove('opacity-40', 'cursor-not-allowed');
@@ -507,6 +518,7 @@ async function submitForm() {
         client_company: document.getElementById('f-client-company').value.trim(),
         guest_count: document.getElementById('f-guest-count').value || null,
         distance_km: eventDistanceKm,
+        privacy_consent: document.getElementById('f-privacy-consent').checked,
         selected_items: items,
         package_id: (function() { var p = document.querySelector('input[name="f-package"]:checked'); return p ? (parseInt(p.value) || null) : null; })()
       })
