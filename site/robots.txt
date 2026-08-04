@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /live
+Disallow: /live.html
+
+Sitemap: https://dj-redoo.de/sitemap.xml

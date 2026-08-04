@@ -1,9 +1,273 @@
-:root { color-scheme: light dark; }
+/* DJ Redoo — Design-System: Premium/Nightclub-Vibe
+   Dunkler Hintergrund, Blau/Violett-Verläufe, Glow-Effekte, Glassmorphism */
+
+:root {
+  color-scheme: dark;
+  --bg: #0a0a12;
+  --bg-elevated: #12121e;
+  --accent-blue: #3b8eff;
+  --accent-purple: #a855f7;
+  --gradient: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --text: #f2f2f7;
+  --text-muted: #b3b3c2;
+  --radius: 16px;
+  --glow-blue: 0 0 24px rgba(59, 142, 255, 0.35);
+  --glow-purple: 0 0 24px rgba(168, 85, 247, 0.35);
+  --max-width: 1100px;
+}
+
+* { box-sizing: border-box; }
+
 body {
-  font-family: system-ui, sans-serif;
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  background-image:
+    radial-gradient(circle at 15% 0%, rgba(168, 85, 247, 0.18), transparent 45%),
+    radial-gradient(circle at 85% 20%, rgba(59, 142, 255, 0.18), transparent 45%);
+  background-attachment: fixed;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+h1, h2, h3 { line-height: 1.2; margin: 0 0 0.6em; }
+h1 { font-size: clamp(2rem, 5vw, 3.2rem); }
+h2 { font-size: clamp(1.5rem, 3.5vw, 2.2rem); }
+p { margin: 0 0 1em; color: var(--text-muted); }
+a { color: var(--accent-blue); }
+
+.wrap {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+/* ---------- Navigation ---------- */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(10, 10, 18, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.nav {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0.9rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.nav-logo {
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: var(--text);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+.nav-logo span { background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-links a { color: var(--text-muted); text-decoration: none; font-size: 0.95rem; }
+.nav-links a:hover { color: var(--text); }
+
+/* ---------- Buttons / CTA ---------- */
+.btn-cta {
+  display: inline-block;
+  padding: 0.75rem 1.6rem;
+  border-radius: 999px;
+  background: var(--gradient);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: var(--glow-purple);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--glow-blue), var(--glow-purple);
+}
+
+/* ---------- Glass cards ---------- */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 1.5rem;
+}
+
+/* ---------- Hero ---------- */
+.hero {
+  padding: 4.5rem 0 3rem;
+  text-align: center;
+}
+
+.hero .eyebrow {
+  display: inline-block;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--accent-blue);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 1.2rem;
+}
+
+.hero p.lead {
+  font-size: 1.15rem;
+  max-width: 640px;
+  margin: 0 auto 1.8rem;
+}
+
+/* ---------- Sections ---------- */
+section { padding: 3rem 0; }
+section.alt { background: linear-gradient(180deg, transparent, rgba(255,255,255,0.02), transparent); }
+
+.section-title { text-align: center; margin-bottom: 2rem; }
+.section-title p { max-width: 620px; margin: 0.6rem auto 0; }
+
+/* ---------- Grid layouts ---------- */
+.grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* ---------- Cards (services / testimonials / faq) ---------- */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.card h3 { color: var(--text); }
+.card .card-link { margin-top: auto; font-weight: 600; text-decoration: none; }
+
+/* ---------- Gallery ---------- */
+.gallery-item {
+  padding: 0.6rem;
+  overflow: hidden;
+}
+
+.gallery-item img {
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  border-radius: calc(var(--radius) - 6px);
+  box-shadow: var(--glow-blue);
+  display: block;
+}
+
+/* ---------- Testimonials ---------- */
+.testimonial p.quote {
+  font-style: italic;
+  color: var(--text);
+}
+
+.testimonial .author {
+  color: var(--accent-purple);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* ---------- Portrait ---------- */
+.portrait {
+  max-width: 320px;
+  margin: 0 auto;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--glow-purple);
+  border: 1px solid var(--glass-border);
+}
+
+.portrait img { width: 100%; display: block; }
+
+/* ---------- Trust signals ---------- */
+.trust-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem 2.5rem;
+  text-align: center;
+}
+
+.trust-bar strong { display: block; font-size: 1.6rem; color: var(--text); }
+.trust-bar span { color: var(--text-muted); font-size: 0.85rem; }
+
+/* ---------- FAQ ---------- */
+.faq-item summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text);
+  list-style: none;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::before { content: "+ "; color: var(--accent-blue); }
+.faq-item[open] summary::before { content: "– "; }
+.faq-item p { margin-top: 0.7rem; }
+
+/* ---------- Footer ---------- */
+.site-footer {
+  border-top: 1px solid var(--glass-border);
+  padding: 2.5rem 0;
+  margin-top: 2rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.site-footer a { color: var(--text-muted); }
+.site-footer .footer-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  justify-content: space-between;
+}
+
+/* ---------- Baustellenseite / legacy fallback ---------- */
+main.center {
   display: grid;
   place-items: center;
   min-height: 100vh;
-  margin: 0;
+  text-align: center;
+  padding: 2rem;
 }
-main { text-align: center; padding: 2rem; }
+
+/* ---------- Live-Seite (Vollbild-iframe) ---------- */
+.live-frame {
+  border: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  background: var(--bg);
+}
