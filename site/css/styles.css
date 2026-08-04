@@ -263,6 +263,19 @@ main.center {
   padding: 2rem;
 }
 
+/* ---------- Buchungsformular (One-Pager) ---------- */
+.booking-frame-wrap { padding: 0.6rem; }
+
+.booking-frame {
+  width: 100%;
+  min-height: 900px;
+  height: 100vh;
+  max-height: 1400px;
+  border: 0;
+  border-radius: calc(var(--radius) - 6px);
+  display: block;
+}
+
 /* ---------- Live-Seite (Vollbild-iframe) ---------- */
 .live-frame {
   border: 0;
