@@ -49,7 +49,22 @@ Zentral für AI-Sichtbarkeit — Hauptmechanismus, über den KI-Suchmaschinen In
 - **`FAQPage`-Schema** auf `faq.html`: Frage/Antwort-Paare als strukturierte Daten
 - **`Service`-Schema** auf den Service-Seiten: `serviceType`, `areaServed`, `provider` → Verweis auf LocalBusiness-Entity
 
-## 4. Google Business Profile Optimierung (manuelle Checkliste)
+## 4. Live-QR-Seite (nicht indexiert)
+
+Separate statische Seite `site/live.html` unter `dj-redoo.de/live` für den Live-Einsatz am Abend (per QR-Code auf Tablet/Smartphone aufgerufen) — bewusst **nicht** Teil der SEO-Sichtbarkeit, sondern reine Bedienoberfläche.
+
+- Bindet die bestehende öffentliche Wishlist (`app.dj-redoo.de/`) per `<iframe>` ein — zeigt automatisch das aktive Event (`Event.is_active=True`), kein Event-Parameter nötig
+- Minimalistisches Layout: Vollbild-iframe, kein Header/Footer/Navigation
+- iframe-Einbettung funktioniert ohne CSP-Änderung — `nginx/conf.d/djredoo.conf:60` setzt für die öffentlichen Routen von `app.dj-redoo.de` bereits `frame-ancestors *`
+
+**Nicht auffindbar/indexiert:**
+- `<meta name="robots" content="noindex, nofollow">` im `<head>` von `live.html`
+- `Disallow: /live` in `site/robots.txt`
+- Nicht in `sitemap.xml` aufgenommen
+
+QR-Code selbst wird extern generiert (z. B. beim Event-Aufbau) und zeigt auf `dj-redoo.de/live` — kein QR-Generator im Projekt.
+
+## 5. Google Business Profile Optimierung (manuelle Checkliste)
 
 Kein Code, Aufgaben für Rene:
 - Kategorien prüfen (Hauptkategorie "DJ", Nebenkategorien Hochzeit/Firmenevent)
@@ -57,7 +72,7 @@ Kein Code, Aufgaben für Rene:
 - Servicegebiet auf 100-km-Radius um Duisburg setzen
 - GBP-Link als `sameAs` in Website-Schema einbinden
 
-## 5. Review-Funnel: Trigger-Mechanismus
+## 6. Review-Funnel: Trigger-Mechanismus
 
 Kein Scheduler im Projekt vorhanden (Status `Event.status` wechselt aktuell nur lazy beim nächsten `save()`, siehe `wishlist/models.py:110-118`). Gewählt: **In-Process-Scheduler (APScheduler)**.
 
@@ -65,7 +80,7 @@ Kein Scheduler im Projekt vorhanden (Status `Event.status` wechselt aktuell nur 
 - Täglicher Lauf (z. B. 10:00 Uhr) ruft `send_review_requests()` auf
 - Da mehrere Gunicorn-Worker laufen können: Scheduler-Start nur in einem Worker via non-blocking Dateilock (`fcntl.flock` auf `/tmp/scheduler.lock`)
 
-## 6. Review-Funnel: Ablauflogik
+## 7. Review-Funnel: Ablauflogik
 
 **Neues Feld:** `Event.review_requested_at` (DateTimeField, nullable) — verhindert Doppelversand unabhängig vom Scheduler-Lock.
 
@@ -82,16 +97,16 @@ Kein Scheduler im Projekt vorhanden (Status `Event.status` wechselt aktuell nur 
 
 **Timing:** 2 Tage Abstand nach Eventdatum, einmalige Anfrage, kein Opt-out-Mechanismus nötig (Bestandskundenkontext, berechtigtes Interesse) — Text macht deutlich, dass es eine einmalige Bitte ist.
 
-## 7. Erfolgsmessung & Monitoring
+## 8. Erfolgsmessung & Monitoring
 
 Kein neues Analytics-Tool (würde CSP-Lockerung + Cookie-Banner-Pflicht nach sich ziehen — unverhältnismäßig für den Umfang):
 - Google Search Console für `dj-redoo.de` einrichten
 - `EmailLog` liefert Versand-/Erfolgsmetrik für Review-Requests
 - Manuelle Stichprobe alle paar Wochen: Testfragen in ChatGPT/Perplexity stellen und Sichtbarkeit prüfen
 
-## 8. Umsetzungsreihenfolge
+## 9. Umsetzungsreihenfolge
 
-1. Statische Seiten + Schema.org + `robots.txt`/`sitemap.xml` (unabhängig, sofort startbar)
+1. Statische Seiten (inkl. `live.html`) + Schema.org + `robots.txt`/`sitemap.xml` (unabhängig, sofort startbar)
 2. GBP-Checkliste (Rene manuell, parallel möglich)
 3. `Event.review_requested_at` + neue `AppConfig`-Felder (Migration)
 4. APScheduler-Integration + `send_review_requests()`
