@@ -47,30 +47,100 @@
     "sameAs": []
   }
   </script>
-  <!-- sameAs bewusst leer: wird ergänzt, sobald der Google-Business-Profile-Link vorliegt (siehe Spec Abschnitt 5) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Was kostet ein DJ von DJ Redoo?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Die Preise beginnen ab 660 € für 6 Stunden reine Spielzeit inklusive Technik. Der genaue Preis ist saisonabhängig und richtet sich nach Veranstaltungsart, Dauer und Aufwand."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "In welchem Gebiet ist DJ Redoo buchbar?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "DJ Redoo ist mit Sitz in Duisburg im Umkreis von rund 100 km unterwegs, unter anderem in Düsseldorf, Essen, Oberhausen, Mülheim an der Ruhr, Krefeld, Moers, Dinslaken und Kleve."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Welche Technik ist im Angebot enthalten?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Enthalten sind professionelle Ton- und Lichttechnik, deren Verleih und Planung sowie der Auf- und Abbau. Auf Wunsch sind auch Festinstallationen für Locations und Gastronomie möglich."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Wie läuft eine Buchung ab?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Anfrage direkt über das Buchungsformular auf dieser Seite stellen, Termin und Details klären, anschließend Bestätigung. Musikwünsche können vorab über die Wunschliste eingereicht werden."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Welche Musikrichtungen werden gespielt?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Allround-Musik der letzten 50 Jahre — von Klassikern über Charts bis zu aktuellen Hits, abgestimmt auf Gästekreis und Veranstaltungsart."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Wie viel Zeit wird für Auf- und Abbau benötigt?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Auf- und Abbauzeiten sind im Preis enthalten und werden individuell mit ausreichend Vorlauf vor Veranstaltungsbeginn eingeplant, abhängig von Location und Technikumfang."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Für welche Gästezahlen ist DJ Redoo geeignet?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Von kleinen Feiern mit unter 50 Gästen bis zu großen Veranstaltungen mit über 200 Personen — Technik und Ablauf werden entsprechend angepasst."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Für welche Anlässe ist DJ Redoo buchbar?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Hochzeiten, Geburtstage, Firmenfeiern, Jubiläen, Mottopartys und Vereinsfeste — mit 18+ Jahren Erfahrung als Fachmann für Veranstaltungstechnik und Mitglied der DJ Allianz."
+        }
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
   <header class="site-header">
     <nav class="nav">
       <a class="nav-logo" href="/">DJ <span>Redoo</span></a>
       <ul class="nav-links">
-        <li><a href="/">Startseite</a></li>
-        <li><a href="/hochzeit.html">Hochzeit</a></li>
-        <li><a href="/firmenfeier.html">Firmenfeier</a></li>
-        <li><a href="/party.html">Party</a></li>
-        <li><a href="/faq.html">FAQ</a></li>
-        <li><a href="/ueber-uns.html">Über uns</a></li>
+        <li><a href="#leistungen">Leistungen</a></li>
+        <li><a href="#galerie">Galerie</a></li>
+        <li><a href="#stimmen">Stimmen</a></li>
+        <li><a href="#faq">FAQ</a></li>
+        <li><a href="#ueber-uns">Über uns</a></li>
       </ul>
-      <a class="btn-cta" href="https://app.dj-redoo.de/buchen/">Jetzt anfragen</a>
+      <a class="btn-cta" href="#buchen">Jetzt anfragen</a>
     </nav>
   </header>
 
-  <main>
+  <main id="top">
     <section class="hero wrap">
       <span class="eyebrow">DJ in Duisburg &amp; Umgebung</span>
       <h1>Dein DJ für Hochzeit, Firmenfeier &amp; Party</h1>
       <p class="lead">Thorsten alias „DJ Redoo“ — seit über 18 Jahren Fachmann für Veranstaltungstechnik, Mitglied der DJ Allianz. Musik der letzten 50 Jahre, professionelle Ton- &amp; Lichttechnik, Auf- und Abbau inklusive. Für Gruppen von unter 50 bis über 200 Gästen.</p>
-      <a class="btn-cta" href="https://app.dj-redoo.de/buchen/">Jetzt anfragen</a>
+      <a class="btn-cta" href="#buchen">Jetzt anfragen</a>
     </section>
 
     <section class="wrap">
@@ -91,17 +161,17 @@
         <article class="glass card">
           <h3>Hochzeit</h3>
           <p>Von der Trauung bis zur Aftershow-Party: einfühlsame Musikauswahl, die zu eurem großen Tag passt.</p>
-          <a class="card-link" href="/hochzeit.html">Mehr erfahren →</a>
+          <a class="card-link" href="/hochzeit.html">Mehr Details →</a>
         </article>
         <article class="glass card">
           <h3>Firmenfeier</h3>
           <p>Jubiläen, Weihnachtsfeiern, Firmenevents — professionelles Auftreten und passende Stimmung für jeden Anlass.</p>
-          <a class="card-link" href="/firmenfeier.html">Mehr erfahren →</a>
+          <a class="card-link" href="/firmenfeier.html">Mehr Details →</a>
         </article>
         <article class="glass card">
           <h3>Party</h3>
           <p>Geburtstage, Mottopartys, Vereinsfeste und Clubnächte — Allround-Musik der letzten 50 Jahre für volle Tanzflächen.</p>
-          <a class="card-link" href="/party.html">Mehr erfahren →</a>
+          <a class="card-link" href="/party.html">Mehr Details →</a>
         </article>
       </div>
     </section>
@@ -139,7 +209,7 @@
       </div>
     </section>
 
-    <section class="wrap alt" id="testimonials">
+    <section class="wrap alt" id="stimmen">
       <div class="section-title">
         <h2>Was Kunden sagen</h2>
         <p>Auszüge aus unserem Bewertungs-Archiv.</p>
@@ -172,11 +242,73 @@
       </div>
     </section>
 
-    <section class="wrap" id="cta">
-      <div class="glass" style="text-align:center;">
-        <h2>Bereit für dein Event?</h2>
-        <p>Termin anfragen und unverbindlich Preis &amp; Verfügbarkeit prüfen.</p>
-        <a class="btn-cta" href="https://app.dj-redoo.de/buchen/">Jetzt anfragen</a>
+    <section class="wrap" id="faq">
+      <div class="section-title">
+        <h2>Häufige Fragen</h2>
+        <p>Antworten auf die wichtigsten Fragen rund um Buchung, Preise und Technik.</p>
+      </div>
+      <div class="glass" style="display:flex;flex-direction:column;gap:1.2rem;">
+        <details class="faq-item" open>
+          <summary>Was kostet ein DJ von DJ Redoo?</summary>
+          <p>Die Preise beginnen ab 660 € für 6 Stunden reine Spielzeit inklusive Technik. Der genaue Preis ist saisonabhängig und richtet sich nach Veranstaltungsart, Dauer und Aufwand.</p>
+        </details>
+        <details class="faq-item">
+          <summary>In welchem Gebiet ist DJ Redoo buchbar?</summary>
+          <p>DJ Redoo ist mit Sitz in Duisburg im Umkreis von rund 100 km unterwegs, unter anderem in Düsseldorf, Essen, Oberhausen, Mülheim an der Ruhr, Krefeld, Moers, Dinslaken und Kleve.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Welche Technik ist im Angebot enthalten?</summary>
+          <p>Enthalten sind professionelle Ton- und Lichttechnik, deren Verleih und Planung sowie der Auf- und Abbau. Auf Wunsch sind auch Festinstallationen für Locations und Gastronomie möglich.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Wie läuft eine Buchung ab?</summary>
+          <p>Anfrage über das Buchungsformular unten stellen, Termin und Details klären, anschließend Bestätigung. Musikwünsche können vorab über die Wunschliste eingereicht werden.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Welche Musikrichtungen werden gespielt?</summary>
+          <p>Allround-Musik der letzten 50 Jahre — von Klassikern über Charts bis zu aktuellen Hits, abgestimmt auf Gästekreis und Veranstaltungsart.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Wie viel Zeit wird für Auf- und Abbau benötigt?</summary>
+          <p>Auf- und Abbauzeiten sind im Preis enthalten und werden individuell mit ausreichend Vorlauf vor Veranstaltungsbeginn eingeplant, abhängig von Location und Technikumfang.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Für welche Gästezahlen ist DJ Redoo geeignet?</summary>
+          <p>Von kleinen Feiern mit unter 50 Gästen bis zu großen Veranstaltungen mit über 200 Personen — Technik und Ablauf werden entsprechend angepasst.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Für welche Anlässe ist DJ Redoo buchbar?</summary>
+          <p>Hochzeiten, Geburtstage, Firmenfeiern, Jubiläen, Mottopartys und Vereinsfeste — mit 18+ Jahren Erfahrung als Fachmann für Veranstaltungstechnik und Mitglied der DJ Allianz.</p>
+        </details>
+      </div>
+    </section>
+
+    <section class="wrap alt" id="ueber-uns">
+      <div class="grid grid-2" style="align-items:center;">
+        <div class="portrait">
+          <img src="/images/dj-redoo-portrait.webp" alt="Portrait von DJ Redoo (Thorsten)" loading="lazy">
+        </div>
+        <div class="glass">
+          <h2>Thorsten — „DJ Redoo“</h2>
+          <p>Seit mehr als 18 Jahren als DJ und Fachmann für Veranstaltungstechnik aktiv und Mitglied der DJ Allianz. Zum Angebot gehören DJ-Auftritte mit Allround-Musik der letzten 50 Jahre, Ton- und Lichttechnik-Verleih und -Planung, Auf- und Abbau sowie Festinstallationen für Locations und Gastronomie.</p>
+          <p>Geeignet für Hochzeiten, Geburtstage, Firmenfeiern, Jubiläen, Mottopartys und Vereinsfeste — mit Erfahrung für Gästekapazitäten von unter 50 bis über 200 Personen.</p>
+          <a class="card-link" href="/ueber-uns.html">Mehr Details →</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap" id="buchen">
+      <div class="section-title">
+        <h2>Jetzt anfragen</h2>
+        <p>Termin und Verfügbarkeit direkt hier unverbindlich anfragen.</p>
+      </div>
+      <div class="glass booking-frame-wrap">
+        <iframe
+          class="booking-frame"
+          src="https://app.dj-redoo.de/buchen/?embed=1"
+          title="DJ Redoo Buchungsformular"
+          loading="lazy">
+        </iframe>
       </div>
     </section>
   </main>
@@ -190,7 +322,7 @@
         <a href="tel:+4915231751085">0152 31751085</a>
       </div>
       <div>
-        Anfragen &amp; Buchung über <a href="https://app.dj-redoo.de/buchen/">app.dj-redoo.de/buchen</a>
+        Anfragen &amp; Buchung direkt über das <a href="#buchen">Buchungsformular</a> oben auf dieser Seite
       </div>
     </div>
   </footer>

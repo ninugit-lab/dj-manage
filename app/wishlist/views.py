@@ -262,6 +262,7 @@ def event_form_view(request):
         'price_items': price_items,
         'pricing_packages': pricing_packages,
         'dj_coords_json': dj_coords_json,
+        'embed': request.GET.get('embed') == '1',
     })
     response['Turbo-Visit-Control'] = 'reload'
     return response

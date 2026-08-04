@@ -268,9 +268,7 @@ main.center {
 
 .booking-frame {
   width: 100%;
-  min-height: 900px;
-  height: 100vh;
-  max-height: 1400px;
+  height: 640px;
   border: 0;
   border-radius: calc(var(--radius) - 6px);
   display: block;

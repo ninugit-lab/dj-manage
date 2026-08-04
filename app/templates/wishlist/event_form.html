@@ -59,11 +59,13 @@
 {% block body %}
 <div class="relative z-10 max-w-xl mx-auto px-4 py-8 pb-32">
 
-  {# Brand #}
+  {# Brand: im Embed-Modus (iframe der statischen Landingpage) ausgeblendet — der Host zeigt bereits Name/Intro #}
+  {% if not embed %}
   <div class="text-center mb-8">
     <h1 class="font-display text-[clamp(2.5rem,8vw,4rem)] tracking-wide bg-gradient-to-br from-white/90 to-purple-400 bg-clip-text text-transparent">{{ config.dj_name }}</h1>
     <p class="text-subtle text-sm mt-2 leading-relaxed max-w-sm mx-auto">{{ config.event_form_intro }}</p>
   </div>
+  {% endif %}
 
   {# ── Progress Indicator ── #}
   <nav aria-label="Buchungsschritte" class="mb-8">
