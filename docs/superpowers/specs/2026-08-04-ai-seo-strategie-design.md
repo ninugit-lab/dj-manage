@@ -106,11 +106,37 @@ Kein neues Analytics-Tool (würde CSP-Lockerung + Cookie-Banner-Pflicht nach sic
 
 ## 9. Umsetzungsreihenfolge
 
-1. Statische Seiten (inkl. `live.html`) + Schema.org + `robots.txt`/`sitemap.xml` (unabhängig, sofort startbar)
+1. Statische Seiten (inkl. `live.html`) + Design/CSS (Abschnitt 10) + Bildergalerie + Testimonials (Abschnitt 11) + Schema.org + `robots.txt`/`sitemap.xml` (unabhängig, sofort startbar)
 2. GBP-Checkliste (Rene manuell, parallel möglich)
 3. `Event.review_requested_at` + neue `AppConfig`-Felder (Migration)
 4. APScheduler-Integration + `send_review_requests()`
 5. Google Search Console einrichten
+
+## 10. Visuelles Design
+
+**Stil:** Premium/Nightclub-Vibe — dunkler Hintergrund (near-black, z. B. `#0a0a12`) mit Blau/Violett-Farbverläufen als Akzente, Glow-Effekte um CTAs/Bildrahmen, Glassmorphism-Karten (`backdrop-filter: blur()` + halbtransparente Flächen) für Content-Blöcke.
+
+- Reines CSS, kein JS-Framework (passt zu "kein Build-System")
+- `site/css/styles.css` erweitert um CSS Custom Properties für Farbpalette (`--bg`, `--accent-blue`, `--accent-purple`, `--glass-bg`) sowie Verlaufs- und Glow-Utilities
+- Bildergalerie aus den 8 heruntergeladenen trustlocal-Bildern (`site/images/quelle-*.webp`, umbenannt nach Inhalt) als Trust-/Referenz-Galerie auf `index.html`/`ueber-uns.html`, in Glass-Karten gerahmt. Bilder sind nur 300px breit (Thumbnail-Auflösung) — ausreichend für Galerie-Kacheln, bei Bedarf später durch hochauflösende Originale ersetzbar.
+
+**Content-Fakten aus trustlocal-Recherche** (fließen in Texte auf `index.html`/`ueber-uns.html`/`faq.html` ein):
+- Inhaber: Thorsten ("DJ Redoo"), 18+ Jahre Erfahrung, Fachmann für Veranstaltungstechnik, Mitglied "DJ Allianz"
+- Leistungen: DJ-Auftritte (Allround-Musik der letzten 50 Jahre), Ton-/Lichttechnik-Verleih und -Planung, Auf-/Abbau, Festinstallation für Locations/Gastronomie
+- Eignung: Hochzeiten, Geburtstage, Firmenfeiern, Jubiläen, Mottopartys, Vereinsfeste — Gästekapazität unter 50 bis über 200 Personen
+- Preise: ab 660 € für 6 Stunden reine Spielzeit inkl. Technik (saisonabhängig)
+- Adresse: Zanderstraße 21, Duisburg
+
+**Hinweis zu Trustlocal-Bewertungen (Ø 9,3, 14 Stück):** gehören zur Trustlocal-Plattform, nicht zu Google — nur als Textreferenz mit Verlinkung nutzbar, nicht als `aggregateRating`-Schema auf der eigenen Domain (siehe Abschnitt 3).
+
+## 11. Testimonials (eigener Bewertungs-Bestand)
+
+Grundlage: 20 vorhandene 5-Sterne-Bewertungen (2019–2022, Zeitraum vor Umzug auf trustlocal), gesichert als Screenshots in `redoo/` (WhatsApp-Export). Mix aus "Verifizierte Buchung" und "Externe Bewertung", überwiegend Hochzeiten, auch Firmenfeiern und Vereinsfeste.
+
+- Auswahl von 6–8 aussagekräftigen Zitaten (unterschiedliche Event-Typen: Hochzeit, Firmenfeier, Vereinsfest) für eine Testimonial-Sektion auf `index.html`, als Glass-Karten im Design aus Abschnitt 10
+- Namen anonymisiert wie vorliegend (Vorname + Nachname-Initiale, z. B. "Daniel L.") — keine vollständigen Nachnamen, keine weiteren personenbezogenen Daten
+- Kein separates Bewertungs-Schema (`Review`) im JSON-LD, da die Bewertungen nicht verifizierbar/extern verlinkbar sind (reine Text-Testimonials, keine Plattform-Anbindung) — vermeidet Rich-Snippet-Risiken bei nicht nachprüfbaren Reviews
+- Datenquelle bleibt der `redoo/`-Ordner (nicht Teil des Git-Repos/deploybar) — Auswahl der Zitate erfolgt beim Bau der Seiten, die Screenshots selbst werden nicht ins Repo übernommen
 
 ## Out of Scope
 
