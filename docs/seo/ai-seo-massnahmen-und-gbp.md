@@ -14,12 +14,18 @@ Ergänzt `docs/superpowers/specs/2026-08-04-ai-seo-strategie-design.md` (Abschni
 | `robots.txt` + `sitemap.xml`, `/live` auf noindex | ✅ |
 | Impressum + Datenschutz + Consent im Buchungsformular | ✅ |
 | Testimonials, Bildergalerie, Dark-Premium-Design | ✅ |
-| **Google Business Profile** | ❌ → Teil C |
+| **Google Business Profile** | ✅ angelegt — Bewertungslink + `sameAs` offen |
 | **Review-Funnel (APScheduler + `review_requested_at`)** | ✅ implementiert — Bewertungslink fehlt noch |
 | **Google Search Console / Bing Webmaster** | ❌ |
 | **Verzeichniseinträge (NAP-Zitate)** | ❌ |
 
 Die größten offenen Hebel sind **nicht** auf der Website — sie sind GBP + Reviews + NAP-Zitate. KI-Suchmaschinen und lokale Rankings ziehen genau daraus.
+
+**Stand 2026-08-25:** Website- und Code-Seite ist abgeschlossen — Schema.org
+ausgebaut, FAQ auf 18 Fragen, Review-Funnel implementiert, AI-Crawler
+entsperrt. Was noch fehlt, liegt ausschließlich in externen Konten:
+Bewertungslink eintragen, `sameAs` füllen, Search Console + Bing,
+Verzeichniseinträge, GBP-Fotos.
 
 ---
 
