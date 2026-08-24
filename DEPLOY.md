@@ -54,7 +54,109 @@ docker compose exec web python manage.py check --deploy
 - DevTools-Konsole auf CSP-Violations prüfen (beide Seiten).
 - Admin-Pfade: CF-Access-Login muss erscheinen.
 
-## Updates
-```bash
-cd /opt/dj-redoo && git pull && docker compose up -d --build
+## SSH-Zugang
+
+Auf dem Entwicklungsrechner ist ein dedizierter Deploy-Key hinterlegt
+(`~/.ssh/djredoo_ed25519`), Host-Alias in `~/.ssh/config`:
+
 ```
+Host djredoo djredoo-prod
+    HostName 100.69.222.62
+    Port 54322
+    User redooad
+    IdentityFile ~/.ssh/djredoo_ed25519
+    IdentitiesOnly yes
+    StrictHostKeyChecking yes
+    ServerAliveInterval 30
+```
+
+Damit genügt `ssh djredoo`. Passwort-Login wird nicht mehr gebraucht.
+Neuen Rechner anbinden:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/djredoo_ed25519 -N "" -C "deploy@dj-manage"
+chmod 600 ~/.ssh/djredoo_ed25519
+ssh-copy-id -i ~/.ssh/djredoo_ed25519.pub -p 54322 redooad@100.69.222.62
+```
+
+## Deploy (Update auf bestehendem Server)
+
+Projektpfad auf dem Server: `/opt/dj-redoo`, Compose-Projekt `dj-redoo`.
+
+**1. Lokal pushen**
+
+```bash
+git push origin feat/production-cloudflare-nginx
+```
+
+**2. Umfang prüfen** — entscheidet, welche Schritte nötig sind:
+
+```bash
+ssh djredoo 'cd /opt/dj-redoo && git fetch origin && \
+  git diff --name-only HEAD origin/feat/production-cloudflare-nginx | cut -d/ -f1 | sort -u'
+```
+
+| Geänderte Pfade | Nötiger Schritt |
+|---|---|
+| nur `site/`, `docs/` | nichts weiter — Bind-Mount ist sofort aktiv |
+| `nginx/conf.d/` | `docker compose exec nginx nginx -s reload` |
+| `nginx/nginx.conf` | `docker compose up -d --force-recreate nginx` (s. Fallstricke) |
+| `app/`, `Dockerfile`, `requirements.txt` | `docker compose up -d --build web` |
+| Model-Änderungen | Migration läuft per `entrypoint.sh` automatisch beim Start |
+
+**3. Pull (nur Fast-Forward, damit lokale Änderungen auffallen)**
+
+```bash
+ssh djredoo 'cd /opt/dj-redoo && git status --short && \
+  git rev-parse --short HEAD > /tmp/djredoo-rollback-ref && \
+  git merge --ff-only origin/feat/production-cloudflare-nginx'
+```
+
+`git status --short` muss leer sein. Der Rollback-Ref in `/tmp` erlaubt
+später ein gezieltes Zurück.
+
+**4. Anwenden** — nginx-Config immer erst testen:
+
+```bash
+ssh djredoo 'cd /opt/dj-redoo && docker compose exec -T nginx nginx -t'
+ssh djredoo 'cd /opt/dj-redoo && docker compose up -d --force-recreate nginx'
+```
+
+**5. Verifizieren**
+
+```bash
+ssh djredoo 'cd /opt/dj-redoo && docker compose ps'
+ssh djredoo 'docker logs dj-redoo-nginx-1 2>&1 | grep -i "error\|emerg" | tail'
+
+for p in / /hochzeit.html /site.webmanifest /images/logo.svg; do
+  printf "%-24s " "$p"
+  curl -s -o /dev/null -w "%{http_code} %{content_type}\n" "https://dj-redoo.de$p"
+done
+curl -s -o /dev/null -w "app %{http_code}\n" https://app.dj-redoo.de/
+```
+
+**Rollback**
+
+```bash
+ssh djredoo 'cd /opt/dj-redoo && git reset --hard $(cat /tmp/djredoo-rollback-ref) && \
+  docker compose up -d --force-recreate nginx'
+```
+
+### Fallstricke
+
+- **`nginx.conf` ist ein Bind-Mount einer einzelnen Datei.** `git merge`
+  ersetzt die Datei und erzeugt dabei eine neue Inode — der Mount zeigt
+  weiter auf die alte. Ein `nginx -s reload` liest dann die *alte* Config
+  und meldet trotzdem Erfolg. Nach Änderungen an `nginx.conf` deshalb
+  immer `--force-recreate nginx`. Für `nginx/conf.d/` (Verzeichnis-Mount)
+  reicht ein Reload.
+- **Dateirechte.** nginx läuft als eigener User und liefert `403`, wenn
+  Dateien kein Read-Bit für "others" haben. Bei `git`-Deploys greift die
+  Server-umask und alles passt; bei manuell kopierten Dateien prüfen:
+  `ssh djredoo 'find /opt/dj-redoo/site -type f ! -perm -o=r'` — Ausgabe
+  muss leer sein.
+- **Neue Dateiendungen brauchen einen MIME-Type.** Fehlt er, liefert nginx
+  `application/octet-stream` und Browser ignorieren die Datei (so geschehen
+  bei `.webmanifest`). Ergänzungen im `types`-Block in `nginx/nginx.conf`.
+- **Cloudflare-Cache.** Änderungen an statischen Assets koennen verzögert
+  ankommen. Bei Bedarf im CF-Dashboard unter Caching → Purge Everything.
