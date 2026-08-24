@@ -430,6 +430,8 @@ def config_page(request):
                 'dj_name', 'dj_real_name', 'dj_email', 'dj_phone', 'dj_address', 'dj_website',
                 'confirmation_email_subject', 'confirmation_email_body',
                 'inquiry_email_subject', 'inquiry_email_body',
+                'review_request_email_subject', 'review_request_email_body',
+                'google_review_url',
                 'event_form_intro', 'event_form_date_prompt', 'event_form_unavailable_msg',
                 'default_playlist_id', 'wishlist_limit_message',
                 'default_block_reason', 'default_block_message',
@@ -443,6 +445,11 @@ def config_page(request):
             config.default_show_duration = request.POST.get('default_show_duration') == 'on'
             config.default_require_name = request.POST.get('default_require_name') == 'on'
             config.event_form_enabled = request.POST.get('event_form_enabled') == 'on'
+            config.review_request_enabled = request.POST.get('review_request_enabled') == 'on'
+            try:
+                config.review_request_delay_days = max(0, int(request.POST.get('review_request_delay_days', 2)))
+            except (TypeError, ValueError):
+                config.review_request_delay_days = 2
             from decimal import Decimal, InvalidOperation
             for coord_field in ['dj_home_lat', 'dj_home_lon']:
                 raw = request.POST.get(coord_field, '').strip().replace(',', '.')

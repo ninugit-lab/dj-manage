@@ -123,6 +123,22 @@
       <div class="text-xs text-muted mt-1">Platzhalter: {client_name}, {event_name}, {event_date}, {location}, {dj_name}</div>
     </div>
   </div>
+  <div class="glass p-4 md:p-6 mt-4">
+    <div class="font-display text-lg text-bright mb-4">Bewertungsanfrage nach dem Event</div>
+    <label class="flex items-center gap-2 mb-4">
+      <input type="checkbox" name="review_request_enabled" {% if config.review_request_enabled %}checked{% endif %}>
+      <span class="text-sm">Automatisch versenden</span>
+    </label>
+    {% include "components/form_field.html" with id="cfg-review-url" name="google_review_url" label="Google-Bewertungslink" value=config.google_review_url %}
+    {% include "components/form_field.html" with id="cfg-review-delay" name="review_request_delay_days" label="Wartezeit nach Event (Tage)" value=config.review_request_delay_days type="number" %}
+    {% include "components/form_field.html" with id="cfg-review-subject" name="review_request_email_subject" label="Betreff" value=config.review_request_email_subject %}
+    <div class="mb-4">
+      <label for="cfg-review-body" class="field-label">Text</label>
+      <textarea id="cfg-review-body" name="review_request_email_body" class="field-input min-h-[150px]">{{ config.review_request_email_body }}</textarea>
+      <div class="text-xs text-muted mt-1">Platzhalter: {client_name}, {event_name}, {event_date}, {location}, {dj_name}, {review_url}</div>
+    </div>
+    <div class="text-xs text-muted">Versand läuft täglich um 10:00 Uhr. Jeder Kunde erhält höchstens eine Anfrage.</div>
+  </div>
 </div>
 
 <!-- Event-Formular Settings -->

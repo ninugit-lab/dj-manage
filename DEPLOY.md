@@ -107,6 +107,12 @@ ssh djredoo 'cd /opt/dj-redoo && git fetch origin && \
 | `app/`, `Dockerfile`, `requirements.txt` | `docker compose up -d --build web` |
 | Model-Änderungen | Migration läuft per `entrypoint.sh` automatisch beim Start |
 
+Der Hintergrund-Scheduler (Bewertungsanfragen, täglich 10:00) startet mit dem
+`web`-Container. Über `fcntl.flock` auf `/tmp/dj-redoo-scheduler.lock` läuft er
+in genau einem Gunicorn-Worker. Abschalten per `DJANGO_DISABLE_SCHEDULER=1`,
+manuell auslösen mit
+`docker compose exec web python manage.py send_review_requests`.
+
 **3. Pull (nur Fast-Forward, damit lokale Änderungen auffallen)**
 
 ```bash

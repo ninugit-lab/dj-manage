@@ -15,7 +15,7 @@ Ergänzt `docs/superpowers/specs/2026-08-04-ai-seo-strategie-design.md` (Abschni
 | Impressum + Datenschutz + Consent im Buchungsformular | ✅ |
 | Testimonials, Bildergalerie, Dark-Premium-Design | ✅ |
 | **Google Business Profile** | ❌ → Teil C |
-| **Review-Funnel (APScheduler + `review_requested_at`)** | ❌ Spec 6/7 nicht implementiert |
+| **Review-Funnel (APScheduler + `review_requested_at`)** | ✅ implementiert — Bewertungslink fehlt noch |
 | **Google Search Console / Bing Webmaster** | ❌ |
 | **Verzeichniseinträge (NAP-Zitate)** | ❌ |
 
@@ -99,14 +99,22 @@ Nachgelagert im Code, sobald GBP live ist:
 4. Nach 3–5 Tagen: Abdeckung prüfen, „URL-Prüfung" für jede Seite → Indexierung beantragen
 5. `bing.com/webmasters` → Import aus Search Console (ein Klick). Wichtig, weil **ChatGPT-Suche über den Bing-Index läuft** — ohne Bing-Indexierung ist DJ Redoo für ChatGPT unsichtbar.
 
-## B3. Review-Funnel implementieren (Spec Abschnitte 6/7)
+## B3. Review-Funnel ✅ implementiert
 
-Der einzige noch fehlende Code-Block der Original-Spec. Ohne ihn passiert nach dem Event nichts, und Bewertungen sind der stärkste Einzelfaktor im lokalen Ranking.
+Code liegt in `app/wishlist/review_requests.py`, Scheduler in
+`app/wishlist/scheduler.py` (APScheduler, täglich 10:00, `fcntl.flock` gegen
+Mehrfachstart über die Gunicorn-Worker). Manuell auslösbar mit
+`docker compose exec web python manage.py send_review_requests`.
 
-- `Event.review_requested_at` (Migration)
-- `AppConfig.review_request_email_subject/_body/google_review_url`
-- `send_review_requests()` + APScheduler in `AppConfig.ready()` mit `fcntl.flock`
-- Trigger: Status `past`, 2 Tage nach Eventdatum, einmalig
+Trigger: Eventdatum ≥ *Wartezeit* Tage her, Status `past` oder `confirmed`,
+Kunden-E-Mail vorhanden, `review_requested_at` leer. Fehlgeschlagene Mails
+geben den Event wieder frei und werden am Folgetag erneut versucht.
+
+**Noch offen — einmalig im DJ-Admin unter Konfiguration → E-Mail:**
+1. Google-Bewertungslink eintragen (aus GBP, siehe Teil C Schritt 7)
+2. „Automatisch versenden" aktivieren
+
+Ohne beides bleibt der Funnel inaktiv.
 
 Ziel-Kadenz: **jedes** durchgeführte Event bekommt eine Anfrage. Realistisch konvertieren 20–30 % → bei 30 Events/Jahr sind das 6–9 neue Bewertungen jährlich. Das reicht, um in Duisburg vorne zu liegen.
 
@@ -164,7 +172,7 @@ Aktuell fehlen Felder, die AI-Antworten direkt zitieren:
 
 ## B7. Content-Erweiterungen mit dem besten Verhältnis
 
-- **FAQ ausbauen von 6 auf 15–20 Fragen.** Die FAQ-Seite ist die mit Abstand meistzitierte Quelle in AI-Overviews, weil Frage-Antwort-Paare 1:1 übernehmbar sind. Neue Fragen an echten Suchanfragen ausrichten: „Wie lange spielt ein DJ auf einer Hochzeit?", „Was kostet ein DJ für 100 Gäste?", „Braucht man für eine Hochzeit einen DJ oder eine Band?", „Wie früh muss man einen DJ buchen?", „Übernimmt der DJ auch die Moderation?"
+- ~~FAQ ausbauen~~ ✅ 18 Fragen live. Die FAQ-Seite ist die mit Abstand meistzitierte Quelle in AI-Overviews, weil Frage-Antwort-Paare 1:1 übernehmbar sind. Neue Fragen an echten Suchanfragen ausrichten: „Wie lange spielt ein DJ auf einer Hochzeit?", „Was kostet ein DJ für 100 Gäste?", „Braucht man für eine Hochzeit einen DJ oder eine Band?", „Wie früh muss man einen DJ buchen?", „Übernimmt der DJ auch die Moderation?"
 - **Stadt-Landingpages** (in der Original-Spec out of scope, aber der nächstgrößte Hebel): je eine Seite für Düsseldorf, Essen, Oberhausen, Mülheim, Krefeld, Moers. Nur sinnvoll mit **echt unterschiedlichem Inhalt** — konkrete Locations der Stadt, gespielte Events dort, Anfahrtshinweis. Sechs kopierte Seiten mit ausgetauschtem Stadtnamen sind Doorway-Pages und werden abgestraft.
 - **Referenz-Locations nennen.** Namen realer Hochzeitslocations, in denen DJ Redoo gespielt hat, auf `ueber-uns.html`. Extrem starkes lokales Signal, weil diese Locations selbst gesucht werden.
 - **Bilder ersetzen.** Die aktuellen Bilder sind 300 px breit (Thumbnail-Auflösung). Echte Eventfotos in ≥ 1600 px, mit sprechenden Dateinamen (`dj-hochzeit-duisburg-2025.webp`), gefülltem `alt` und `width`/`height` gegen Layout-Shift.
@@ -289,7 +297,7 @@ Die Place ID über `developers.google.com/maps/documentation/places/web-service/
 | 1 | GBP anlegen + Verifizierung starten (Teil C 1–5) · Search Console + Bing (B2) |
 | 1 | PLZ `47058` auf Website/Impressum/Schema ergänzen · `robots.txt` AI-Crawler · `llms.txt` · `lastmod` (B5/B6) |
 | 2 | GBP vollständig ausfüllen inkl. Fotos und Q&A (Teil C 6) |
-| 2–3 | Review-Funnel implementieren (B3) · Review-QR-Code fürs DJ-Pult |
+| 2–3 | Bewertungslink im DJ-Admin eintragen + Funnel aktivieren (B3) · Review-QR-Code fürs DJ-Pult |
 | 3 | `sameAs` + Place ID einbauen (Teil C 8) · Verzeichniseinträge (B4) |
-| 4+ | FAQ auf 15–20 Fragen · echte Eventfotos · später Stadt-Landingpages (B7) |
+| 4+ | echte Eventfotos · später Stadt-Landingpages (B7) |
 | laufend | Monatlich: GBP-Beitrag, 2–3 Fotos, AI-Testprompts protokollieren, Bewertungen beantworten |

@@ -79,6 +79,10 @@ class Event(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    review_requested_at = models.DateTimeField(null=True, blank=True,
+        verbose_name="Bewertungsanfrage gesendet",
+        help_text="Zeitpunkt der automatischen Nachfass-Mail. Leer = noch nicht gesendet.")
+
     class Meta:
         verbose_name = "Event"
         verbose_name_plural = "Events"
@@ -221,6 +225,19 @@ class AppConfig(models.Model):
     inquiry_email_body = models.TextField(blank=True, verbose_name="Anfrage-Mail Text",
         help_text="Platzhalter: {client_name}, {event_name}, {event_date}, {location}, {dj_name}",
         default="Hallo {client_name},\n\nvielen Dank für deine Anfrage für \"{event_name}\" am {event_date} in {location}.\n\nWir melden uns in Kürze bei dir!\n\nBeste Grüße,\n{dj_name}")
+    review_request_email_subject = models.CharField(max_length=200,
+        default="Wie war euer Abend? 🎶",
+        verbose_name="Bewertungs-Mail Betreff")
+    review_request_email_body = models.TextField(blank=True, verbose_name="Bewertungs-Mail Text",
+        help_text="Platzhalter: {client_name}, {event_name}, {event_date}, {location}, {dj_name}, {review_url}",
+        default="Hallo {client_name},\n\nvielen Dank, dass ich bei \"{event_name}\" am {event_date} in {location} für die Musik sorgen durfte!\n\nWenn dir der Abend gefallen hat, freue ich mich sehr über eine kurze Bewertung bei Google — das dauert keine Minute und hilft mir enorm weiter:\n{review_url}\n\nBeste Grüße,\n{dj_name}")
+    google_review_url = models.URLField(blank=True, verbose_name="Google-Bewertungslink",
+        help_text="Aus dem Google-Business-Profil: Rezensionen → Mehr Rezensionen erhalten")
+    review_request_enabled = models.BooleanField(default=False,
+        verbose_name="Automatische Bewertungsanfragen",
+        help_text="Sendet nach jedem Event eine Nachfass-Mail. Erfordert einen Bewertungslink.")
+    review_request_delay_days = models.PositiveIntegerField(default=2,
+        verbose_name="Wartezeit nach Event (Tage)")
     # DJ info / Person
     dj_name = models.CharField(max_length=100, default="DJ", verbose_name="DJ Name / Künstlername")
     dj_real_name = models.CharField(max_length=200, blank=True, verbose_name="Echter Name")
