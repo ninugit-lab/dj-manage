@@ -116,6 +116,13 @@ def _set_sqlite_pragmas(sender, connection, **kwargs):
 connection_created.connect(_set_sqlite_pragmas)
 
 # ── Static & Media ───────────────────────────────────────────────────────────
+# Django-Default wäre America/Chicago — die App rechnet aber durchgehend
+# mit deutschen Terminen (Eventdatum, Bewertungsanfragen, Anzeige im Admin).
+LANGUAGE_CODE = 'de-de'
+TIME_ZONE = os.environ.get('TZ', 'Europe/Berlin')
+USE_I18N = True
+USE_TZ = True
+
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 _static_dir = BASE_DIR / 'static'

@@ -51,7 +51,8 @@ def start():
 
     from .review_requests import send_review_requests
 
-    _scheduler = BackgroundScheduler(timezone=os.environ.get('TZ', 'Europe/Berlin'))
+    from django.conf import settings
+    _scheduler = BackgroundScheduler(timezone=settings.TIME_ZONE)
     _scheduler.add_job(
         send_review_requests,
         CronTrigger(hour=10, minute=0),
