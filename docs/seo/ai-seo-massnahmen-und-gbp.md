@@ -189,7 +189,10 @@ Hochzeits-DJ · Firmenfeier-DJ · Geburtstags-DJ · Vereinsfest-DJ · Ton- und L
 **Öffnungszeiten:** Erreichbarkeitszeiten für Anfragen eintragen (z. B. Mo–Fr 10–20 Uhr, Sa 10–16 Uhr). Ein Profil ganz ohne Zeiten wirkt unvollständig.
 
 **Fotos — der unterschätzte Hebel.** Profile mit vielen Fotos bekommen deutlich mehr Anfragen. Mindestens:
-- Logo (quadratisch, 720×720)
+- Logo (quadratisch, 720×720) — **liegt fertig vor:** `site/images/logo-google-720.png`.
+  Motiv sitzt innerhalb des einbeschriebenen Kreises, weil Google Profillogos
+  rund beschneidet. Breite Variante fürs Knowledge Panel: `logo-google-wide.png`
+  (1447×400), Vektor-Quellen: `logo-square.svg` / `logo-wide.svg`
 - Titelbild (Querformat, 1024×576) — am besten volle Tanzfläche
 - 10–20 weitere: Equipment-Aufbau, Lichtshow im Dunkeln, Hochzeitslocation, Thorsten am Pult, Fahrzeug
 - Monatlich 2–3 neue Fotos nachlegen — Aktivität ist ein Ranking-Signal

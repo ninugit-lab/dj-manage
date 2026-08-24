@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000" role="img" aria-label="DJ Redoo">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b8eff"/><stop offset="1" stop-color="#a855f7"/>
+    </linearGradient></defs>
+  <rect width="1000" height="1000" fill="#0a0a12"/>
+  <circle cx="500.0" cy="500.0" r="340.00" fill="url(#g)"/><circle cx="500.0" cy="500.0" r="272.00" fill="none" stroke="#0a0a12" stroke-width="18.70" opacity="0.5"/><circle cx="500.0" cy="500.0" r="224.40" fill="none" stroke="#0a0a12" stroke-width="15.30" opacity="0.39"/><circle cx="500.0" cy="500.0" r="180.20" fill="none" stroke="#0a0a12" stroke-width="13.60" opacity="0.28"/><circle cx="500.0" cy="500.0" r="129.20" fill="#0a0a12"/>
+  <g fill="#f2f2f7"><path transform="translate(428.64,574.8340000000001) scale(0.21080,-0.21080)" d="M311 714Q602 714 602 503Q602 438 569.5 390.5Q537 343 481 311L689 0H470L319 260H270V0H77V714ZM308 568H270V405H306Q350 405 378.5 424.5Q407 444 407 494Q407 529 384.0 548.5Q361 568 308 568Z"/></g>
+</svg>
