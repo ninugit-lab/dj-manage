@@ -151,6 +151,54 @@ ssh djredoo 'cd /opt/dj-redoo && git reset --hard $(cat /tmp/djredoo-rollback-re
   docker compose up -d --force-recreate nginx'
 ```
 
+## Cloudflare-API
+
+Zugangsdaten liegen lokal in `secrets/cloudflare.env` (nicht im Repo,
+`chmod 600`). Laden und benutzen:
+
+```bash
+set -a; . secrets/cloudflare.env; set +a
+curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
+  "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records" \
+  | python3 -m json.tool
+```
+
+Der aktuelle Token hat **nur Leserechte** (Stand 2026-08-25). DNS-Änderungen
+— etwa der Search-Console-TXT-Record — brauchen einen Token mit
+*Zone → DNS → Edit* auf der Zone `dj-redoo.de`.
+
+> Tokens im neuen `cfat_`-Format beantworten `/user/tokens/verify` nicht:
+> ein „Invalid API Token" dort heißt nicht, dass der Token kaputt ist.
+> Gegen `/zones` testen.
+
+### Offener Befund: DMARC ist wirkungslos
+
+`_dmarc.dj-redoo.de` und `autodiscover.dj-redoo.de` stehen auf *proxied*
+(orange Wolke). Cloudflare liefert dort Proxy-IPs statt des CNAME-Ziels —
+`dig +short TXT _dmarc.dj-redoo.de` kommt leer zurück, obwohl unter
+`dmarc.ionos.de` korrekt `v=DMARC1; p=none;` steht.
+
+Folge: Empfänger finden keine DMARC-Policy. Das betrifft die Zustellbarkeit
+aller Mails aus der App, auch der Bewertungsanfragen.
+
+**Behebung** — beide Records auf *DNS only* (graue Wolke) stellen; im
+Dashboard unter DNS → Records, oder per API mit einem Schreib-Token:
+
+```bash
+set -a; . secrets/cloudflare.env; set +a
+for name in _dmarc autodiscover; do
+  id=$(curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
+    "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records?name=$name.dj-redoo.de" \
+    | python3 -c "import json,sys;print(json.load(sys.stdin)['result'][0]['id'])")
+  curl -s -X PATCH -H "Authorization: Bearer $CF_API_TOKEN" \
+    -H "Content-Type: application/json" --data '{"proxied":false}' \
+    "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records/$id"
+done
+dig +short TXT _dmarc.dj-redoo.de   # muss "v=DMARC1; p=none;" zeigen
+```
+
+Faustregel: CNAMEs für Mail-Dienste dürfen nie proxied sein.
+
 ### Fallstricke
 
 - **Bind-Mounts überleben keinen Inode-Wechsel.** Docker bindet die Inode,
