@@ -14,7 +14,7 @@ Ergänzt `docs/superpowers/specs/2026-08-04-ai-seo-strategie-design.md` (Abschni
 | `robots.txt` + `sitemap.xml`, `/live` auf noindex | ✅ |
 | Impressum + Datenschutz + Consent im Buchungsformular | ✅ |
 | Testimonials, Bildergalerie, Dark-Premium-Design | ✅ |
-| **Google Business Profile** | ✅ angelegt — Bewertungslink + `sameAs` offen |
+| **Google Business Profile** | ✅ angelegt, `sameAs` verknüpft |
 | **Review-Funnel (APScheduler + `review_requested_at`)** | ✅ implementiert — Bewertungslink fehlt noch |
 | **Google Search Console / Bing Webmaster** | ❌ |
 | **Verzeichniseinträge (NAP-Zitate)** | ❌ |
@@ -23,9 +23,21 @@ Die größten offenen Hebel sind **nicht** auf der Website — sie sind GBP + Re
 
 **Stand 2026-08-25:** Website- und Code-Seite ist abgeschlossen — Schema.org
 ausgebaut, FAQ auf 18 Fragen, Review-Funnel implementiert, AI-Crawler
-entsperrt. Was noch fehlt, liegt ausschließlich in externen Konten:
-Bewertungslink eintragen, `sameAs` füllen, Search Console + Bing,
-Verzeichniseinträge, GBP-Fotos.
+entsperrt, GBP über `sameAs` verknüpft. Offen sind nur noch externe Konten:
+Search Console + Bing, Verzeichniseinträge, GBP-Fotos — und der eine Schalter
+"Automatisch versenden" im DJ-Admin.
+
+## Profil-Kennungen
+
+| Zweck | Wert |
+|---|---|
+| Bewertungslink (in `AppConfig`) | `https://g.page/r/CVP5vQi34gPoEBM/review` |
+| CID | `16718455517482973523` |
+| Maps-URL (in `sameAs`) | `https://maps.google.com/?cid=16718455517482973523` |
+
+Die CID steckt im Bewertungslink: der Token nach `/r/` ist base64url-kodiertes
+Protobuf, Feld 1 ist die CID als little-endian fixed64. Damit lässt sich die
+Maps-URL ohne Places-API ableiten.
 
 ---
 
@@ -274,17 +286,20 @@ Hochzeits-DJ · Firmenfeier-DJ · Geburtstags-DJ · Vereinsfest-DJ · Ton- und L
 3. QR-Code daraus generieren, ausdrucken, beim Event ans DJ-Pult stellen. Bewertungen am Abend selbst, in Feierlaune, haben die mit Abstand höchste Quote.
 4. **Auf jede Bewertung innerhalb von 48 h antworten** — auch auf 5-Sterne, auch kurz. Antwortquote ist ein bestätigter Ranking-Faktor, und die Antworttexte sind indexierbarer Content mit Keywords.
 
-## Schritt 8 — Profil-URL zurück in die Website
+## Schritt 8 — Profil-URL zurück in die Website ✅ erledigt
 
-Sobald das Profil live ist, in `site/*.html` in jedem `LocalBusiness`-JSON-LD:
+In `site/index.html` und `site/ueber-uns.html` steht im `LocalBusiness`-JSON-LD:
 
 ```json
 "sameAs": [
-  "https://www.google.com/maps/place/?q=place_id:DEINE_PLACE_ID"
+  "https://maps.google.com/?cid=16718455517482973523"
 ]
 ```
 
-Die Place ID über `developers.google.com/maps/documentation/places/web-service/place-id` ermitteln. Das ist die Verknüpfung zwischen Website-Entität und Google-Entität — ohne sie behandeln KI-Modelle beides als zwei unabhängige Fundstücke.
+Das ist die Verknüpfung zwischen Website-Entität und Google-Entität — ohne sie
+behandeln KI-Modelle beides als zwei unabhängige Fundstücke. Weitere Profile
+(Bing Places, Apple Business Connect, Facebook) gehören später in dasselbe
+Array, siehe B4.
 
 ---
 
