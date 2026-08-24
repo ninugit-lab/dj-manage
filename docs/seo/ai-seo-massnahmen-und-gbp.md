@@ -23,6 +23,62 @@ Die größten offenen Hebel sind **nicht** auf der Website — sie sind GBP + Re
 
 ---
 
+# Teil B0 — BLOCKER: Cloudflare sperrt alle AI-Crawler
+
+**Gefunden am 2026-08-24. Wichtiger als alles andere in Teil B.**
+
+Die `robots.txt` erlaubt GPTBot, ClaudeBot, PerplexityBot & Co. ausdruecklich —
+aber sie kommen gar nicht erst bis nginx. Cloudflare blockt sie eine Ebene
+davor mit `403 Your request was blocked.`
+
+Messung (`curl -A "<UA>" https://dj-redoo.de/`):
+
+| User-Agent | Status |
+|---|---|
+| Googlebot, bingbot, Applebot, normale Browser | 200 |
+| **GPTBot, OAI-SearchBot** (ChatGPT) | **403** |
+| **ClaudeBot** (Claude) | **403** |
+| **PerplexityBot** (Perplexity) | **403** |
+| **meta-externalagent** (Meta AI) | **403** |
+
+Auch `/llms.txt` ist fuer diese Bots 403 — nur `/robots.txt` kommt durch.
+Der komplette AI-SEO-Teil der Strategie ist damit **wirkungslos**: die
+Modelle koennen die Seite nicht lesen, egal wie gut sie ausgezeichnet ist.
+
+**Ursache:** Cloudflares "Block AI Scrapers and Crawlers" bzw. der
+AI-Labyrinth/Bot-Fight-Mode. Fuer neu angelegte Zonen ist das seit 2025
+teilweise standardmaessig aktiv — es wurde nicht bewusst eingeschaltet.
+
+**Behebung (nur im Cloudflare-Dashboard moeglich, kein Repo-Change):**
+
+1. Cloudflare Dashboard → Zone `dj-redoo.de` → **Security → Bots**
+2. **"AI Scrapers and Crawlers"** auf *Off* / *Allow* stellen
+   (ggf. heisst die Option "Block AI bots" oder liegt unter
+   Security → Settings)
+3. Unter **Security → WAF → Custom rules** pruefen, ob eine Regel auf
+   `cf.verified_bot_category eq "AI Crawler"` o. ae. blockt → deaktivieren
+4. **Security → Bots → Bot Fight Mode** ebenfalls pruefen: blockt
+   pauschal nicht-verifizierte Bots
+5. Danach verifizieren:
+
+```bash
+for ua in GPTBot/1.0 OAI-SearchBot/1.0 ClaudeBot/1.0 PerplexityBot/1.0 \
+          meta-externalagent/1.1; do
+  printf "%-24s " "$ua"
+  curl -s -o /dev/null -w "%{http_code}\n" -A "$ua" https://dj-redoo.de/
+done
+```
+
+Alle Zeilen muessen `200` zeigen. Erst danach greifen `llms.txt`,
+Schema.org und der gesamte Rest der AI-Strategie.
+
+> Hinweis: Cloudflare bietet unter "AI Audit" auch eine Pay-per-Crawl-
+> Option. Fuer ein lokales Dienstleistungsgeschaeft ist das der falsche
+> Hebel — Ziel ist maximale Sichtbarkeit in AI-Antworten, nicht die
+> Monetarisierung von Crawls.
+
+---
+
 # Teil B — Was man noch machen kann
 
 Sortiert nach Wirkung ÷ Aufwand. B1–B4 sind die Pflicht, der Rest optional.
