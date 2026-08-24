@@ -16,8 +16,8 @@ Ergänzt `docs/superpowers/specs/2026-08-04-ai-seo-strategie-design.md` (Abschni
 | Testimonials, Bildergalerie, Dark-Premium-Design | ✅ |
 | **Google Business Profile** | ✅ angelegt, `sameAs` verknüpft |
 | **Review-Funnel (APScheduler + `review_requested_at`)** | ✅ implementiert — Bewertungslink fehlt noch |
-| **Google Search Console / Bing Webmaster** | ❌ |
-| **Verzeichniseinträge (NAP-Zitate)** | ❌ |
+| **Google Search Console / Bing Webmaster** | ⏳ IndexNow läuft, Konten offen → `externe-eintraege.md` |
+| **Verzeichniseinträge (NAP-Zitate)** | ⏳ vorbereitet → `externe-eintraege.md` |
 
 Die größten offenen Hebel sind **nicht** auf der Website — sie sind GBP + Reviews + NAP-Zitate. KI-Suchmaschinen und lokale Rankings ziehen genau daraus.
 
@@ -103,6 +103,12 @@ Nachgelagert im Code, sobald GBP live ist:
 
 ## B2. Google Search Console + Bing Webmaster Tools
 
+→ **Schritt-für-Schritt mit fertigen Werten: [`externe-eintraege.md`](externe-eintraege.md)**
+
+IndexNow ist bereits aktiv und meldet Änderungen ohne Konto an Bing:
+`scripts/indexnow.sh`. Der Rest braucht Logins.
+
+
 1. `search.google.com/search-console` → Property **Domain** `dj-redoo.de` (nicht URL-Präfix) anlegen
 2. Verifizierung per DNS-TXT-Record — Cloudflare-DNS, Record hinzufügen, Proxy irrelevant bei TXT
 3. Sitemap einreichen: `https://dj-redoo.de/sitemap.xml`
@@ -129,6 +135,10 @@ Ohne beides bleibt der Funnel inaktiv.
 Ziel-Kadenz: **jedes** durchgeführte Event bekommt eine Anfrage. Realistisch konvertieren 20–30 % → bei 30 Events/Jahr sind das 6–9 neue Bewertungen jährlich. Das reicht, um in Duisburg vorne zu liegen.
 
 ## B4. NAP-Zitate: Verzeichniseinträge mit identischen Daten
+
+→ **Kopierfertiger NAP-Block und Anleitung je Verzeichnis:
+[`externe-eintraege.md`](externe-eintraege.md)**
+
 
 „NAP" = Name, Adresse, Telefon. Google gleicht diese Angaben quer über das Web ab — je konsistenter, desto höher das Vertrauen in den Standort. **Immer exakt identisch schreiben:**
 
