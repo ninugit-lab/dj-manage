@@ -163,41 +163,49 @@ curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
   | python3 -m json.tool
 ```
 
-Der aktuelle Token hat **nur Leserechte** (Stand 2026-08-25). DNS-Änderungen
-— etwa der Search-Console-TXT-Record — brauchen einen Token mit
-*Zone → DNS → Edit* auf der Zone `dj-redoo.de`.
+Der Token hat *Zone → DNS → Edit* auf `dj-redoo.de` (Stand 2026-08-25).
+Für die üblichen Aufgaben gibt es einen Wrapper:
+
+```bash
+scripts/cf-dns.sh list                    # alle Records
+scripts/cf-dns.sh txt @ "google-site-verification=XXXX"
+scripts/cf-dns.sh unproxy _dmarc          # orange Wolke aus
+scripts/cf-dns.sh delete _cf-selftest
+```
+
+`txt` aktualisiert einen vorhandenen Record nur dann, wenn dessen Inhalt
+mit demselben Präfix vor dem `=` beginnt — sonst wird angelegt. Das
+verhindert, dass eine Verifizierung den SPF-Record überschreibt.
 
 > Tokens im neuen `cfat_`-Format beantworten `/user/tokens/verify` nicht:
 > ein „Invalid API Token" dort heißt nicht, dass der Token kaputt ist.
 > Gegen `/zones` testen.
 
-### Offener Befund: DMARC ist wirkungslos
+### Behoben: DMARC war wirkungslos
 
-`_dmarc.dj-redoo.de` und `autodiscover.dj-redoo.de` stehen auf *proxied*
-(orange Wolke). Cloudflare liefert dort Proxy-IPs statt des CNAME-Ziels —
-`dig +short TXT _dmarc.dj-redoo.de` kommt leer zurück, obwohl unter
-`dmarc.ionos.de` korrekt `v=DMARC1; p=none;` steht.
+`_dmarc.dj-redoo.de` und `autodiscover.dj-redoo.de` standen auf *proxied*
+(orange Wolke). Cloudflare lieferte dort Proxy-IPs statt des CNAME-Ziels,
+`dig +short TXT _dmarc.dj-redoo.de` kam leer zurück — Empfänger fanden keine
+DMARC-Policy, obwohl unter `dmarc.ionos.de` korrekt `v=DMARC1; p=none;` steht.
+Das betraf die Zustellbarkeit aller Mails aus der App.
 
-Folge: Empfänger finden keine DMARC-Policy. Das betrifft die Zustellbarkeit
-aller Mails aus der App, auch der Bewertungsanfragen.
+Am 2026-08-25 beide auf *DNS only* gestellt, verifiziert gegen 1.1.1.1 und
+8.8.8.8: `_dmarc` liefert wieder `v=DMARC1; p=none;`.
 
-**Behebung** — beide Records auf *DNS only* (graue Wolke) stellen; im
-Dashboard unter DNS → Records, oder per API mit einem Schreib-Token:
+**Faustregel: CNAMEs für Mail-Dienste dürfen nie proxied sein.** Nach jeder
+DNS-Änderung prüfen:
 
 ```bash
-set -a; . secrets/cloudflare.env; set +a
-for name in _dmarc autodiscover; do
-  id=$(curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
-    "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records?name=$name.dj-redoo.de" \
-    | python3 -c "import json,sys;print(json.load(sys.stdin)['result'][0]['id'])")
-  curl -s -X PATCH -H "Authorization: Bearer $CF_API_TOKEN" \
-    -H "Content-Type: application/json" --data '{"proxied":false}' \
-    "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records/$id"
-done
-dig +short TXT _dmarc.dj-redoo.de   # muss "v=DMARC1; p=none;" zeigen
+dig +short TXT _dmarc.dj-redoo.de @1.1.1.1   # "v=DMARC1; p=none;"
+dig +short TXT dj-redoo.de @1.1.1.1          # SPF unverändert
+dig +short MX  dj-redoo.de @1.1.1.1          # mx00/mx01.ionos.de
 ```
 
-Faustregel: CNAMEs für Mail-Dienste dürfen nie proxied sein.
+> Noch offen: ein DKIM-Record war unter den üblichen Selektoren
+> (`s1`, `s2`, `ionos1`) nicht auffindbar. Der IONOS-Selektor lässt sich nicht
+> raten — im IONOS-Kundenmenü unter E-Mail → Einstellungen nachsehen, ob DKIM
+> aktiv ist. Mit SPF, DKIM und DMARC zusammen ist die Zustellbarkeit deutlich
+> besser als mit SPF allein.
 
 ### Fallstricke
 
