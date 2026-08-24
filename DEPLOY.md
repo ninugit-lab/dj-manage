@@ -12,7 +12,7 @@ git clone <REPO-URL> /opt/dj-redoo && cd /opt/dj-redoo
 cp .env.example .env
 # DJANGO_SECRET_KEY generieren:
 docker run --rm python:3.12-slim python -c "import secrets,string; print(''.join(secrets.choice(string.ascii_letters+string.digits+'!@#$%^&*(-_=+)') for _ in range(60)))"
-# .env mit allen Werten befuellen (inkl. TUNNEL_TOKEN aus Schritt 2)
+# .env mit allen Werten befüllen (inkl. TUNNEL_TOKEN aus Schritt 2)
 nano .env
 ```
 
@@ -157,7 +157,7 @@ ssh djredoo 'cd /opt/dj-redoo && git reset --hard $(cat /tmp/djredoo-rollback-re
   - `site/` (Verzeichnis-Mount): ein `git checkout` eines anderen Branches
     ersetzt das Verzeichnis. Der Mount ist danach **leer**, die Site
     liefert 404 und `rewrite or internal redirection cycle` (500).
-    Ein blosser `git merge` innerhalb desselben Branches ist unkritisch,
+    Ein bloßer `git merge` innerhalb desselben Branches ist unkritisch,
     solange nur Dateiinhalte geändert werden.
 
   In beiden Fällen hilft nur `docker compose up -d --force-recreate nginx`.
@@ -174,5 +174,5 @@ ssh djredoo 'cd /opt/dj-redoo && git reset --hard $(cat /tmp/djredoo-rollback-re
 - **Neue Dateiendungen brauchen einen MIME-Type.** Fehlt er, liefert nginx
   `application/octet-stream` und Browser ignorieren die Datei (so geschehen
   bei `.webmanifest`). Ergänzungen im `types`-Block in `nginx/nginx.conf`.
-- **Cloudflare-Cache.** Änderungen an statischen Assets koennen verzögert
+- **Cloudflare-Cache.** Änderungen an statischen Assets können verzögert
   ankommen. Bei Bedarf im CF-Dashboard unter Caching → Purge Everything.

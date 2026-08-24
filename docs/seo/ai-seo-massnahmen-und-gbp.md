@@ -27,7 +27,7 @@ Die größten offenen Hebel sind **nicht** auf der Website — sie sind GBP + Re
 
 **Gefunden am 2026-08-24. Wichtiger als alles andere in Teil B.**
 
-Die `robots.txt` erlaubt GPTBot, ClaudeBot, PerplexityBot & Co. ausdruecklich —
+Die `robots.txt` erlaubt GPTBot, ClaudeBot, PerplexityBot & Co. ausdrücklich —
 aber sie kommen gar nicht erst bis nginx. Cloudflare blockt sie eine Ebene
 davor mit `403 Your request was blocked.`
 
@@ -41,23 +41,23 @@ Messung (`curl -A "<UA>" https://dj-redoo.de/`):
 | **PerplexityBot** (Perplexity) | **403** |
 | **meta-externalagent** (Meta AI) | **403** |
 
-Auch `/llms.txt` ist fuer diese Bots 403 — nur `/robots.txt` kommt durch.
+Auch `/llms.txt` ist für diese Bots 403 — nur `/robots.txt` kommt durch.
 Der komplette AI-SEO-Teil der Strategie ist damit **wirkungslos**: die
-Modelle koennen die Seite nicht lesen, egal wie gut sie ausgezeichnet ist.
+Modelle können die Seite nicht lesen, egal wie gut sie ausgezeichnet ist.
 
 **Ursache:** Cloudflares "Block AI Scrapers and Crawlers" bzw. der
-AI-Labyrinth/Bot-Fight-Mode. Fuer neu angelegte Zonen ist das seit 2025
-teilweise standardmaessig aktiv — es wurde nicht bewusst eingeschaltet.
+AI-Labyrinth/Bot-Fight-Mode. Für neu angelegte Zonen ist das seit 2025
+teilweise standardmäßig aktiv — es wurde nicht bewusst eingeschaltet.
 
-**Behebung (nur im Cloudflare-Dashboard moeglich, kein Repo-Change):**
+**Behebung (nur im Cloudflare-Dashboard möglich, kein Repo-Change):**
 
 1. Cloudflare Dashboard → Zone `dj-redoo.de` → **Security → Bots**
 2. **"AI Scrapers and Crawlers"** auf *Off* / *Allow* stellen
-   (ggf. heisst die Option "Block AI bots" oder liegt unter
+   (ggf. heißt die Option "Block AI bots" oder liegt unter
    Security → Settings)
-3. Unter **Security → WAF → Custom rules** pruefen, ob eine Regel auf
-   `cf.verified_bot_category eq "AI Crawler"` o. ae. blockt → deaktivieren
-4. **Security → Bots → Bot Fight Mode** ebenfalls pruefen: blockt
+3. Unter **Security → WAF → Custom rules** prüfen, ob eine Regel auf
+   `cf.verified_bot_category eq "AI Crawler"` o. Ä. blockt → deaktivieren
+4. **Security → Bots → Bot Fight Mode** ebenfalls prüfen: blockt
    pauschal nicht-verifizierte Bots
 5. Danach verifizieren:
 
@@ -69,11 +69,11 @@ for ua in GPTBot/1.0 OAI-SearchBot/1.0 ClaudeBot/1.0 PerplexityBot/1.0 \
 done
 ```
 
-Alle Zeilen muessen `200` zeigen. Erst danach greifen `llms.txt`,
+Alle Zeilen müssen `200` zeigen. Erst danach greifen `llms.txt`,
 Schema.org und der gesamte Rest der AI-Strategie.
 
 > Hinweis: Cloudflare bietet unter "AI Audit" auch eine Pay-per-Crawl-
-> Option. Fuer ein lokales Dienstleistungsgeschaeft ist das der falsche
+> Option. Für ein lokales Dienstleistungsgeschäft ist das der falsche
 > Hebel — Ziel ist maximale Sichtbarkeit in AI-Antworten, nicht die
 > Monetarisierung von Crawls.
 
@@ -117,7 +117,7 @@ Ziel-Kadenz: **jedes** durchgeführte Event bekommt eine Anfrage. Realistisch ko
 ```
 DJ Redoo
 Zanderstraße 21
-47059 Duisburg          ← PLZ ergänzen, fehlt aktuell auf der Website!
+47058 Duisburg
 0152 31751085
 https://dj-redoo.de
 ```
@@ -156,7 +156,7 @@ Zusätzlich `site/llms.txt` — ein Markdown-Steckbrief, den AI-Crawler zunehmen
 
 Aktuell fehlen Felder, die AI-Antworten direkt zitieren:
 
-- `geo` (Breiten-/Längengrad Zanderstraße 21) + `postalCode: "47059"`
+- `geo` (Breiten-/Längengrad Zanderstraße 21) + `postalCode: "47058"`
 - `openingHoursSpecification` bzw. besser: Umstellung auf **`areaServed` + `serviceArea`** — DJ Redoo ist ein Servicegebiet-Unternehmen ohne Ladenlokal
 - `hasOfferCatalog` mit den drei Services und `priceSpecification` ab 660 € → lässt AI-Modelle den Preis direkt nennen
 - `Person`-Schema für Thorsten mit `jobTitle`, `knowsAbout`, verknüpft per `founder` → stärkt die Entität
@@ -287,7 +287,7 @@ Die Place ID über `developers.google.com/maps/documentation/places/web-service/
 | Woche | Aufgabe |
 |---|---|
 | 1 | GBP anlegen + Verifizierung starten (Teil C 1–5) · Search Console + Bing (B2) |
-| 1 | PLZ `47059` auf Website/Impressum/Schema ergänzen · `robots.txt` AI-Crawler · `llms.txt` · `lastmod` (B5/B6) |
+| 1 | PLZ `47058` auf Website/Impressum/Schema ergänzen · `robots.txt` AI-Crawler · `llms.txt` · `lastmod` (B5/B6) |
 | 2 | GBP vollständig ausfüllen inkl. Fotos und Q&A (Teil C 6) |
 | 2–3 | Review-Funnel implementieren (B3) · Review-QR-Code fürs DJ-Pult |
 | 3 | `sameAs` + Place ID einbauen (Teil C 8) · Verzeichniseinträge (B4) |

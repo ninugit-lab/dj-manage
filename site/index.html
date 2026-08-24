@@ -31,6 +31,8 @@
     "@type": "LocalBusiness",
     "@id": "https://dj-redoo.de/#business",
     "name": "DJ Redoo",
+    "alternateName": "DJ Redoo — Thorsten Schinner",
+    "description": "Mobiler DJ und Fachmann für Veranstaltungstechnik aus Duisburg. Seit über 18 Jahren auf Hochzeiten, Firmenfeiern und Partys im Ruhrgebiet und am Niederrhein.",
     "image": "https://dj-redoo.de/images/dj-redoo-portrait.webp",
     "logo": {
       "@type": "ImageObject",
@@ -41,29 +43,288 @@
     "url": "https://dj-redoo.de/",
     "telephone": "+49-152-31751085",
     "priceRange": "€€",
+    "currenciesAccepted": "EUR",
+    "paymentAccepted": "Barzahlung, Überweisung",
     "address": {
       "@type": "PostalAddress",
       "streetAddress": "Zanderstraße 21",
-      "postalCode": "47059",
+      "postalCode": "47058",
       "addressLocality": "Duisburg",
+      "addressRegion": "Nordrhein-Westfalen",
       "addressCountry": "DE"
     },
+    "geo": {
+      "@type": "GeoCoordinates",
+      "latitude": 51.4460464,
+      "longitude": 6.7927648
+    },
+    "serviceArea": {
+      "@type": "GeoCircle",
+      "geoMidpoint": {
+        "@type": "GeoCoordinates",
+        "latitude": 51.4460464,
+        "longitude": 6.7927648
+      },
+      "geoRadius": "100000"
+    },
     "areaServed": [
-      "Duisburg",
-      "Düsseldorf",
-      "Essen",
-      "Oberhausen",
-      "Mülheim an der Ruhr",
-      "Krefeld",
-      "Moers",
-      "Dinslaken",
-      "Kleve"
+      {
+        "@type": "City",
+        "name": "Duisburg"
+      },
+      {
+        "@type": "City",
+        "name": "Düsseldorf"
+      },
+      {
+        "@type": "City",
+        "name": "Essen"
+      },
+      {
+        "@type": "City",
+        "name": "Oberhausen"
+      },
+      {
+        "@type": "City",
+        "name": "Mülheim an der Ruhr"
+      },
+      {
+        "@type": "City",
+        "name": "Krefeld"
+      },
+      {
+        "@type": "City",
+        "name": "Moers"
+      },
+      {
+        "@type": "City",
+        "name": "Dinslaken"
+      },
+      {
+        "@type": "City",
+        "name": "Kleve"
+      },
+      {
+        "@type": "City",
+        "name": "Wesel"
+      },
+      {
+        "@type": "City",
+        "name": "Bottrop"
+      },
+      {
+        "@type": "City",
+        "name": "Neuss"
+      },
+      {
+        "@type": "City",
+        "name": "Ratingen"
+      }
     ],
+    "founder": {
+      "@id": "https://dj-redoo.de/#thorsten"
+    },
+    "employee": {
+      "@id": "https://dj-redoo.de/#thorsten"
+    },
     "memberOf": {
       "@type": "Organization",
       "name": "DJ Allianz"
     },
+    "knowsLanguage": "de",
+    "openingHoursSpecification": [
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday"
+        ],
+        "opens": "10:00",
+        "closes": "20:00"
+      },
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": "Saturday",
+        "opens": "10:00",
+        "closes": "16:00"
+      }
+    ],
+    "hasOfferCatalog": {
+      "@type": "OfferCatalog",
+      "name": "DJ-Leistungen",
+      "itemListElement": [
+        {
+          "@type": "Offer",
+          "itemOffered": {
+            "@type": "Service",
+            "name": "Hochzeits-DJ",
+            "description": "DJ für Hochzeiten von Trauung über Sektempfang bis zur Aftershow-Party, inklusive Ton- und Lichttechnik sowie Auf- und Abbau.",
+            "serviceType": "Hochzeits-DJ",
+            "provider": {
+              "@id": "https://dj-redoo.de/#business"
+            },
+            "areaServed": {
+              "@type": "GeoCircle",
+              "geoMidpoint": {
+                "@type": "GeoCoordinates",
+                "latitude": 51.4460464,
+                "longitude": 6.7927648
+              },
+              "geoRadius": "100000"
+            },
+            "url": "https://dj-redoo.de/hochzeit.html"
+          },
+          "priceSpecification": {
+            "@type": "PriceSpecification",
+            "price": 660,
+            "priceCurrency": "EUR",
+            "minPrice": 660,
+            "valueAddedTaxIncluded": true,
+            "description": "ab 660 € für 6 Stunden reine Spielzeit inklusive Technik, saisonabhängig"
+          },
+          "availability": "https://schema.org/InStock",
+          "url": "https://dj-redoo.de/hochzeit.html"
+        },
+        {
+          "@type": "Offer",
+          "itemOffered": {
+            "@type": "Service",
+            "name": "DJ für Firmenfeiern",
+            "description": "DJ für Jubiläen, Weihnachtsfeiern, Sommerfeste und Firmenevents, inklusive professioneller Ton- und Lichttechnik.",
+            "serviceType": "DJ für Firmenfeiern",
+            "provider": {
+              "@id": "https://dj-redoo.de/#business"
+            },
+            "areaServed": {
+              "@type": "GeoCircle",
+              "geoMidpoint": {
+                "@type": "GeoCoordinates",
+                "latitude": 51.4460464,
+                "longitude": 6.7927648
+              },
+              "geoRadius": "100000"
+            },
+            "url": "https://dj-redoo.de/firmenfeier.html"
+          },
+          "priceSpecification": {
+            "@type": "PriceSpecification",
+            "price": 660,
+            "priceCurrency": "EUR",
+            "minPrice": 660,
+            "valueAddedTaxIncluded": true,
+            "description": "ab 660 € für 6 Stunden reine Spielzeit inklusive Technik, saisonabhängig"
+          },
+          "availability": "https://schema.org/InStock",
+          "url": "https://dj-redoo.de/firmenfeier.html"
+        },
+        {
+          "@type": "Offer",
+          "itemOffered": {
+            "@type": "Service",
+            "name": "Party-DJ",
+            "description": "DJ für Geburtstage, Mottopartys, Abibälle und Vereinsfeste, Musik aus 50 Jahren für 50 bis über 200 Gäste.",
+            "serviceType": "Party-DJ",
+            "provider": {
+              "@id": "https://dj-redoo.de/#business"
+            },
+            "areaServed": {
+              "@type": "GeoCircle",
+              "geoMidpoint": {
+                "@type": "GeoCoordinates",
+                "latitude": 51.4460464,
+                "longitude": 6.7927648
+              },
+              "geoRadius": "100000"
+            },
+            "url": "https://dj-redoo.de/party.html"
+          },
+          "priceSpecification": {
+            "@type": "PriceSpecification",
+            "price": 660,
+            "priceCurrency": "EUR",
+            "minPrice": 660,
+            "valueAddedTaxIncluded": true,
+            "description": "ab 660 € für 6 Stunden reine Spielzeit inklusive Technik, saisonabhängig"
+          },
+          "availability": "https://schema.org/InStock",
+          "url": "https://dj-redoo.de/party.html"
+        },
+        {
+          "@type": "Offer",
+          "itemOffered": {
+            "@type": "Service",
+            "name": "Verleih von Ton- und Lichttechnik",
+            "description": "Planung, Verleih sowie Auf- und Abbau von Ton- und Lichttechnik, auch als Festinstallation für Locations und Gastronomie.",
+            "serviceType": "Verleih von Ton- und Lichttechnik",
+            "provider": {
+              "@id": "https://dj-redoo.de/#business"
+            },
+            "areaServed": {
+              "@type": "GeoCircle",
+              "geoMidpoint": {
+                "@type": "GeoCoordinates",
+                "latitude": 51.4460464,
+                "longitude": 6.7927648
+              },
+              "geoRadius": "100000"
+            }
+          },
+          "priceSpecification": {
+            "@type": "PriceSpecification",
+            "price": 660,
+            "priceCurrency": "EUR",
+            "minPrice": 660,
+            "valueAddedTaxIncluded": true,
+            "description": "ab 660 € für 6 Stunden reine Spielzeit inklusive Technik, saisonabhängig"
+          },
+          "availability": "https://schema.org/InStock",
+          "url": "https://dj-redoo.de/"
+        }
+      ]
+    },
     "sameAs": []
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    "@id": "https://dj-redoo.de/#thorsten",
+    "name": "Thorsten Schinner",
+    "alternateName": "DJ Redoo",
+    "jobTitle": "DJ und Fachmann für Veranstaltungstechnik",
+    "description": "Thorsten Schinner ist seit über 18 Jahren als DJ Redoo im Ruhrgebiet und am Niederrhein tätig, Fachmann für Veranstaltungstechnik und Mitglied der DJ Allianz.",
+    "worksFor": {
+      "@id": "https://dj-redoo.de/#business"
+    },
+    "memberOf": {
+      "@type": "Organization",
+      "name": "DJ Allianz"
+    },
+    "knowsAbout": [
+      "DJ",
+      "Hochzeits-DJ",
+      "Veranstaltungstechnik",
+      "Beschallungstechnik",
+      "Lichttechnik",
+      "Eventplanung",
+      "Musikprogrammierung",
+      "Moderation"
+    ],
+    "areaServed": {
+      "@type": "GeoCircle",
+      "geoMidpoint": {
+        "@type": "GeoCoordinates",
+        "latitude": 51.4460464,
+        "longitude": 6.7927648
+      },
+      "geoRadius": "100000"
+    },
+    "url": "https://dj-redoo.de/ueber-uns.html",
+    "image": "https://dj-redoo.de/images/dj-redoo-portrait.webp"
   }
   </script>
   <script type="application/ld+json">
@@ -339,7 +600,7 @@
       <div>
         <strong>DJ Redoo</strong><br>
         Zanderstraße 21<br>
-        47059 Duisburg<br>
+        47058 Duisburg<br>
         <a href="tel:+4915231751085">0152 31751085</a>
       </div>
       <div>
