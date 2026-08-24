@@ -284,7 +284,8 @@ Hochzeits-DJ · Firmenfeier-DJ · Geburtstags-DJ · Vereinsfest-DJ · Ton- und L
 
 **Beiträge:** Alle 2–4 Wochen ein kurzer Post (Foto + 2 Sätze vom letzten Event, saisonale Angebote, freie Termine). Beiträge laufen nach 6 Monaten aus.
 
-**Fragen & Antworten:** Selbst 5–8 Fragen einstellen und beantworten (aus einem zweiten Google-Konto fragen, vom Firmenkonto antworten — das ist ausdrücklich erlaubt). Diese Q&A-Paare landen direkt in AI-Antworten. Die FAQ von `dj-redoo.de/faq.html` hierher übernehmen.
+**Fragen & Antworten:** Selbst 5–8 Fragen einstellen und beantworten (aus einem zweiten Google-Konto fragen, vom Firmenkonto antworten — das ist ausdrücklich erlaubt). Diese Q&A-Paare landen direkt in AI-Antworten.
+→ **Alle 18 Fragen kopierfertig aufbereitet: [`gbp-fragen-antworten.md`](gbp-fragen-antworten.md)** — nach Priorität sortiert, alle unter Googles 440-Zeichen-Limit.
 
 **Buchungslink:** `https://dj-redoo.de/#buchen` bzw. das Buchungsformular direkt.
 
