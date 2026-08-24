@@ -9,3 +9,8 @@ app/theme/static_src/node_modules/
 .memsearch/
 docker-compose.override.yml
 /redoo/
+
+# Lokale Zugangsdaten — niemals committen
+secrets/
+secrets.env
+*.secret
