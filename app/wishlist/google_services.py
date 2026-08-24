@@ -9,7 +9,6 @@ Google Service — robust version with:
 - Structured error logging
 """
 import base64
-import json
 import logging
 import threading
 import time
@@ -81,7 +80,7 @@ class GoogleService:
         return config
 
     @staticmethod
-    def get_auth_url():
+    def get_auth_url(state=None):
         from urllib.parse import urlencode
         config = GoogleService._get_config()
         params = {
@@ -93,6 +92,8 @@ class GoogleService:
             "prompt": "consent",
             "include_granted_scopes": "true",
         }
+        if state:
+            params["state"] = state
         return f"{GoogleService.AUTH_URL}?{urlencode(params)}"
 
     @staticmethod
@@ -260,7 +261,8 @@ class GoogleService:
         time_min = f"{date_str}T00:00:00Z"
         time_max = f"{date_str}T23:59:59Z"
         events = GoogleService.get_calendar_events(time_min=time_min, time_max=time_max)
-        blocking = [ev for ev in events]
+        # Als "Frei" markierte Termine (transparency == 'transparent') blockieren nicht
+        blocking = [ev for ev in events if ev.get("transparency") != "transparent"]
         return len(blocking) == 0, blocking
 
     @staticmethod

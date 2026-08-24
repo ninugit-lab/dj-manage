@@ -1,0 +1,162 @@
+# Deployment — dj-redoo.de Stack
+
+## Voraussetzungen
+- Zielserver: Ubuntu 24.04, Docker + Compose-Plugin installiert
+- Domain `dj-redoo.de` bei Cloudflare (Nameserver auf CF)
+- SSH-Zugang zum Server
+
+## 1. Repo + Secrets
+```bash
+sudo mkdir -p /opt/dj-redoo && sudo chown $USER /opt/dj-redoo
+git clone <REPO-URL> /opt/dj-redoo && cd /opt/dj-redoo
+cp .env.example .env
+# DJANGO_SECRET_KEY generieren:
+docker run --rm python:3.12-slim python -c "import secrets,string; print(''.join(secrets.choice(string.ascii_letters+string.digits+'!@#$%^&*(-_=+)') for _ in range(60)))"
+# .env mit allen Werten befuellen (inkl. TUNNEL_TOKEN aus Schritt 2)
+nano .env
+```
+
+## 2. Cloudflare Tunnel anlegen
+1. Cloudflare Dashboard → Zero Trust → Networks → Tunnels → **Create a tunnel** (Typ: Cloudflared).
+2. Tunnel benennen (`djredoo`), **Token** kopieren → in `.env` als `TUNNEL_TOKEN`.
+3. **Public Hostnames** hinzufügen:
+   - `dj-redoo.de` → Service `http://nginx:80`
+   - `app.dj-redoo.de` → Service `http://nginx:80`
+4. DNS-Records werden von CF automatisch als CNAME auf den Tunnel gesetzt.
+
+## 3. Cloudflare Access (Admin-Schutz)
+Zero Trust → Access → Applications → **Add an application** (Self-hosted), je eine pro Pfad:
+- `app.dj-redoo.de/dj-admin` und `app.dj-redoo.de/admin`
+
+Policy je App: **Allow**, Selector `Emails` → eigene E-Mail(s). Login-Methode: One-time PIN oder Google.
+
+> Hinweis: `/spotify/callback/` und `/google/callback/` NICHT hinter Access legen — bricht OAuth.
+
+## 4. OAuth Redirect-URIs umstellen
+- Spotify Developer Dashboard → App → Redirect URIs: `https://app.dj-redoo.de/spotify/callback/`
+- Google Cloud Console → OAuth-Client → Redirect URIs: `https://app.dj-redoo.de/google/callback/`
+
+## 5. Starten
+```bash
+docker compose up -d --build
+docker compose ps          # alle Services healthy/Up
+docker compose logs -f cloudflared   # "Registered tunnel connection"
+```
+
+## 6. Verifikation
+```bash
+# Tests im web-Container
+docker compose exec web python -m pytest -q
+# Deploy-Check
+docker compose exec web python manage.py check --deploy
+```
+- Browser: `https://app.dj-redoo.de` und `https://dj-redoo.de` öffnen.
+- DevTools-Konsole auf CSP-Violations prüfen (beide Seiten).
+- Admin-Pfade: CF-Access-Login muss erscheinen.
+
+## SSH-Zugang
+
+Auf dem Entwicklungsrechner ist ein dedizierter Deploy-Key hinterlegt
+(`~/.ssh/djredoo_ed25519`), Host-Alias in `~/.ssh/config`:
+
+```
+Host djredoo djredoo-prod
+    HostName 100.69.222.62
+    Port 54322
+    User redooad
+    IdentityFile ~/.ssh/djredoo_ed25519
+    IdentitiesOnly yes
+    StrictHostKeyChecking yes
+    ServerAliveInterval 30
+```
+
+Damit genügt `ssh djredoo`. Passwort-Login wird nicht mehr gebraucht.
+Neuen Rechner anbinden:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/djredoo_ed25519 -N "" -C "deploy@dj-manage"
+chmod 600 ~/.ssh/djredoo_ed25519
+ssh-copy-id -i ~/.ssh/djredoo_ed25519.pub -p 54322 redooad@100.69.222.62
+```
+
+## Deploy (Update auf bestehendem Server)
+
+Projektpfad auf dem Server: `/opt/dj-redoo`, Compose-Projekt `dj-redoo`.
+
+**1. Lokal pushen**
+
+```bash
+git push origin feat/production-cloudflare-nginx
+```
+
+**2. Umfang prüfen** — entscheidet, welche Schritte nötig sind:
+
+```bash
+ssh djredoo 'cd /opt/dj-redoo && git fetch origin && \
+  git diff --name-only HEAD origin/feat/production-cloudflare-nginx | cut -d/ -f1 | sort -u'
+```
+
+| Geänderte Pfade | Nötiger Schritt |
+|---|---|
+| nur `site/`, `docs/` | nichts weiter — Bind-Mount ist sofort aktiv |
+| `nginx/conf.d/` | `docker compose exec nginx nginx -s reload` |
+| `nginx/nginx.conf` | `docker compose up -d --force-recreate nginx` (s. Fallstricke) |
+| `app/`, `Dockerfile`, `requirements.txt` | `docker compose up -d --build web` |
+| Model-Änderungen | Migration läuft per `entrypoint.sh` automatisch beim Start |
+
+**3. Pull (nur Fast-Forward, damit lokale Änderungen auffallen)**
+
+```bash
+ssh djredoo 'cd /opt/dj-redoo && git status --short && \
+  git rev-parse --short HEAD > /tmp/djredoo-rollback-ref && \
+  git merge --ff-only origin/feat/production-cloudflare-nginx'
+```
+
+`git status --short` muss leer sein. Der Rollback-Ref in `/tmp` erlaubt
+später ein gezieltes Zurück.
+
+**4. Anwenden** — nginx-Config immer erst testen:
+
+```bash
+ssh djredoo 'cd /opt/dj-redoo && docker compose exec -T nginx nginx -t'
+ssh djredoo 'cd /opt/dj-redoo && docker compose up -d --force-recreate nginx'
+```
+
+**5. Verifizieren**
+
+```bash
+ssh djredoo 'cd /opt/dj-redoo && docker compose ps'
+ssh djredoo 'docker logs dj-redoo-nginx-1 2>&1 | grep -i "error\|emerg" | tail'
+
+for p in / /hochzeit.html /site.webmanifest /images/logo.svg; do
+  printf "%-24s " "$p"
+  curl -s -o /dev/null -w "%{http_code} %{content_type}\n" "https://dj-redoo.de$p"
+done
+curl -s -o /dev/null -w "app %{http_code}\n" https://app.dj-redoo.de/
+```
+
+**Rollback**
+
+```bash
+ssh djredoo 'cd /opt/dj-redoo && git reset --hard $(cat /tmp/djredoo-rollback-ref) && \
+  docker compose up -d --force-recreate nginx'
+```
+
+### Fallstricke
+
+- **`nginx.conf` ist ein Bind-Mount einer einzelnen Datei.** `git merge`
+  ersetzt die Datei und erzeugt dabei eine neue Inode — der Mount zeigt
+  weiter auf die alte. Ein `nginx -s reload` liest dann die *alte* Config
+  und meldet trotzdem Erfolg. Nach Änderungen an `nginx.conf` deshalb
+  immer `--force-recreate nginx`. Für `nginx/conf.d/` (Verzeichnis-Mount)
+  reicht ein Reload.
+- **Dateirechte.** nginx läuft als eigener User und liefert `403`, wenn
+  Dateien kein Read-Bit für "others" haben. Bei `git`-Deploys greift die
+  Server-umask und alles passt; bei manuell kopierten Dateien prüfen:
+  `ssh djredoo 'find /opt/dj-redoo/site -type f ! -perm -o=r'` — Ausgabe
+  muss leer sein.
+- **Neue Dateiendungen brauchen einen MIME-Type.** Fehlt er, liefert nginx
+  `application/octet-stream` und Browser ignorieren die Datei (so geschehen
+  bei `.webmanifest`). Ergänzungen im `types`-Block in `nginx/nginx.conf`.
+- **Cloudflare-Cache.** Änderungen an statischen Assets koennen verzögert
+  ankommen. Bei Bedarf im CF-Dashboard unter Caching → Purge Everything.

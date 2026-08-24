@@ -7,7 +7,7 @@
   <title>{% block title %}DJ Admin{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Space+Mono&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@7.3.0/dist/turbo.es2017-esm.js" type="module"></script>
+  <script src="{% static 'js/vendor/turbo.es2017-esm.js' %}" type="module"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
@@ -177,6 +177,20 @@
       .main{padding:1rem .75rem;padding-top:3.5rem}
       .card{padding:1rem}
       .btn-sm{padding:.3rem .55rem;font-size:.7rem}
+    }
+
+    /* ── Touch-Optimierung (Tablets & Touch-Geräte) ────── */
+    @media(pointer:coarse){
+      .btn{min-height:44px;padding:.6rem 1.2rem}
+      .btn-sm{min-height:44px;padding:.5rem .9rem;font-size:.78rem}
+      td .btn-sm{min-width:44px;justify-content:center}
+      .nav-link{min-height:44px;padding:.7rem .85rem}
+      .tab{min-height:44px;padding:.75rem 1.3rem}
+      input[type="checkbox"],input[type="radio"]{width:20px;height:20px;min-width:20px;min-height:20px;accent-color:var(--accent)}
+      .form-check input[type="checkbox"]{width:20px;height:20px}
+      .form-input,.form-select,.form-textarea,.form-control,select,textarea{font-size:16px}
+      .form-input,.form-select,.form-control{min-height:44px}
+      .form-check label{padding:.3rem 0}
     }
   </style>
   {% block extra_head %}{% endblock %}

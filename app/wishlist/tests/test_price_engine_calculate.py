@@ -158,3 +158,25 @@ def test_full_combination(event):
     # 1000 + 200 + 50 = 1250 pre-rules; + 100 flat = 1350; -10% = 1215
     assert r["subtotal"] == Decimal("1350")
     assert r["grand_total"] == Decimal("1215")
+
+
+def test_multiple_flat_set_rules_last_wins(event):
+    # flat_set stapelt nicht — letzte zutreffende Regel (sort_order) gewinnt
+    pkg = PricingPackage.objects.create(name="P", base_price=Decimal("500"))
+    PricingRule.objects.create(name="Fix1", condition_json=[], effect_type="flat_set",
+                               effect_value=Decimal("800"), sort_order=1)
+    PricingRule.objects.create(name="Fix2", condition_json=[], effect_type="flat_set",
+                               effect_value=Decimal("999"), sort_order=2)
+    r = PriceEngine.calculate(event, package_id=pkg.pk)
+    assert r["grand_total"] == Decimal("999")
+
+
+def test_flat_set_combined_with_flat_add_sets_final_price(event):
+    # flat_set gewinnt und setzt den Endpreis der Regel-Phase
+    pkg = PricingPackage.objects.create(name="P", base_price=Decimal("500"))
+    PricingRule.objects.create(name="Add", condition_json=[], effect_type="flat_add",
+                               effect_value=Decimal("100"), sort_order=1)
+    PricingRule.objects.create(name="Fix", condition_json=[], effect_type="flat_set",
+                               effect_value=Decimal("777"), sort_order=2)
+    r = PriceEngine.calculate(event, package_id=pkg.pk)
+    assert r["grand_total"] == Decimal("777")

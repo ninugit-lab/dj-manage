@@ -7,3 +7,5 @@ app/theme/static/css/dist/
 app/theme/static_src/node_modules/
 *.sqlite3
 .memsearch/
+docker-compose.override.yml
+/redoo/

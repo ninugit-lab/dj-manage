@@ -217,31 +217,49 @@ fetch('/google/status/').then(function(r){return r.json()}).then(function(d){
 (function(){
   var si=document.getElementById('cfg-addr-search'),rb=document.getElementById('cfg-addr-results'),dt;
   if(!si)return;
+  function hide(){rb.classList.add('hidden')}
+  function showError(msg){
+    rb.innerHTML='';
+    var d=document.createElement('div');
+    d.textContent=msg;
+    d.className='px-3 py-2 text-sm text-muted';
+    rb.appendChild(d);
+    rb.classList.remove('hidden');
+  }
   si.addEventListener('input',function(){
     clearTimeout(dt);var q=this.value.trim();
-    if(q.length<3){rb.classList.add('hidden');return}
+    if(q.length<3){hide();return}
     dt=setTimeout(function(){
-      fetch('https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=de,at,ch&q='+encodeURIComponent(q))
+      fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=de,at,ch&q='+encodeURIComponent(q))
       .then(function(r){return r.json()})
       .then(function(data){
-        if(!data.length){rb.classList.add('hidden');return}
+        if(!data.length){showError('Keine Treffer — Adresse anders formulieren.');return}
         rb.innerHTML='';
         data.forEach(function(item){
           var d=document.createElement('div');
           d.textContent=item.display_name;
           d.className='px-3 py-2 text-sm cursor-pointer border-b border-border hover:bg-card';
           d.onclick=function(){
+            var a=item.address||{};
+            var street=(a.road||'')+(a.house_number?' '+a.house_number:'');
+            var city=a.city||a.town||a.village||a.municipality||'';
+            var zip=a.postcode||'';
             document.getElementById('cfg-home-lat').value=parseFloat(item.lat).toFixed(6);
             document.getElementById('cfg-home-lon').value=parseFloat(item.lon).toFixed(6);
-            si.value=item.display_name;rb.classList.add('hidden');
+            // Adresse-Feld nur befuellen, wenn noch leer (nicht ueberschreiben)
+            var addr=document.getElementById('cfg-dj-address');
+            if(addr && !addr.value.trim() && (street||city)){
+              addr.value=street+(street&&(zip||city)?'\n':'')+(zip?zip+' ':'')+city;
+            }
+            si.value=item.display_name;hide();
           };
           rb.appendChild(d);
         });
         rb.classList.remove('hidden');
-      }).catch(function(){rb.classList.add('hidden')});
+      }).catch(function(){showError('Suche nicht erreichbar — bitte später erneut versuchen.')});
     },350);
   });
-  document.addEventListener('click',function(e){if(!si.contains(e.target)&&!rb.contains(e.target))rb.classList.add('hidden')});
+  document.addEventListener('click',function(e){if(!si.contains(e.target)&&!rb.contains(e.target))hide()});
 })();
 </script>
 {% endblock %}

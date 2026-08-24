@@ -73,7 +73,7 @@ class SpotifyService:
         return base64.b64encode(raw.encode()).decode()
 
     @staticmethod
-    def get_auth_url():
+    def get_auth_url(state=None):
         from urllib.parse import urlencode
         params = {
             "client_id": settings.SPOTIFY_CLIENT_ID,
@@ -81,6 +81,8 @@ class SpotifyService:
             "redirect_uri": settings.SPOTIFY_REDIRECT_URI,
             "scope": SpotifyService.SCOPES,
         }
+        if state:
+            params["state"] = state
         return f"{SpotifyService.AUTH_URL}?{urlencode(params)}"
 
     @staticmethod
@@ -95,6 +97,9 @@ class SpotifyService:
                 },
                 headers={"Authorization": f"Basic {SpotifyService._b64_credentials()}"},
             )
+            if resp.status_code != 200:
+                logger.error("Spotify exchange_code %s: %s", resp.status_code, resp.text[:200])
+                return {"error": f"token_exchange_failed_{resp.status_code}"}
             return resp.json()
         except Exception as e:
             logger.error("Spotify exchange_code error: %s", e)
@@ -115,7 +120,10 @@ class SpotifyService:
                 data={"grant_type": "refresh_token", "refresh_token": token.refresh_token},
                 headers={"Authorization": f"Basic {SpotifyService._b64_credentials()}"},
             )
-            data = resp.json() if resp is not None else {}
+            try:
+                data = resp.json()
+            except ValueError:
+                data = {}
         except Exception as e:
             logger.error("Spotify refresh network error: %s", e)
             return False
@@ -318,34 +326,31 @@ class SpotifyService:
         }
 
         try:
-            session = requests.Session()
-            response = session.request(
-                method="DELETE",
-                url=url,
+            response = _request_with_retry(
+                "DELETE", url,
                 data=json.dumps(payload),
                 headers={
                     "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json"
                 },
-                timeout=REQUEST_TIMEOUT,
             )
 
             logger.debug("Spotify DELETE %s from %s → %s", track_uri, playlist_id, response.status_code)
 
             if response.status_code == 401:
                 token = SpotifyService.get_valid_token(force_refresh=True)
-                response = session.request(
-                    method="DELETE",
-                    url=url,
+                if not token:
+                    return False, "Spotify-Token abgelaufen — bitte neu verbinden."
+                response = _request_with_retry(
+                    "DELETE", url,
                     data=json.dumps(payload),
                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                    timeout=REQUEST_TIMEOUT,
                 )
 
             if response.status_code in (200, 201):
                 return True, "Erfolgreich entfernt"
 
-            return False, f"Spotify-Fehler {response.status_code}: {response.text}"
+            return False, f"Spotify-Fehler {response.status_code}: {response.text[:200]}"
 
         except Exception as e:
             logger.error("Spotify remove_from_playlist error: %s", e)
@@ -516,9 +521,15 @@ class SpotifyService:
 
     # ── Audio Features ───────────────────────────────────────────────────────
 
+    # Seit 27.11.2024 ist /audio-features fuer neue bzw. Dev-Mode-Apps
+    # deprecated und liefert 403. Nach dem ersten 403 nicht weiter anfragen.
+    _audio_features_unavailable = False
+
     @staticmethod
     def get_audio_features(track_id):
         """Returns audio features for a track. Uses client credentials (no user scope needed)."""
+        if SpotifyService._audio_features_unavailable:
+            return None
         cc_token = SpotifyService._get_client_credentials_token()
         if not cc_token:
             return None
@@ -536,6 +547,13 @@ class SpotifyService:
                     "GET", f"{SpotifyService.API_BASE}/audio-features/{track_id}",
                     headers={"Authorization": f"Bearer {cc_token}"},
                 )
+            if resp.status_code == 403:
+                SpotifyService._audio_features_unavailable = True
+                logger.warning(
+                    "Spotify audio-features 403 — Endpoint fuer diese App deprecated "
+                    "(Web-API-Aenderung 27.11.2024), weitere Aufrufe werden uebersprungen"
+                )
+                return None
             if resp.status_code != 200:
                 logger.error("Spotify get_audio_features returned %s", resp.status_code)
                 return None

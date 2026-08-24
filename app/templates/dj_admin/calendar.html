@@ -2,8 +2,8 @@
 {% block title %}Kalender — DJ Admin{% endblock %}
 {% block nav_calendar %}active{% endblock %}
 
-{% block extra_head %}
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
+{% block extra_head %}{% load static %}
+<script src="{% static 'js/vendor/fullcalendar-6.1.9.min.js' %}"></script>
 <style>
   .fc { background: var(--card); border-radius: 10px; padding: 1rem; border: 1px solid var(--border); }
   .fc .fc-toolbar-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.8rem; letter-spacing: .04em; }

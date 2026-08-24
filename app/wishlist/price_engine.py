@@ -99,12 +99,18 @@ class SafeFormulaEvaluator:
             left = self._eval_node(node.left, variables)
             right = self._eval_node(node.comparators[0], variables)
             op = node.ops[0]
-            if isinstance(op, ast.Gt): return Decimal(1) if left > right else Decimal(0)
-            if isinstance(op, ast.GtE): return Decimal(1) if left >= right else Decimal(0)
-            if isinstance(op, ast.Lt): return Decimal(1) if left < right else Decimal(0)
-            if isinstance(op, ast.LtE): return Decimal(1) if left <= right else Decimal(0)
-            if isinstance(op, ast.Eq): return Decimal(1) if left == right else Decimal(0)
-            if isinstance(op, ast.NotEq): return Decimal(1) if left != right else Decimal(0)
+            if isinstance(op, ast.Gt):
+                return Decimal(1) if left > right else Decimal(0)
+            if isinstance(op, ast.GtE):
+                return Decimal(1) if left >= right else Decimal(0)
+            if isinstance(op, ast.Lt):
+                return Decimal(1) if left < right else Decimal(0)
+            if isinstance(op, ast.LtE):
+                return Decimal(1) if left <= right else Decimal(0)
+            if isinstance(op, ast.Eq):
+                return Decimal(1) if left == right else Decimal(0)
+            if isinstance(op, ast.NotEq):
+                return Decimal(1) if left != right else Decimal(0)
         raise ValueError(f"Unerlaubter Ausdruck: {type(node).__name__}")
 
 
@@ -236,15 +242,20 @@ class PriceEngine:
         if context_override:
             context.update(context_override)
         rules = PricingRule.objects.filter(is_active=True).order_by('sort_order')
+        # flat_set setzt den Preis EINMALIG (nicht stapelbar). Bei mehreren
+        # zutreffenden flat_set-Regeln gewinnt die letzte (hoechste sort_order),
+        # analog zur Reihenfolge-Semantik der Regel-Liste.
+        flat_set_rule = None
         for rule in rules:
             if RuleEvaluator.evaluate(rule, context):
+                if rule.effect_type == 'flat_set':
+                    flat_set_rule = rule
+                    continue
                 amount = Decimal('0')
                 if rule.effect_type == 'percent_add':
                     amount = pre_rules_subtotal * rule.effect_value / Decimal('100')
                 elif rule.effect_type == 'flat_add':
                     amount = rule.effect_value
-                elif rule.effect_type == 'flat_set':
-                    amount = rule.effect_value - pre_rules_subtotal
                 result['rules_applied'].append({
                     'name': rule.name,
                     'effect': rule.get_effect_type_display(),
@@ -252,6 +263,15 @@ class PriceEngine:
                     'rule_id': rule.pk,
                 })
                 subtotal += amount
+        if flat_set_rule:
+            amount = flat_set_rule.effect_value - subtotal
+            result['rules_applied'].append({
+                'name': flat_set_rule.name,
+                'effect': flat_set_rule.get_effect_type_display(),
+                'amount': amount,
+                'rule_id': flat_set_rule.pk,
+            })
+            subtotal = flat_set_rule.effect_value
 
         # 6. Formel
         if formula_id:
@@ -434,15 +454,20 @@ class PriceEngine:
                 selected_ids = block.get('config', {}).get('rule_ids')
                 if selected_ids:
                     rule_qs = rule_qs.filter(pk__in=selected_ids)
+                # flat_set setzt den Preis EINMALIG (nicht stapelbar). Bei
+                # mehreren zutreffenden flat_set-Regeln gewinnt die letzte
+                # (hoechste sort_order) — konsistent zu PriceEngine.calculate().
+                flat_set_rule = None
                 for rule in rule_qs:
                     if RuleEvaluator.evaluate(rule, context):
+                        if rule.effect_type == 'flat_set':
+                            flat_set_rule = rule
+                            continue
                         amount = Decimal('0')
                         if rule.effect_type == 'percent_add':
                             amount = pre_rules * rule.effect_value / Decimal('100')
                         elif rule.effect_type == 'flat_add':
                             amount = rule.effect_value
-                        elif rule.effect_type == 'flat_set':
-                            amount = rule.effect_value - pre_rules
                         result['rules_applied'].append({
                             'name': rule.name,
                             'effect': rule.get_effect_type_display(),
@@ -450,6 +475,15 @@ class PriceEngine:
                             'rule_id': rule.pk,
                         })
                         rules_total += amount
+                if flat_set_rule:
+                    amount = flat_set_rule.effect_value - (pre_rules + rules_total)
+                    result['rules_applied'].append({
+                        'name': flat_set_rule.name,
+                        'effect': flat_set_rule.get_effect_type_display(),
+                        'amount': amount,
+                        'rule_id': flat_set_rule.pk,
+                    })
+                    rules_total += amount
                 step['amount'] = rules_total
                 step['detail'] = f"{len(result['rules_applied'])} Regeln"
                 subtotal += rules_total
@@ -481,7 +515,8 @@ class PriceEngine:
                     step['amount'] = -discount_amt
                     step['detail'] = f"{effective_pct}%"
                     subtotal -= discount_amt
-                    result['discount_amount'] = discount_amt
+                    # Mehrere discount-Bloecke summieren sich (nicht ueberschreiben)
+                    result['discount_amount'] += discount_amt
                 else:
                     step['amount'] = Decimal('0')
 
