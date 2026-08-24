@@ -23,59 +23,51 @@ Die größten offenen Hebel sind **nicht** auf der Website — sie sind GBP + Re
 
 ---
 
-# Teil B0 — BLOCKER: Cloudflare sperrt alle AI-Crawler
+# Teil B0 — AI-Crawler-Zugang ✅ behoben
 
-**Gefunden am 2026-08-24. Wichtiger als alles andere in Teil B.**
+**Gefunden am 2026-08-24, behoben am 2026-08-25.**
 
-Die `robots.txt` erlaubt GPTBot, ClaudeBot, PerplexityBot & Co. ausdrücklich —
-aber sie kommen gar nicht erst bis nginx. Cloudflare blockt sie eine Ebene
-davor mit `403 Your request was blocked.`
+Cloudflare hatte alle AI-Crawler eine Ebene vor nginx mit
+`403 Your request was blocked.` abgewiesen — die `robots.txt` erlaubte sie
+ausdrücklich, aber sie kamen gar nicht erst durch. Damit war die komplette
+AI-Auszeichnung wirkungslos.
 
-Messung (`curl -A "<UA>" https://dj-redoo.de/`):
+Nach Umstellung im Cloudflare-Dashboard (Security → Bots, "AI Scrapers and
+Crawlers" deaktiviert) liefern alle Bots wieder Inhalt:
 
-| User-Agent | Status |
-|---|---|
-| Googlebot, bingbot, Applebot, normale Browser | 200 |
-| **GPTBot, OAI-SearchBot** (ChatGPT) | **403** |
-| **ClaudeBot** (Claude) | **403** |
-| **PerplexityBot** (Perplexity) | **403** |
-| **meta-externalagent** (Meta AI) | **403** |
+| User-Agent | vorher | jetzt |
+|---|---|---|
+| GPTBot, OAI-SearchBot (ChatGPT) | 403 | **200** |
+| ClaudeBot (Claude) | 403 | **200** |
+| PerplexityBot (Perplexity) | 403 | **200** |
+| meta-externalagent (Meta AI) | 403 | **200** |
+| Googlebot, bingbot, Applebot, Browser | 200 | 200 |
 
-Auch `/llms.txt` ist für diese Bots 403 — nur `/robots.txt` kommt durch.
-Der komplette AI-SEO-Teil der Strategie ist damit **wirkungslos**: die
-Modelle können die Seite nicht lesen, egal wie gut sie ausgezeichnet ist.
+Geprüft wurde nicht nur der Status, sondern der ausgelieferte Inhalt:
+25 KB HTML, korrekter `<title>`, alle drei JSON-LD-Blöcke, `/llms.txt`
+im Klartext. Alle acht indexierten Seiten plus `robots.txt`, `sitemap.xml`
+und `llms.txt` sind erreichbar.
 
-**Ursache:** Cloudflares "Block AI Scrapers and Crawlers" bzw. der
-AI-Labyrinth/Bot-Fight-Mode. Für neu angelegte Zonen ist das seit 2025
-teilweise standardmäßig aktiv — es wurde nicht bewusst eingeschaltet.
-
-**Behebung (nur im Cloudflare-Dashboard möglich, kein Repo-Change):**
-
-1. Cloudflare Dashboard → Zone `dj-redoo.de` → **Security → Bots**
-2. **"AI Scrapers and Crawlers"** auf *Off* / *Allow* stellen
-   (ggf. heißt die Option "Block AI bots" oder liegt unter
-   Security → Settings)
-3. Unter **Security → WAF → Custom rules** prüfen, ob eine Regel auf
-   `cf.verified_bot_category eq "AI Crawler"` o. Ä. blockt → deaktivieren
-4. **Security → Bots → Bot Fight Mode** ebenfalls prüfen: blockt
-   pauschal nicht-verifizierte Bots
-5. Danach verifizieren:
+## Nachkontrolle
 
 ```bash
 for ua in GPTBot/1.0 OAI-SearchBot/1.0 ClaudeBot/1.0 PerplexityBot/1.0 \
           meta-externalagent/1.1; do
   printf "%-24s " "$ua"
   curl -s -o /dev/null -w "%{http_code}\n" -A "$ua" https://dj-redoo.de/
+  sleep 4
 done
 ```
 
-Alle Zeilen müssen `200` zeigen. Erst danach greifen `llms.txt`,
-Schema.org und der gesamte Rest der AI-Strategie.
+> **`429` ist kein Block.** Cloudflare drosselt schnelle Serienabfragen von
+> derselben IP. Beim Testen mindestens 3–4 Sekunden Abstand lassen, sonst
+> sieht ein funktionierendes Setup nach einem Problem aus. Nur `403` bedeutet
+> tatsächlich Sperre.
 
-> Hinweis: Cloudflare bietet unter "AI Audit" auch eine Pay-per-Crawl-
-> Option. Für ein lokales Dienstleistungsgeschäft ist das der falsche
-> Hebel — Ziel ist maximale Sichtbarkeit in AI-Antworten, nicht die
-> Monetarisierung von Crawls.
+> Hinweis: Cloudflare bietet unter "AI Audit" auch eine Pay-per-Crawl-Option.
+> Für ein lokales Dienstleistungsgeschäft ist das der falsche Hebel — Ziel ist
+> maximale Sichtbarkeit in AI-Antworten, nicht die Monetarisierung von Crawls.
+> Die Einstellung sollte deaktiviert bleiben.
 
 ---
 
