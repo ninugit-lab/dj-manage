@@ -67,14 +67,21 @@ a { color: var(--accent-blue); }
 }
 
 .nav-logo {
-  font-weight: 800;
-  font-size: 1.25rem;
-  color: var(--text);
+  display: inline-flex;
+  align-items: center;
   text-decoration: none;
-  letter-spacing: 0.02em;
+  line-height: 0;
 }
 
-.nav-logo span { background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nav-logo img {
+  height: 40px;
+  width: auto;
+  display: block;
+}
+
+@media (max-width: 480px) {
+  .nav-logo img { height: 32px; }
+}
 
 .nav-links {
   display: flex;
