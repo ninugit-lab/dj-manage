@@ -82,23 +82,26 @@ ssh-copy-id -i ~/.ssh/djredoo_ed25519.pub -p 54322 redooad@100.69.222.62
 ## Deploy (Update auf bestehendem Server)
 
 Projektpfad auf dem Server: `/opt/dj-redoo`, Compose-Projekt `dj-redoo`.
+Der Server folgt `master`; Feature-Branches werden vorher per PR gemergt.
 
 **1. Lokal pushen**
 
 ```bash
-git push origin feat/production-cloudflare-nginx
+git push origin master
 ```
 
 **2. Umfang prüfen** — entscheidet, welche Schritte nötig sind:
 
 ```bash
 ssh djredoo 'cd /opt/dj-redoo && git fetch origin && \
-  git diff --name-only HEAD origin/feat/production-cloudflare-nginx | cut -d/ -f1 | sort -u'
+  git diff --name-only HEAD origin/master | cut -d/ -f1 | sort -u'
 ```
 
 | Geänderte Pfade | Nötiger Schritt |
 |---|---|
-| nur `site/`, `docs/` | nichts weiter — Bind-Mount ist sofort aktiv |
+| nur `docs/` | nichts weiter |
+| `site/` (Datei-Inhalte geändert) | nichts weiter — Bind-Mount ist sofort aktiv |
+| `site/` (Dateien neu/gelöscht, Branch-Wechsel) | `docker compose up -d --force-recreate nginx` (s. Fallstricke) |
 | `nginx/conf.d/` | `docker compose exec nginx nginx -s reload` |
 | `nginx/nginx.conf` | `docker compose up -d --force-recreate nginx` (s. Fallstricke) |
 | `app/`, `Dockerfile`, `requirements.txt` | `docker compose up -d --build web` |
@@ -109,7 +112,7 @@ ssh djredoo 'cd /opt/dj-redoo && git fetch origin && \
 ```bash
 ssh djredoo 'cd /opt/dj-redoo && git status --short && \
   git rev-parse --short HEAD > /tmp/djredoo-rollback-ref && \
-  git merge --ff-only origin/feat/production-cloudflare-nginx'
+  git merge --ff-only origin/master'
 ```
 
 `git status --short` muss leer sein. Der Rollback-Ref in `/tmp` erlaubt
@@ -144,12 +147,25 @@ ssh djredoo 'cd /opt/dj-redoo && git reset --hard $(cat /tmp/djredoo-rollback-re
 
 ### Fallstricke
 
-- **`nginx.conf` ist ein Bind-Mount einer einzelnen Datei.** `git merge`
-  ersetzt die Datei und erzeugt dabei eine neue Inode — der Mount zeigt
-  weiter auf die alte. Ein `nginx -s reload` liest dann die *alte* Config
-  und meldet trotzdem Erfolg. Nach Änderungen an `nginx.conf` deshalb
-  immer `--force-recreate nginx`. Für `nginx/conf.d/` (Verzeichnis-Mount)
-  reicht ein Reload.
+- **Bind-Mounts überleben keinen Inode-Wechsel.** Docker bindet die Inode,
+  nicht den Pfad. Ersetzt git die Datei oder das Verzeichnis, zeigt der
+  Mount weiter auf das alte, bereits gelöschte Objekt — der Container
+  sieht die Änderung nie. Betrifft beide Mounts:
+  - `nginx.conf` (Single-File-Mount): `git merge` ersetzt die Datei. Ein
+    `nginx -s reload` liest dann die *alte* Config und meldet trotzdem
+    Erfolg.
+  - `site/` (Verzeichnis-Mount): ein `git checkout` eines anderen Branches
+    ersetzt das Verzeichnis. Der Mount ist danach **leer**, die Site
+    liefert 404 und `rewrite or internal redirection cycle` (500).
+    Ein blosser `git merge` innerhalb desselben Branches ist unkritisch,
+    solange nur Dateiinhalte geändert werden.
+
+  In beiden Fällen hilft nur `docker compose up -d --force-recreate nginx`.
+  Nach jedem Branch-Wechsel und nach jeder Änderung an `nginx.conf` also
+  immer neu erstellen — und danach verifizieren:
+  `docker exec dj-redoo-nginx-1 ls /usr/share/nginx/site/ | head`
+  (leere Ausgabe = Mount ist tot).
+  Für Änderungen nur in `nginx/conf.d/` reicht ein Reload.
 - **Dateirechte.** nginx läuft als eigener User und liefert `403`, wenn
   Dateien kein Read-Bit für "others" haben. Bei `git`-Deploys greift die
   Server-umask und alles passt; bei manuell kopierten Dateien prüfen:
