@@ -181,6 +181,51 @@ verhindert, dass eine Verifizierung den SPF-Record überschreibt.
 > ein „Invalid API Token" dort heißt nicht, dass der Token kaputt ist.
 > Gegen `/zones` testen.
 
+## Bing Webmaster Tools per API
+
+Zugangsdaten in `secrets/bing.env` (nicht im Repo, `chmod 600`). Der
+API-Schlüssel stammt aus dem Webmaster-Tool unter *Einstellungen →
+API-Zugriff*. Wrapper:
+
+```bash
+scripts/bing.sh sites            # Verifizierungsstatus + DNS-Kennung
+scripts/bing.sh feeds            # Sitemaps mit Crawl-Zeitpunkt
+scripts/bing.sh submit-sitemap   # Sitemap (neu) einreichen
+scripts/bing.sh submit <url>...  # URLs zur Indexierung anmelden
+scripts/bing.sh quota            # Restkontingent (100/Tag, 700/Monat)
+scripts/bing.sh stats            # Klicks und Impressionen
+scripts/bing.sh keywords         # Suchanfragen mit Position
+```
+
+Die Ausgabe formatiert `scripts/bing_fmt.py`. Zwei Fallstricke, die dort
+abgefangen sind:
+
+- Die API meldet **Fehler mit HTTP 200** und `ErrorCode` im Body. Ohne
+  Prüfung sieht ein abgelehnter Aufruf wie ein erfolgreicher aus.
+- `siteUrl` muss exakt so geschrieben werden, wie `GetUserSites` sie
+  zurückgibt — mit Schema und abschließendem Slash, URL-kodiert. Sonst
+  kommt `InvalidParameter`.
+
+Verhältnis zu IndexNow: `scripts/indexnow.sh` läuft ohne Konto und meldet
+Änderungen; `bing.sh submit` nutzt das Kontingent des verifizierten Kontos.
+Für Routine-Deploys reicht IndexNow.
+
+### Bing-Verifizierung
+
+Die Site wurde per Import aus der Search Console verifiziert. Zusätzlich
+liegt der eigenständige DNS-Nachweis in der Zone:
+
+```
+a7b13f9511633a1a25fa30746f95c454  CNAME  verify.bing.com   (DNS-only)
+```
+
+Der Record muss **stehen bleiben** — Bing prüft periodisch nach. Er ist
+bewusst zusätzlich zum Import gesetzt: eine importierte Verifizierung hängt
+am Google-Konto und verfällt, wenn Bing der Zugriff darauf entzogen wird.
+Verifizierungs-CNAMEs immer DNS-only (`scripts/cf-dns.sh cname` erzwingt
+das) — hinter dem Proxy liefert Cloudflare eigene Adressen aus und das Ziel
+ist nicht auflösbar.
+
 ### www-Weiterleitung
 
 `www.dj-redoo.de` existierte anfangs gar nicht — der Aufruf lief in einen

@@ -46,18 +46,30 @@ Teil C Schritt 6.
 
 ---
 
-## 1. Bing Webmaster Tools
+## 1. Bing Webmaster Tools ✅ erledigt
 
 **Wichtigster Punkt von allen: ChatGPTs Suche läuft über den Bing-Index.**
 Ohne Bing-Indexierung bleibt die Seite für ChatGPT unsichtbar.
 
-1. `bing.com/webmasters` → mit Microsoft-Konto anmelden
-2. **„Import aus Google Search Console"** — geht in einem Klick, sobald die
-   Search Console eingerichtet ist (Abschnitt 3). Andernfalls Site manuell
-   hinzufügen: `https://dj-redoo.de`
-3. Verifizierung: die Methode **„XML-Datei"** oder **„Meta-Tag"** wählen —
-   sag mir den Wert, dann lege ich die Datei bzw. das Tag an und deploye.
-4. Sitemap einreichen: `https://dj-redoo.de/sitemap.xml`
+Stand 2026-08-25: Site verifiziert (Import aus der Search Console),
+zusätzlich eigener DNS-Nachweis gesetzt, Sitemap eingereicht und von Bing
+gecrawlt (`Status: Success`, 8 URLs), alle 8 URLs zur Indexierung angemeldet.
+
+Verwaltet wird das ohne Weboberfläche über `scripts/bing.sh` — Schlüssel in
+`secrets/bing.env`, Details in `DEPLOY.md`:
+
+```bash
+scripts/bing.sh sites      # Verifizierungsstatus
+scripts/bing.sh feeds      # Sitemap-Status und Crawl-Zeitpunkt
+scripts/bing.sh keywords   # welche Suchanfragen Impressionen bringen
+```
+
+Auswertungsdaten erscheinen erst 24–48 Stunden nach der Verifizierung.
+
+> Der CNAME `a7b13f9511633a1a25fa30746f95c454` → `verify.bing.com` muss
+> stehen bleiben. Er ist bewusst zusätzlich zum Import gesetzt: eine
+> importierte Verifizierung hängt am Google-Konto und verfällt, wenn Bing
+> der Zugriff darauf entzogen wird.
 
 ### IndexNow ✅ läuft bereits
 
@@ -215,8 +227,8 @@ Aktuell:
 
 ## Reihenfolge
 
-1. Search Console (Abschnitt 3) — schaltet den Bing-Import frei
-2. Bing Webmaster per Import (Abschnitt 1)
-3. Bing Places + Apple Business Connect (2, 4)
+1. ~~Search Console (Abschnitt 3)~~ ✅ verifiziert, Sitemap eingereicht
+2. ~~Bing Webmaster (Abschnitt 1)~~ ✅ verifiziert, Sitemap eingereicht
+3. Bing Places + Apple Business Connect (2, 4) ← **als Nächstes**
 4. Die drei deutschen Verzeichnisse (6)
 5. URLs an mich → `sameAs`

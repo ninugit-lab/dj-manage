@@ -15,8 +15,8 @@ Ergänzt `docs/superpowers/specs/2026-08-04-ai-seo-strategie-design.md` (Abschni
 | Impressum + Datenschutz + Consent im Buchungsformular | ✅ |
 | Testimonials, Bildergalerie, Dark-Premium-Design | ✅ |
 | **Google Business Profile** | ✅ angelegt, `sameAs` verknüpft |
-| **Review-Funnel (APScheduler + `review_requested_at`)** | ✅ implementiert — Bewertungslink fehlt noch |
-| **Google Search Console / Bing Webmaster** | ⏳ IndexNow läuft, Konten offen → `externe-eintraege.md` |
+| **Review-Funnel (APScheduler + `review_requested_at`)** | ✅ implementiert und aktiv |
+| **Google Search Console / Bing Webmaster** | ✅ beide verifiziert, Sitemap eingereicht |
 | **Verzeichniseinträge (NAP-Zitate)** | ⏳ vorbereitet → `externe-eintraege.md` |
 
 Die größten offenen Hebel sind **nicht** auf der Website — sie sind GBP + Reviews + NAP-Zitate. KI-Suchmaschinen und lokale Rankings ziehen genau daraus.
@@ -34,6 +34,9 @@ Search Console + Bing, Verzeichniseinträge, GBP-Fotos — und der eine Schalter
 | Bewertungslink (in `AppConfig`) | `https://g.page/r/CVP5vQi34gPoEBM/review` |
 | CID | `16718455517482973523` |
 | Maps-URL (in `sameAs`) | `https://maps.google.com/?cid=16718455517482973523` |
+| Google-Verifizierung | Datei `site/google8c4ed904e5aa0401.html` |
+| Bing-Verifizierung | CNAME `a7b13f9511633a1a25fa30746f95c454` → `verify.bing.com` |
+| IndexNow-Key | `site/d54d853abcf4a29dd70ed645c6c85773.txt` |
 
 Die CID steckt im Bewertungslink: der Token nach `/r/` ist base64url-kodiertes
 Protobuf, Feld 1 ist die CID als little-endian fixed64. Damit lässt sich die
@@ -101,7 +104,10 @@ Nachgelagert im Code, sobald GBP live ist:
 - `sameAs` in allen JSON-LD-Blöcken mit der GBP-URL füllen (aktuell `"sameAs": []`)
 - `aggregateRating` ergänzen — **erst ab ≥ 5 echten Google-Bewertungen** und nur mit Werten, die exakt dem GBP entsprechen (falsche Werte = Rich-Snippet-Sperre)
 
-## B2. Google Search Console + Bing Webmaster Tools
+## B2. Google Search Console + Bing Webmaster Tools ✅ erledigt
+
+Beide verifiziert, Sitemap in beiden eingereicht und abgeholt (Stand
+2026-08-25). Bing wird per `scripts/bing.sh` ohne Weboberfläche abgefragt.
 
 → **Schritt-für-Schritt mit fertigen Werten: [`externe-eintraege.md`](externe-eintraege.md)**
 
