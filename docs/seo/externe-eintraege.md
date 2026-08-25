@@ -94,13 +94,41 @@ Einreichungen zurück.
 ## 2. Bing Places
 
 Eigenständig neben den Webmaster Tools — das ist der Kartenzeiger, nicht der
-Index.
+Index. Speist Bing Maps und **Microsoft Copilot**, das in Windows und Edge
+mitgeliefert wird. Deutlich weniger Betriebe pflegen ihren Bing-Eintrag als
+den bei Google, entsprechend leichter fällt hier die Sichtbarkeit.
 
-1. `bingplaces.com` → „Neues Unternehmen hinzufügen"
-2. NAP-Block von oben übernehmen
-3. **Servicegebiet statt Ladenadresse** wählen (wie bei Google) — sonst
-   erscheint die Betriebsadresse öffentlich auf der Karte
-4. Kategorie `Disc Jockey`, Logo hochladen, Beschreibung einfügen
+**Zeitaufwand:** 10 Minuten bei Import, 20 Minuten manuell.
+
+### Der schnelle Weg: aus dem Google-Profil importieren
+
+1. `bingplaces.com` → mit Microsoft-Konto anmelden
+2. Nach `DJ Redoo` + `Duisburg` suchen. Erscheint ein Eintrag: **beanspruchen**,
+   nicht neu anlegen. Zwei Einträge desselben Betriebs schaden dauerhaft.
+3. **„Import from Google Business Profile"** wählen. Bing fragt Leserechte auf
+   das Google-Profil ab und übernimmt Name, Adresse, Telefon, Kategorien,
+   Beschreibung, Zeiten und Fotos in einem Zug. Am Google-Profil ändert sich
+   dabei nichts.
+4. Optional die laufende Synchronisation aktivieren — dann folgt Bing künftigen
+   Änderungen am Google-Profil automatisch.
+
+> **Import nur, wenn das Google-Profil sauber ist.** Bing kopiert Fehler
+> unbesehen mit; aus einer Baustelle werden dann zwei. Da unser GBP frisch und
+> geprüft ist, ist der Import hier der richtige Weg.
+
+### Manuell, falls der Import nicht angeboten wird
+
+1. „Add a new business" → Geschäftstyp **Servicegebiet / Service Area Business**
+2. NAP-Block von oben zeichengenau übernehmen
+3. **Adresse ausblenden** ankreuzen — sonst steht die Betriebsadresse öffentlich
+   auf der Karte. Stattdessen die Servicegebiete eintragen (Städteliste unten).
+4. Kategorie `Disc Jockey`, Logo `site/images/logo-google-720.png`,
+   Kurzbeschreibung von oben
+
+### Verifizierung
+
+Per Telefon oder E-Mail, meist sofort. Danach dauert es einige Tage, bis der
+Eintrag in Bing Maps erscheint.
 
 ---
 
@@ -152,13 +180,43 @@ Nach jeder inhaltlichen Änderung ausführen, dann `scripts/indexnow.sh`.
 
 ## 4. Apple Business Connect
 
-Speist Apple Maps und Siri — relevant für jeden iPhone-Nutzer, der nach
-einem DJ sucht.
+Speist Apple Maps und Siri — relevant für jeden iPhone-Nutzer, der nach einem
+DJ sucht. Der Dienst heißt inzwischen schlicht **Apple Business**; bestehende
+Daten wurden übernommen.
 
-1. `businessconnect.apple.com` → Apple-ID, dann „Unternehmen hinzufügen"
-2. NAP-Block übernehmen, Typ **Dienstleistung vor Ort**
-3. Verifizierung per Post oder Telefon
-4. „Showcase" mit Logo und Fotos füllen
+**Zeitaufwand:** 20 Minuten, dann bis zu 5 Werktage bis zur Freischaltung.
+
+> **Wichtig, weil ältere Anleitungen das Gegenteil sagen:** Apple hat lange nur
+> Betriebe mit Ladenlokal zugelassen und Dienstleister abgelehnt. Das ist
+> geändert — Servicegebiets-Betriebe können sich eintragen, ohne die
+> Privatadresse öffentlich zu zeigen. Wer noch einen Forenbeitrag von 2024
+> findet, der das verneint, liest veraltete Auskunft.
+
+1. `businessconnect.apple.com` → mit Apple-ID anmelden. Wenn möglich eine
+   geschäftliche verwenden, nicht die private — das Profil hängt sonst dauerhaft
+   an einer Privatperson.
+2. Nach `DJ Redoo` suchen. Vorhandenen Eintrag beanspruchen, sonst neu anlegen.
+3. Beim Anlegen: Name, Website, Adresse **und der bürgerliche Name der Person,
+   die den Eintrag anmeldet** — Apple fragt das ab, Google nicht.
+4. Typ **Servicegebiet** wählen, Adresse ausblenden, Städteliste eintragen.
+5. NAP-Block zeichengenau übernehmen, Logo und Fotos ergänzen.
+
+### Verifizierung — hier ist Apple strenger als Google
+
+- **Zwei** Verifizierungsmethoden aus Apples Liste sind nötig, nicht eine.
+- Ab Anmeldung bleiben **10 Tage** Zeit. Wer die Frist verstreichen lässt,
+  fängt von vorn an — also erst anmelden, wenn eine ruhige halbe Stunde da ist.
+- Apple kann Nachweise verlangen, dass du den Betrieb vertrittst. **Gewerbe-
+  anmeldung bereitlegen.** Name, Adresse, Telefon und Website müssen dort
+  identisch zur Website stehen; jede Abweichung verzögert oder löst eine
+  erneute Prüfung aus. Genau dafür ist der NAP-Block oben da.
+
+### Servicegebiete (für beide Dienste, gleiche Liste wie bei Google)
+
+```
+Duisburg · Düsseldorf · Essen · Oberhausen · Mülheim an der Ruhr · Krefeld
+Moers · Dinslaken · Kleve · Wesel · Ratingen · Neuss · Bottrop
+```
 
 ---
 
