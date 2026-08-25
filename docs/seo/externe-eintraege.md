@@ -92,7 +92,18 @@ Index.
 
 ---
 
-## 3. Google Search Console
+## 3. Google Search Console ✅ verifiziert
+
+**Stand 2026-08-25:** Property `https://dj-redoo.de/` (URL-Präfix) ist per
+HTML-Datei verifiziert, Sitemap eingereicht. Die Verifizierungsdatei
+`site/google8c4ed904e5aa0401.html` **muss liegen bleiben** — Google prüft sie
+periodisch nach, beim Löschen verfällt die Property.
+
+Nach 3–5 Tagen unter „Seiten" die Abdeckung prüfen; einzelne URLs über
+„URL-Prüfung" → „Indexierung beantragen" nachschieben.
+
+<details>
+<summary>Falls später die Domain-Property (alle Subdomains) dazukommen soll</summary>
 
 1. `search.google.com/search-console` → Property hinzufügen
 2. **Empfehlung: Typ „Domain"** (nicht URL-Präfix) — deckt alle Subdomains
@@ -109,8 +120,21 @@ Index.
    Es legt die Datei mit korrektem Inhalt und Leserecht an und nennt die
    Deploy-Schritte. Danach in der Console auf „Bestätigen" klicken.
 4. Sitemap einreichen: `sitemap.xml`
-5. Nach 3–5 Tagen unter „Seiten" die Abdeckung prüfen; einzelne URLs über
-   „URL-Prüfung" → „Indexierung beantragen" nachschieben.
+
+</details>
+
+### `lastmod` pflegen
+
+Google priorisiert das Crawling nach `<lastmod>`. Veraltete Werte kosten
+Aktualität, pauschal auf „heute" gesetzte werden ignoriert. Deshalb kommen
+die Werte aus dem Git-Log:
+
+```bash
+scripts/sitemap.sh            # aus dem letzten Commit-Datum je Datei setzen
+scripts/sitemap.sh --check    # nur pruefen, Exit 1 bei Abweichung
+```
+
+Nach jeder inhaltlichen Änderung ausführen, dann `scripts/indexnow.sh`.
 
 ---
 
