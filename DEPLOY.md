@@ -181,6 +181,30 @@ verhindert, dass eine Verifizierung den SPF-Record überschreibt.
 > ein „Invalid API Token" dort heißt nicht, dass der Token kaputt ist.
 > Gegen `/zones` testen.
 
+### www-Weiterleitung
+
+`www.dj-redoo.de` existierte anfangs gar nicht — der Aufruf lief in einen
+DNS-Fehler statt auf die Hauptdomain. Seit 2026-08-25:
+
+- CNAME `www` → Tunnel, **proxied** (graue Wolke ginge nicht: der Tunnel
+  kennt `www` nicht als Public Hostname und antwortet dort mit 530/1033)
+- Redirect-Regel in der Phase `http_request_dynamic_redirect`, Ruleset
+  `redirects`: `http.host eq "www.dj-redoo.de"` → 301 auf
+  `concat("https://dj-redoo.de", http.request.uri.path)`,
+  `preserve_query_string: true`
+
+Cloudflare beantwortet den Redirect selbst, die Anfrage erreicht den Tunnel
+also nie. Prüfen:
+
+```bash
+curl -s -o /dev/null -w "%{http_code} -> %{redirect_url}\n" \
+  https://www.dj-redoo.de/faq.html      # 301 -> https://dj-redoo.de/faq.html
+```
+
+Ein einzelner Hop, danach 200 — keine Redirect-Kette. Damit gibt es auch
+keinen Duplicate Content: die `www`-Variante wird gar nicht erst
+ausgeliefert, und der Canonical zeigt ohnehin auf `https://dj-redoo.de/`.
+
 ### Behoben: DMARC war wirkungslos
 
 `_dmarc.dj-redoo.de` und `autodiscover.dj-redoo.de` standen auf *proxied*
