@@ -4,11 +4,14 @@
 #
 #   scripts/cf-dns.sh list
 #   scripts/cf-dns.sh txt <name> <inhalt>     # anlegen oder aktualisieren
+#   scripts/cf-dns.sh cname <name> <ziel>     # DNS-only, fuer Verifizierungen
 #   scripts/cf-dns.sh unproxy <name>          # orange Wolke ausschalten
 #   scripts/cf-dns.sh delete <name>
 #
 # Beispiel Search-Console-Verifizierung:
 #   scripts/cf-dns.sh txt @ "google-site-verification=XXXXXXXXXXXX"
+# Beispiel Bing-Verifizierung:
+#   scripts/cf-dns.sh cname <von-Bing> verify.bing.com
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -68,6 +71,26 @@ print(next((r['id'] for r in json.load(sys.stdin)['result']
     fi
     echo "  Auflösung (kann kurz dauern):"
     sleep 5; dig +short TXT "$name" @1.1.1.1 | sed 's/^/    /'
+    ;;
+  cname)
+    [ $# -eq 2 ] || { echo "Aufruf: $0 cname <name> <ziel>" >&2; exit 1; }
+    name="$(fqdn "$1")"; target="$2"
+    # Verifizierungs-CNAMEs muessen DNS-only sein: hinter dem Proxy liefert
+    # Cloudflare seine eigenen Adressen aus, das Ziel ist dann nicht sichtbar.
+    body="$(python3 -c "
+import json,sys
+print(json.dumps({'type':'CNAME','name':sys.argv[1],'content':sys.argv[2],
+                  'ttl':300,'proxied':False}))" "$name" "$target")"
+    id="$(rec_id "$name" CNAME)"
+    if [ -n "$id" ]; then
+      echo "aktualisiere bestehenden CNAME-Record …"
+      curl -s -X PUT "${auth[@]}" --data "$body" "$API/$id" | check
+    else
+      echo "lege neuen CNAME-Record an …"
+      curl -s -X POST "${auth[@]}" --data "$body" "$API" | check
+    fi
+    echo "  Auflösung (kann kurz dauern):"
+    sleep 5; dig +short CNAME "$name" @1.1.1.1 | sed 's/^/    /'
     ;;
   unproxy)
     [ $# -eq 1 ] || { echo "Aufruf: $0 unproxy <name>" >&2; exit 1; }
