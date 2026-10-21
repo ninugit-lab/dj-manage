@@ -421,7 +421,8 @@ def submit_event_form(request):
             result = PriceEngine.calculate_workflow(workflow_id=default_wf.pk, **calc_kwargs)
         else:
             result = PriceEngine.calculate(**calc_kwargs)
-        calc.calculation_snapshot = result
+        # JSONField cannot serialize Decimal values returned by PriceEngine.
+        calc.calculation_snapshot = json.loads(json.dumps(result, default=str))
         active_rule_ids = [r['rule_id'] for r in result.get('rules_applied', []) if r.get('rule_id')]
         if active_rule_ids:
             calc.applied_rules.set(PricingRule.objects.filter(pk__in=active_rule_ids))
