@@ -138,14 +138,41 @@ class GoogleService:
             data = resp.json() if resp is not None else {}
         except Exception as e:
             logger.error("Google refresh network error: %s", e)
+            token.connection_state = "temporary_error"
+            token.last_error_at = timezone.now()
+            token.last_error_code = "network_error"
+            token.last_error_message = str(e)
+            token.save(update_fields=[
+                "connection_state", "last_error_at", "last_error_code",
+                "last_error_message", "updated_at",
+            ])
             return False
 
         if resp.status_code == 400 and data.get("error") == "invalid_grant":
-            logger.error("Google refresh: invalid_grant — deleting token, user must re-login")
-            token.delete()
+            logger.error("Google refresh: invalid_grant — user must re-login")
+            token.access_token = ""
+            token.refresh_token = ""
+            token.connection_state = "reauthorization_required"
+            token.reauthorization_required = True
+            token.last_error_at = timezone.now()
+            token.last_error_code = "invalid_grant"
+            token.last_error_message = data.get("error_description", "Google-Zugriff wurde widerrufen oder ist abgelaufen")
+            token.save(update_fields=[
+                "access_token", "refresh_token", "connection_state",
+                "reauthorization_required", "last_error_at", "last_error_code",
+                "last_error_message", "updated_at",
+            ])
             return False
 
         if "access_token" not in data:
+            token.connection_state = "temporary_error"
+            token.last_error_at = timezone.now()
+            token.last_error_code = data.get("error", f"http_{resp.status_code}")
+            token.last_error_message = data.get("error_description", str(data))
+            token.save(update_fields=[
+                "connection_state", "last_error_at", "last_error_code",
+                "last_error_message", "updated_at",
+            ])
             logger.warning("Google refresh failed (status %s): %s", resp.status_code, data)
             return False
 
@@ -159,6 +186,13 @@ class GoogleService:
                 token.refresh_token = data["refresh_token"]
             if data.get("scope"):
                 token.scopes = data["scope"]
+            token.connection_state = "connected"
+            token.reauthorization_required = False
+            token.last_refresh_at = timezone.now()
+            token.last_success_at = timezone.now()
+            token.last_error_at = None
+            token.last_error_code = ""
+            token.last_error_message = ""
             token.save()
         logger.info("Google token refreshed, expires_at=%s", token.expires_at)
         return True
@@ -172,21 +206,72 @@ class GoogleService:
         from .models import GoogleToken
 
         with _REFRESH_LOCK:
-            token = GoogleToken.objects.order_by("-updated_at").first()
-            if not token:
-                return None
-
-            token.refresh_from_db()
-
-            needs_refresh = force_refresh or token.is_expired or \
-                (token.expires_at - timezone.now()).total_seconds() < EXPIRY_BUFFER
-
-            if needs_refresh:
-                if not GoogleService._refresh_token_locked(token):
+            with transaction.atomic():
+                token = GoogleToken.objects.select_for_update().order_by("-updated_at").first()
+                if not token:
                     return None
-                token.refresh_from_db()
 
-            return token.access_token
+                needs_refresh = force_refresh or token.is_expired or \
+                    (token.expires_at - timezone.now()).total_seconds() < EXPIRY_BUFFER
+
+                if needs_refresh:
+                    if not GoogleService._refresh_token_locked(token):
+                        return None
+                    token.refresh_from_db()
+
+                return token.access_token
+
+    @staticmethod
+    def get_connection_status(refresh_if_needed=True):
+        """Return a truthful OAuth state; expired access tokens are refreshed."""
+        from .models import GoogleToken
+
+        token = GoogleToken.objects.order_by("-updated_at").first()
+        if not token:
+            return {
+                "connected": False, "state": "not_configured",
+                "reauthorization_required": False, "expires_at": None,
+                "missing_scopes": GoogleService.SCOPES.split(),
+            }
+        if token.reauthorization_required or not token.refresh_token:
+            return GoogleService._connection_status_payload(token)
+
+        if refresh_if_needed and token.is_expired:
+            access_token = GoogleService.get_valid_token()
+            token.refresh_from_db()
+            if not access_token and not token.reauthorization_required:
+                token.connection_state = "temporary_error"
+                token.last_error_at = timezone.now()
+                token.last_error_code = token.last_error_code or "network_error"
+                token.last_error_message = token.last_error_message or "Google ist vorübergehend nicht erreichbar"
+                token.save(update_fields=[
+                    "connection_state", "last_error_at", "last_error_code",
+                    "last_error_message", "updated_at",
+                ])
+        return GoogleService._connection_status_payload(token)
+
+    @staticmethod
+    def _connection_status_payload(token):
+        required = set(GoogleService.SCOPES.split())
+        granted = set((token.scopes or "").split())
+        missing_scopes = sorted(required - granted)
+        reauth = token.reauthorization_required or not token.refresh_token
+        state = "reauthorization_required" if reauth else token.connection_state
+        if not reauth and missing_scopes:
+            state = "missing_scopes"
+        connected = not reauth and bool(token.refresh_token) and not missing_scopes
+        return {
+            "connected": connected,
+            "state": state or "connected",
+            "reauthorization_required": reauth,
+            "expires_at": token.expires_at.isoformat() if token.expires_at else None,
+            "last_refresh_at": token.last_refresh_at.isoformat() if token.last_refresh_at else None,
+            "last_success_at": token.last_success_at.isoformat() if token.last_success_at else None,
+            "last_error_at": token.last_error_at.isoformat() if token.last_error_at else None,
+            "last_error_code": token.last_error_code,
+            "last_error_message": token.last_error_message,
+            "missing_scopes": missing_scopes,
+        }
 
     @staticmethod
     def _headers(force_refresh=False):
@@ -305,11 +390,16 @@ class GoogleService:
     @staticmethod
     def delete_calendar_event(calendar_event_id):
         if not calendar_event_id:
-            return
-        GoogleService._api_call(
+            return True, None
+        resp = GoogleService._api_call(
             "DELETE",
             f"{GoogleService.CALENDAR_API}/calendars/primary/events/{calendar_event_id}",
         )
+        if resp is None:
+            return False, "Kein Google-Token oder Netzwerkfehler"
+        if resp.status_code in (200, 204, 404, 410):
+            return True, None
+        return False, f"Calendar API {resp.status_code}: {resp.text[:200]}"
 
     # ── Gmail ────────────────────────────────────────────────────────────────
 

@@ -76,6 +76,16 @@ class Event(models.Model):
     distance_km = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True, verbose_name="Entfernung (km)")
     admin_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     google_calendar_event_id = models.CharField(max_length=200, blank=True, verbose_name="Google Calendar Event ID")
+    status_before_cancellation = models.CharField(
+        max_length=20, choices=EventStatus.choices, blank=True,
+        verbose_name="Status vor Stornierung",
+    )
+    cancellation_reason = models.TextField(blank=True, verbose_name="Stornogrund")
+    cancelled_at = models.DateTimeField(null=True, blank=True, verbose_name="Storniert am")
+    cancelled_by = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cancelled_events', verbose_name="Storniert von",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -184,6 +194,13 @@ class GoogleToken(models.Model):
     token_type = models.CharField(max_length=50, default='Bearer')
     expires_at = models.DateTimeField()
     scopes = models.TextField(blank=True)
+    connection_state = models.CharField(max_length=40, default='connected')
+    reauthorization_required = models.BooleanField(default=False)
+    last_refresh_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error_at = models.DateTimeField(null=True, blank=True)
+    last_error_code = models.CharField(max_length=100, blank=True)
+    last_error_message = models.TextField(blank=True)
     updated_at = models.DateTimeField(auto_now=True)
     class Meta:
         verbose_name = "Google Token"
@@ -225,6 +242,18 @@ class AppConfig(models.Model):
     inquiry_email_body = models.TextField(blank=True, verbose_name="Anfrage-Mail Text",
         help_text="Platzhalter: {client_name}, {event_name}, {event_date}, {location}, {dj_name}",
         default="Hallo {client_name},\n\nvielen Dank für deine Anfrage für \"{event_name}\" am {event_date} in {location}.\n\nWir melden uns in Kürze bei dir!\n\nBeste Grüße,\n{dj_name}")
+    cancellation_email_subject = models.CharField(
+        max_length=200, default="Deine Buchung wurde storniert",
+        verbose_name="Storno-Mail Betreff",
+    )
+    cancellation_email_body = models.TextField(
+        blank=True, verbose_name="Storno-Mail Text",
+        help_text=("Platzhalter: {client_name}, {event_name}, {event_date}, "
+                   "{event_time}, {location}, {cancellation_reason}, {dj_name}"),
+        default=("Hallo {client_name},\n\nleider wurde dein Event \"{event_name}\" "
+                 "am {event_date} um {event_time} in {location} storniert."
+                 "\n\n{cancellation_reason}\n\nBeste Grüße,\n{dj_name}"),
+    )
     review_request_email_subject = models.CharField(max_length=200,
         default="Wie war euer Abend? 🎶",
         verbose_name="Bewertungs-Mail Betreff")

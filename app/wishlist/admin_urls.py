@@ -14,6 +14,8 @@ urlpatterns = [
     path('events/<int:pk>/edit/', admin_views.event_edit, name='event_edit'),
     path('events/<int:pk>/delete/', admin_views.event_delete, name='event_delete'),
     path('events/<int:pk>/confirm/', admin_views.event_confirm, name='event_confirm'),
+    path('events/<int:pk>/cancel/', admin_views.event_cancel, name='event_cancel'),
+    path('events/<int:pk>/restore/', admin_views.event_restore, name='event_restore'),
     path('events/<int:pk>/set-active/', admin_views.event_set_active, name='event_set_active'),
 
     # Wishlist Admin (Turbo Frame)

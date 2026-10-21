@@ -271,13 +271,13 @@ function checkConnectionStatus(){
   fetch('/google/status/').then(function(r){return r.json()}).then(function(d){
     var dot=document.getElementById('status-google'),label=document.getElementById('status-google-label');
     if(dot)dot.className='status-dot '+(d.connected?'ok':'err');
-    if(label)label.textContent=d.connected?'':'(getrennt)';
+    if(label)label.textContent=d.state==='temporary_error'?'(temporär)':(d.connected?'':'(erneut verbinden)');
     if(_prevGoogle===true&&d.connected===false)showToast('Google-Verbindung verloren',true);
     _prevGoogle=d.connected;
   }).catch(function(){});
 }
 checkConnectionStatus();
-setInterval(checkConnectionStatus,10000);
+  setInterval(checkConnectionStatus,60000);
 
 // nav-link mobile close: handled by drawer.js
 </script>

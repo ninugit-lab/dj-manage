@@ -11,6 +11,11 @@
     {% if event.status == 'inquiry' %}
     <button class="btn btn-primary btn-sm" onclick="confirmEvent({{ event.pk }})">&#10003; Bestätigen</button>
     {% endif %}
+    {% if event.status == 'cancelled' %}
+    <button type="button" class="btn btn-primary btn-sm" onclick="restoreEvent({{ event.pk }})">Wiederherstellen</button>
+    {% else %}
+    <button type="button" class="btn btn-danger btn-sm" onclick="cancelEvent({{ event.pk }})">Stornieren</button>
+    {% endif %}
     <a href="{% url 'dj_admin:event_delete' pk=event.pk %}" class="btn btn-danger btn-sm">Löschen</a>
     {% endif %}
   </div>
@@ -164,8 +169,9 @@
             <option value="inquiry" {% if event.status == 'inquiry' %}selected{% endif %}>Angefragt</option>
             <option value="confirmed" {% if event.status == 'confirmed' %}selected{% endif %}>Bestätigt</option>
             <option value="past" {% if event.status == 'past' %}selected{% endif %}>Vergangen</option>
-            <option value="cancelled" {% if event.status == 'cancelled' %}selected{% endif %}>Storniert</option>
+            {% if event.status == 'cancelled' %}<option value="cancelled" selected>Storniert</option>{% endif %}
           </select>
+          {% if event.status == 'cancelled' %}<div class="text-xs text-danger mt-1">Storniert{% if event.cancelled_at %} am {{ event.cancelled_at|date:"d.m.Y H:i" }}{% endif %}{% if event.cancellation_reason %}: {{ event.cancellation_reason }}{% endif %}</div>{% endif %}
         </div>
         <div class="form-group">
           <label class="form-label">Gesamtpreis (€)</label>
@@ -558,6 +564,32 @@ async function confirmEvent(pk) {
     var data = await res.json();
     if (data.success) { showToast('Event bestätigt! ✓'); setTimeout(function(){ location.reload() }, 800); }
   } catch (e) { showToast('Fehler', true); }
+}
+
+async function cancelEvent(pk) {
+  var reason = prompt('Stornogrund (optional, wird dem Kunden mitgeteilt):', '');
+  if (reason === null || !confirm('Event wirklich stornieren? Kalendertermin und Kundenmail werden verarbeitet.')) return;
+  var form = new URLSearchParams(); form.set('reason', reason);
+  try {
+    var res = await fetch('/dj-admin/events/' + pk + '/cancel/', {
+      method: 'POST', headers: {'X-CSRFToken': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded'}, body: form
+    });
+    var data = await res.json();
+    if (data.success) { showToast(data.warnings ? 'Storniert – mit Warnungen' : 'Event storniert'); setTimeout(function(){ location.reload() }, 900); }
+    else showToast(data.error || 'Storno fehlgeschlagen', true);
+  } catch (e) { showToast('Storno fehlgeschlagen', true); }
+}
+
+async function restoreEvent(pk) {
+  if (!confirm('Event auf den vorherigen Status wiederherstellen?')) return;
+  try {
+    var res = await fetch('/dj-admin/events/' + pk + '/restore/', {
+      method: 'POST', headers: {'X-CSRFToken': csrfToken(), 'Content-Type': 'application/json'}
+    });
+    var data = await res.json();
+    if (data.success) { showToast(data.warnings ? 'Wiederhergestellt – mit Warnungen' : 'Event wiederhergestellt'); setTimeout(function(){ location.reload() }, 900); }
+    else showToast(data.error || 'Wiederherstellung fehlgeschlagen', true);
+  } catch (e) { showToast('Wiederherstellung fehlgeschlagen', true); }
 }
 
 // Price calculator

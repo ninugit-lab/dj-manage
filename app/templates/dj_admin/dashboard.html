@@ -51,6 +51,24 @@
           class="min-h-[44px] px-4 font-mono text-sm whitespace-nowrap border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">Angefragt ({{ events_inquiry.count }})</button>
   <button role="tab" id="tab-events-past" aria-controls="panel-events-past" aria-selected="false" tabindex="-1"
           class="min-h-[44px] px-4 font-mono text-sm whitespace-nowrap border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">Vergangen ({{ events_past.count }})</button>
+  <button role="tab" id="tab-events-cancelled" aria-controls="panel-events-cancelled" aria-selected="false" tabindex="-1"
+          class="min-h-[44px] px-4 font-mono text-sm whitespace-nowrap border-b-2 border-transparent aria-selected:border-accent aria-selected:text-accent text-muted">Storniert ({{ events_cancelled.count }})</button>
+</div>
+
+<!-- Storniert -->
+<div id="panel-events-cancelled" role="tabpanel" aria-labelledby="tab-events-cancelled" hidden>
+  {% if events_cancelled %}
+  <table class="w-full text-sm"><caption class="sr-only">Stornierte Events</caption><tbody>
+  {% for ev in events_cancelled %}
+    <tr class="dt-row opacity-70">
+      <td class="dt-cell" data-label="Event"><strong>{{ ev.name }}</strong>{% if ev.cancellation_reason %}<br><span class="text-xs text-muted">{{ ev.cancellation_reason }}</span>{% endif %}</td>
+      <td class="dt-cell" data-label="Datum">{{ ev.date|date:"d.m.Y" }}</td>
+      <td class="dt-cell" data-label="Kunde">{{ ev.client_name }}</td>
+      <td class="dt-cell" data-label=""><a href="{% url 'dj_admin:event_edit' pk=ev.pk %}" class="btn btn-ghost btn-sm">Details</a></td>
+    </tr>
+  {% endfor %}
+  </tbody></table>
+  {% else %}<div class="empty-state"><div class="icon">🚫</div><p>Keine stornierten Events</p></div>{% endif %}
 </div>
 
 <!-- Bestätigt (default sichtbar) -->

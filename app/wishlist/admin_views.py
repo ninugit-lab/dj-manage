@@ -49,6 +49,7 @@ def admin_dashboard(request):
     events_confirmed = Event.objects.filter(status=EventStatus.CONFIRMED, date__gte=today).order_by('date')
     events_inquiry = Event.objects.filter(status=EventStatus.INQUIRY).order_by('date')
     events_past = Event.objects.filter(status=EventStatus.PAST).order_by('-date')[:20]
+    events_cancelled = Event.objects.filter(status=EventStatus.CANCELLED).order_by('-cancelled_at', '-date')[:20]
     active_event = Event.objects.filter(is_active=True).first()
     google_token = GoogleToken.objects.order_by('-updated_at').first()
     google_connected = google_token and not google_token.is_expired
@@ -59,6 +60,7 @@ def admin_dashboard(request):
         'events_confirmed': events_confirmed,
         'events_inquiry': events_inquiry,
         'events_past': events_past,
+        'events_cancelled': events_cancelled,
         'active_event': active_event,
         'google_connected': google_connected,
         'spotify_connected': spotify_connected,
@@ -184,7 +186,13 @@ def _save_event_from_post(request, config, event=None):
     # Spotify URL → ID (auto-parsed in model.save())
     event.spotify_playlist_id = request.POST.get('spotify_playlist_id', '')
     event.spotify_preselection_playlist_id = request.POST.get('spotify_preselection_playlist_id', '') or event.spotify_preselection_playlist_id
-    event.status = request.POST.get('status', event.status)
+    requested_status = request.POST.get('status', event.status)
+    # Storno und Wiederherstellung dürfen nur über ihre dedizierten Workflows
+    # laufen, damit Kalender, E-Mail, Sheets und Metadaten konsistent bleiben.
+    if event.status == EventStatus.CANCELLED:
+        event.status = EventStatus.CANCELLED
+    elif requested_status != EventStatus.CANCELLED:
+        event.status = requested_status
     event.is_active = request.POST.get('is_active') == 'on'
     try:
         event.max_wishes_per_session = max(1, int(request.POST.get('max_wishes_per_session', 3) or 3))
@@ -340,6 +348,122 @@ def event_confirm(request, pk):
     return JsonResponse({'success': True, 'warnings': errors} if errors else {'success': True})
 
 
+def _email_template_context(event, config, cancellation_reason=''):
+    return {
+        'client_name': event.client_name or 'Kunde',
+        'event_name': event.name,
+        'event_date': event.date.strftime('%d.%m.%Y'),
+        'event_time': str(event.time_start or 'nach Absprache'),
+        'location': event.location,
+        'cancellation_reason': cancellation_reason,
+        'dj_name': config.dj_name,
+    }
+
+
+@staff_member_required
+@require_POST
+def event_cancel(request, pk):
+    event = get_object_or_404(Event, pk=pk)
+    if event.status == EventStatus.CANCELLED:
+        return JsonResponse({'success': False, 'error': 'Event ist bereits storniert'}, status=400)
+
+    config = AppConfig.load()
+    reason = request.POST.get('reason', '').strip()
+    previous_status = event.status
+    calendar_id = event.google_calendar_event_id
+    event.status_before_cancellation = previous_status
+    event.status = EventStatus.CANCELLED
+    event.cancellation_reason = reason
+    event.cancelled_at = timezone.now()
+    event.cancelled_by = request.user
+    event.is_active = False
+    event.save()
+
+    warnings = []
+    if calendar_id:
+        success, message = GoogleService.delete_calendar_event(calendar_id)
+        if success:
+            event.google_calendar_event_id = ''
+            event.save(update_fields=['google_calendar_event_id'])
+        else:
+            warnings.append(f'Kalender: {message}')
+
+    if event.client_email:
+        try:
+            context = _email_template_context(event, config, reason)
+            subject = config.cancellation_email_subject.format(**context)
+            body = config.cancellation_email_body.format(**context)
+        except (KeyError, IndexError, ValueError) as exc:
+            warnings.append(f'E-Mail-Vorlage: ungültiger Platzhalter {exc}')
+        else:
+            success, message = GoogleService.send_email(
+                event.client_email, subject, body, sender_name=config.dj_name,
+            )
+            EmailLog.objects.create(
+                event=event, recipient=event.client_email, subject=subject, body=body,
+                success=success, error_message='' if success else message,
+            )
+            if not success:
+                warnings.append(f'E-Mail: {message}')
+
+    success, message = GoogleService.backup_event_to_sheets(event)
+    if not success:
+        warnings.append(f'Sheets: {message}')
+    result = {'success': True}
+    if warnings:
+        result['warnings'] = warnings
+    return JsonResponse(result)
+
+
+@staff_member_required
+@require_POST
+def event_restore(request, pk):
+    event = get_object_or_404(Event, pk=pk)
+    if event.status != EventStatus.CANCELLED:
+        return JsonResponse({'success': False, 'error': 'Event ist nicht storniert'}, status=400)
+
+    config = AppConfig.load()
+    restore_status = event.status_before_cancellation or EventStatus.INQUIRY
+    event.status = restore_status
+    event.cancellation_reason = ''
+    event.cancelled_at = None
+    event.cancelled_by = None
+    event.status_before_cancellation = ''
+    event.is_active = False
+    event.save()
+    event.refresh_from_db()
+    warnings = []
+
+    if event.status == EventStatus.CONFIRMED:
+        calendar_id, error = GoogleService.create_calendar_event(event)
+        if calendar_id:
+            event.google_calendar_event_id = calendar_id
+            event.save(update_fields=['google_calendar_event_id'])
+        elif error:
+            warnings.append(f'Kalender: {error}')
+        if event.client_email:
+            context = _email_template_context(event, config)
+            subject = config.confirmation_email_subject.format(**context)
+            body = config.confirmation_email_body.format(**context)
+            success, message = GoogleService.send_email(
+                event.client_email, subject, body, sender_name=config.dj_name,
+            )
+            EmailLog.objects.create(
+                event=event, recipient=event.client_email, subject=subject, body=body,
+                success=success, error_message='' if success else message,
+            )
+            if not success:
+                warnings.append(f'E-Mail: {message}')
+
+    success, message = GoogleService.backup_event_to_sheets(event)
+    if not success:
+        warnings.append(f'Sheets: {message}')
+    result = {'success': True}
+    if warnings:
+        result['warnings'] = warnings
+    return JsonResponse(result)
+
+
 @staff_member_required
 @require_POST
 def event_set_active(request, pk):
@@ -430,6 +554,7 @@ def config_page(request):
                 'dj_name', 'dj_real_name', 'dj_email', 'dj_phone', 'dj_address', 'dj_website',
                 'confirmation_email_subject', 'confirmation_email_body',
                 'inquiry_email_subject', 'inquiry_email_body',
+                'cancellation_email_subject', 'cancellation_email_body',
                 'review_request_email_subject', 'review_request_email_body',
                 'google_review_url',
                 'event_form_intro', 'event_form_date_prompt', 'event_form_unavailable_msg',
@@ -463,7 +588,7 @@ def config_page(request):
     return render(request, 'dj_admin/config.html', {
         'config': config, 'email_logs': email_logs,
         'google_token': google_token, 'spotify_token': spotify_token,
-        'google_connected': google_token and not google_token.is_expired,
+        'google_connected': GoogleService.get_connection_status(refresh_if_needed=False)['connected'],
         'spotify_connected': spotify_token and not spotify_token.is_expired,
     })
 

@@ -574,23 +574,32 @@ def google_callback(request):
         return render(request, 'wishlist/google_error.html',
                       {'error': f"Token-Austausch fehlgeschlagen: {data.get('error', 'Unbekannt')}"})
     expires_at = timezone.now() + timedelta(seconds=data.get('expires_in', 3600) - 120)
-    GoogleToken.objects.all().delete()
-    GoogleToken.objects.create(
-        access_token=data['access_token'],
-        refresh_token=data.get('refresh_token', ''),
-        expires_at=expires_at,
-        scopes=data.get('scope', ''),
-    )
+    token = GoogleToken.objects.order_by('-updated_at').first()
+    old_refresh_token = token.refresh_token if token else ''
+    refresh_token = data.get('refresh_token') or old_refresh_token
+    if not refresh_token:
+        return render(request, 'wishlist/google_error.html', {
+            'error': 'Google hat keinen dauerhaften Zugriff erteilt. Bitte die Verbindung erneut autorisieren.'
+        })
+    if token is None:
+        token = GoogleToken()
+    token.access_token = data['access_token']
+    token.refresh_token = refresh_token
+    token.expires_at = expires_at
+    token.scopes = data.get('scope', token.scopes or '')
+    token.connection_state = 'connected'
+    token.reauthorization_required = False
+    token.last_success_at = timezone.now()
+    token.last_error_at = None
+    token.last_error_code = ''
+    token.last_error_message = ''
+    token.save()
     return redirect('/dj-admin/config/')
 
 
 @staff_member_required
 def google_status(request):
-    from .models import GoogleToken
-    token = GoogleToken.objects.order_by('-updated_at').first()
-    connected = token is not None and not token.is_expired
-    expires_at = token.expires_at.isoformat() if (token and token.expires_at) else None
-    return JsonResponse({'connected': connected, 'expires_at': expires_at})
+    return JsonResponse(GoogleService.get_connection_status(refresh_if_needed=True))
 
 
 # ── Spotify: Now Playing ─────────────────────────────────────────────────────
