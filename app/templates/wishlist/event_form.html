@@ -106,7 +106,7 @@
       <p class="text-subtle text-sm mb-5">{{ config.event_form_date_prompt|default:"Wähle zuerst dein Wunschdatum." }}</p>
       <div class="max-w-xs mx-auto">
         <label for="f-date" class="field-label">Datum <span aria-hidden="true">*</span></label>
-        <input type="date" id="f-date" class="field-input text-center text-lg py-3" required aria-required="true">
+        <input type="date" id="f-date" class="field-input text-center text-lg py-3" required aria-required="true" min="{{ today|date:'Y-m-d' }}">
         <div class="date-status" id="date-status" role="status" aria-live="polite"></div>
       </div>
       <div class="mt-6 flex justify-end">
@@ -183,8 +183,8 @@
         <div class="mb-4">
           <p class="field-label">Uhrzeit</p>
           <div class="flex gap-2">
-            <input type="time" id="f-time-start" name="f-time-start" class="field-input" aria-label="Beginn">
-            <input type="time" id="f-time-end" name="f-time-end" class="field-input" aria-label="Ende">
+            <input type="time" id="f-time-start" name="f-time-start" class="field-input" aria-label="Beginn" step="1800">
+            <input type="time" id="f-time-end" name="f-time-end" class="field-input" aria-label="Ende" step="1800">
           </div>
         </div>
       </div>
@@ -397,7 +397,7 @@ document.getElementById('f-date').addEventListener('change', async function() {
       s.className = 'date-status available'; s.textContent = '✓ Datum ist verfügbar!';
       dateAvailable = true;
     } else {
-      s.className = 'date-status unavailable'; s.textContent = '✕ ' + UNAVAILABLE_MSG;
+      s.className = 'date-status unavailable'; s.textContent = '✕ ' + (data.reason || UNAVAILABLE_MSG);
       dateAvailable = false;
     }
   } catch(e) {

@@ -263,6 +263,7 @@ def event_form_view(request):
         'pricing_packages': pricing_packages,
         'dj_coords_json': dj_coords_json,
         'embed': request.GET.get('embed') == '1',
+        'today': timezone.now().date(),
     })
     response['Turbo-Visit-Control'] = 'reload'
     return response
@@ -274,6 +275,14 @@ def check_date_availability(request):
     date_str = request.GET.get('date', '')
     if not date_str:
         return JsonResponse({'available': False, 'error': 'Kein Datum angegeben'})
+
+    from datetime import datetime
+    try:
+        parsed_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return JsonResponse({'available': False, 'error': 'Ungültiges Datum'})
+    if parsed_date < timezone.now().date():
+        return JsonResponse({'available': False, 'reason': 'Vergangene Daten sind nicht auswählbar'})
 
     # Also check internal events
     internal_conflict = Event.objects.filter(
@@ -334,12 +343,18 @@ def submit_event_form(request):
     except (ValueError, TypeError):
         return JsonResponse({'success': False, 'error': 'Ungültiges Datum'}, status=400)
 
+    if parsed_date < timezone.now().date():
+        return JsonResponse({'success': False, 'error': 'Vergangene Daten sind nicht auswählbar'}, status=400)
+
     parsed_time_start = None
     if data.get('time_start'):
         try:
             parsed_time_start = datetime.strptime(data['time_start'], '%H:%M').time()
         except ValueError:
             pass
+        else:
+            if parsed_time_start.minute not in (0, 30):
+                return JsonResponse({'success': False, 'error': 'Uhrzeit muss in 30-Minuten-Schritten gewählt werden'}, status=400)
 
     parsed_time_end = None
     if data.get('time_end'):
@@ -347,6 +362,9 @@ def submit_event_form(request):
             parsed_time_end = datetime.strptime(data['time_end'], '%H:%M').time()
         except ValueError:
             pass
+        else:
+            if parsed_time_end.minute not in (0, 30):
+                return JsonResponse({'success': False, 'error': 'Uhrzeit-Ende muss in 30-Minuten-Schritten gewählt werden'}, status=400)
 
     try:
         guest_count = int(data['guest_count']) if data.get('guest_count') else None
