@@ -1,0 +1,8 @@
+# Zeilenenden: Der Code laeuft ausschliesslich in Linux-Containern (Docker)
+# und auf dem Server. CRLF im Arbeitsbaum bricht dort:
+#   - app/entrypoint.sh wird per Bind-Mount direkt im Container ausgefuehrt
+#     -> "exec ./entrypoint.sh: no such file or directory" (Shebang endet auf \r)
+#   - Dockerfile: CRLF landet in RUN-Zeilen und zerlegt sie
+# Windows klont mit core.autocrlf=true standardmaessig CRLF, deshalb hier fest
+# auf LF. Binaerdateien erkennt "text=auto" selbst.
+* text=auto eol=lf
