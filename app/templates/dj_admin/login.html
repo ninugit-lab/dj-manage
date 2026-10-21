@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DJ Admin – Anmeldung</title>
+  <style>
+    body{background:#080810;color:#e8e8f0;font-family:Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+    .card{width:min(360px,calc(100% - 2rem));background:#14141f;border:1px solid #1e1e30;border-radius:10px;padding:2rem;box-sizing:border-box}
+    h1{margin:0 0 1.5rem;font-size:1.8rem}.error{color:#ff3b5c;margin-bottom:1rem}
+    label{display:block;margin:.8rem 0 .35rem;font-size:.85rem;color:#aaa}
+    input{width:100%;box-sizing:border-box;background:#0f0f1a;color:#fff;border:1px solid #2a2a40;border-radius:6px;padding:.75rem}
+    button{width:100%;margin-top:1.25rem;padding:.8rem;border:0;border-radius:6px;background:#a855f7;color:#fff;font-weight:700;cursor:pointer}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>DJ Admin</h1>
+    {% if form.errors %}<div class="error">Benutzername oder Passwort ist ungültig.</div>{% endif %}
+    <form method="post" action="{% url 'login' %}">
+      {% csrf_token %}
+      <label for="id_username">Benutzername</label>
+      <input type="text" name="username" id="id_username" autocomplete="username" autofocus required>
+      <label for="id_password">Passwort</label>
+      <input type="password" name="password" id="id_password" autocomplete="current-password" required>
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+      <button type="submit">Anmelden</button>
+    </form>
+  </main>
+</body>
+</html>

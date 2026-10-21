@@ -5,9 +5,14 @@ from decimal import Decimal, InvalidOperation
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
-from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth.decorators import user_passes_test
 from django.views.decorators.http import require_POST, require_GET
 from django.utils import timezone
+
+staff_member_required = user_passes_test(
+    lambda user: user.is_active and user.is_staff,
+    login_url="/dj-admin/login/",
+)
 
 from .models import (
     Event, SongWish, AppConfig, PriceItem, EventPriceCalculation,

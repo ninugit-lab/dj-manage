@@ -7,12 +7,17 @@ from datetime import datetime, timedelta
 from django.shortcuts import render, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST, require_GET
-from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth.decorators import user_passes_test
 from django.core.cache import cache
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.utils import timezone
+
+staff_member_required = user_passes_test(
+    lambda user: user.is_active and user.is_staff,
+    login_url="/dj-admin/login/",
+)
 
 from .models import Event, SongWish, SpotifyToken, AppConfig, PriceItem, EventPriceCalculation, EmailLog, EventStatus, BlockedClient, PricingPackage, PricingRule
 from .spotify import SpotifyService

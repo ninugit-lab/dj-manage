@@ -18,7 +18,7 @@ if not SECRET_KEY:
         )
 
 LOGIN_REDIRECT_URL = '/dj-admin/'
-LOGIN_URL = '/admin/login/'
+LOGIN_URL = '/dj-admin/login/'
 
 _secure_cookies = os.environ.get('SECURE_COOKIES', 'False') == 'True'
 CSRF_COOKIE_SECURE = _secure_cookies
