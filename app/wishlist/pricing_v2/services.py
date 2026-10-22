@@ -292,7 +292,9 @@ def _calculate(payload, *, public, actor=None):
     # Strip browser-calculated values; never copy a caller-supplied price into the catalog.
     if public and payload.get("custom_items"):
         raise PricingValidationError("invalid_input", "custom items require an administrator", "custom_items")
-    individual = public and payload.get("package_id") in (None, "")
+    # Admin drafts can intentionally select individual items without a package,
+    # using the same synthetic zero-base catalog entry as public estimates.
+    individual = payload.get("package_id") in (None, "")
     package_id = _PUBLIC_INDIVIDUAL_PACKAGE if individual else _identifier(payload.get("package_id"), "package_id")
     request = PricingInput.from_mapping({**payload, "package_id": package_id}, requested_at=timezone.now())
     profiles = list(PricingProfile.objects.filter(status=PricingProfile.Status.ACTIVE)[:2])
@@ -374,8 +376,6 @@ def calculate_event(event, *, actor=None):
         calc = EventPriceCalculation.objects.select_related("package").get(event=event)
     except EventPriceCalculation.DoesNotExist:
         _reference("event calculation", "event")
-    if calc.package_id is None:
-        _reference("event package", "package_id")
     custom = []
     for index, item in enumerate(calc.custom_items_json or []):
         if not isinstance(item, Mapping):
@@ -384,7 +384,8 @@ def calculate_event(event, *, actor=None):
                        "label": item.get("label", item.get("name")),
                        "amount": item.get("amount", item.get("price"))})
     data = {"event_date": event.date, "start_time": event.time_start, "end_time": event.time_end,
-            "package_id": str(calc.package_id), "selected_item_ids": [str(item.pk) for item in calc.selected_items.all()],
+             "package_id": str(calc.package_id) if calc.package_id else None,
+             "selected_item_ids": [str(item.pk) for item in calc.selected_items.all()],
             "guest_count": event.guest_count or 0, "distance_km": event.distance_km,
             "setup_minutes": event.setup_minutes, "teardown_minutes": event.teardown_minutes,
             "discount_percent": calc.discount_percent, "custom_items": custom,
@@ -416,9 +417,10 @@ def save_revision(event, result, *, kind, actor=None, legacy_total=None, update_
             if (kind == PriceCalculationRevision.Kind.MIGRATION_COMPARE and
                     existing.input_json.get("source") == "submission"):
                 continue
-            if (kind == PriceCalculationRevision.Kind.ESTIMATE and
-                    _comparison_identity(existing.result_json) == _comparison_identity(serialized)
-                    or kind != PriceCalculationRevision.Kind.ESTIMATE and existing.result_json == serialized):
+            if (kind in (PriceCalculationRevision.Kind.ESTIMATE, PriceCalculationRevision.Kind.DRAFT) and
+                     _comparison_identity(existing.result_json) == _comparison_identity(serialized)
+                     or kind not in (PriceCalculationRevision.Kind.ESTIMATE, PriceCalculationRevision.Kind.DRAFT)
+                     and existing.result_json == serialized):
                 return existing
         revision = PriceCalculationRevision.objects.create(
             event=locked, kind=kind, status=PriceCalculationRevision.Status.DRAFT,

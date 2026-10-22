@@ -174,8 +174,10 @@
           {% if event.status == 'cancelled' %}<div class="text-xs text-danger mt-1">Storniert{% if event.cancelled_at %} am {{ event.cancelled_at|date:"d.m.Y H:i" }}{% endif %}{% if event.cancellation_reason %}: {{ event.cancellation_reason }}{% endif %}</div>{% endif %}
         </div>
         <div class="form-group">
-          <label class="form-label">Gesamtpreis (€)</label>
+          <label class="form-label">{% if pricing_v2 %}Aktuelle Schätzung (€){% else %}Gesamtpreis (€){% endif %}</label>
+          {% if pricing_v2 %}<output id="admin-current-estimate" class="form-input">{{ event.total_price|default:'Individuelle Prüfung' }}</output>{% else %}
           <input type="number" step="0.01" name="total_price" class="form-input" id="admin-total-price" value="{{ event.total_price|default:'' }}">
+          {% endif %}
         </div>
       </div>
 
@@ -277,7 +279,7 @@
               <span class="text-sm font-semibold">Kalkulator-Summe:</span>
               <span id="admin-calc-total" class="font-display text-2xl text-accent">0 €</span>
             </div>
-            <button type="button" class="btn btn-ghost btn-sm mt-2 text-xs" onclick="applyCalcToPrice()">&#8593; Summe als Gesamtpreis übernehmen</button>
+            {% if not pricing_v2 %}<button type="button" class="btn btn-ghost btn-sm mt-2 text-xs" onclick="applyCalcToPrice()">&#8593; Summe als Gesamtpreis übernehmen</button>{% endif %}
           </div>
           {% else %}
           <p class="text-sm text-muted pt-3">Keine Preis-Posten angelegt.</p>
@@ -341,7 +343,7 @@
                 <span id="offer-grand-total" class="font-display text-[1.6rem] text-success">0,00 €</span>
               </div>
             </div>
-            <button type="button" class="btn btn-ghost btn-sm mt-2 text-xs" onclick="applyOfferToPrice()">&#8593; Angebotssumme als Gesamtpreis übernehmen</button>
+            {% if not pricing_v2 %}<button type="button" class="btn btn-ghost btn-sm mt-2 text-xs" onclick="applyOfferToPrice()">&#8593; Angebotssumme als Gesamtpreis übernehmen</button>{% endif %}
           </div>
         </div>
 
@@ -381,7 +383,7 @@
         <div id="unified-breakdown" class="rounded-md p-3 bg-surface">
           <div class="text-center text-muted text-sm">Eingaben ändern für Live-Berechnung</div>
         </div>
-        <button type="button" class="btn btn-primary btn-sm mt-2 text-xs" onclick="applyUnifiedToPrice()">&#8593; Berechneten Preis als Gesamtpreis übernehmen</button>
+        {% if not pricing_v2 %}<button type="button" class="btn btn-primary btn-sm mt-2 text-xs" onclick="applyUnifiedToPrice()">&#8593; Berechneten Preis als Gesamtpreis übernehmen</button>{% endif %}
       </div>
 
       <div class="form-group mt-4">
@@ -637,6 +639,12 @@ function doRecalculate() {
     formula_id: formulaId,
     discount_percent: discount,
     workflow_id: workflowId,
+    event_date: document.querySelector('[name="date"]')?.value,
+    start_time: document.querySelector('[name="time_start"]')?.value,
+    end_time: document.querySelector('[name="time_end"]')?.value,
+    distance_km: document.querySelector('[name="distance_km"]')?.value || null,
+    guest_count: parseInt(document.querySelector('[name="guest_count"]')?.value || '0'),
+    event_type: document.querySelector('[name="event_type"]')?.value || '',
   };
 
   fetch('/dj-admin/api/price/calculate/', {
@@ -646,50 +654,29 @@ function doRecalculate() {
   })
   .then(function(r) { return r.json(); })
   .then(function(data) {
-    _lastUnifiedTotal = data.grand_total || 0;
     var bd = document.getElementById('unified-breakdown');
     if (!bd) return;
-    var html = '';
-    if (data.workflow && data.steps) {
-      html += '<div style="font-size:.7rem;color:var(--accent);margin-bottom:.4rem;font-family:\'Space Mono\',monospace">WORKFLOW: ' + data.workflow + '</div>';
-      data.steps.forEach(function(s, i) {
-        var detail = s.detail ? ' <span style="opacity:.5;font-size:.75rem">(' + s.detail + ')</span>' : '';
-        html += row((i+1) + '. ' + s.label + detail, s.amount);
-      });
-    } else {
-      if (data.package) html += row('Paket: ' + data.package.name, data.package.price);
-      (data.items||[]).forEach(function(i) { html += row(i.name, i.price); });
-      (data.custom_items||[]).forEach(function(i) { html += row(i.name, i.price); });
-      if (data.offer_breakdown && data.offer_breakdown.grand_total > 0) html += row('Gäste-Staffelung', data.offer_breakdown.grand_total);
-      (data.rules_applied||[]).forEach(function(r) { html += row('⚡ ' + r.name, r.amount); });
-      if (data.formula_result !== null && data.formula_result !== undefined) html += row('Formel-Ergebnis', data.formula_result);
-      if (data.discount_amount > 0) html += row('Rabatt -' + data.discount_percent + '%', -data.discount_amount);
-    }
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:.5rem;border-top:1px solid var(--border);margin-top:.3rem"><span style="font-weight:600">Gesamt</span><span style="font-family:\'Bebas Neue\',sans-serif;font-size:1.6rem;color:var(--green)">' + fmt(data.grand_total) + '</span></div>';
-    bd.innerHTML = html;
-
-    // Rules display
+    bd.replaceChildren();
+    (data.lines || []).forEach(function(line) {
+      var entry = document.createElement('div');
+      entry.className = 'flex justify-between text-sm py-1';
+      var label = document.createElement('span');
+      label.textContent = line.label;
+      var amount = document.createElement('span');
+      amount.textContent = line.amount + ' €';
+      entry.append(label, amount);
+      bd.append(entry);
+    });
+    var total = document.createElement('strong');
+    total.textContent = data.gross_total === null || !data.ok ? 'Individuelle Prüfung' : data.gross_total + ' €';
+    bd.append(total);
+    _lastUnifiedTotal = data.gross_total === null ? 0 : Number(data.gross_total);
     var rd = document.getElementById('rules-display');
-    if (rd) {
-      if ((data.rules_applied||[]).length) {
-        rd.innerHTML = (data.rules_applied||[]).map(function(r) {
-          return '<div style="display:flex;justify-content:space-between;padding:.2rem 0"><span>⚡ ' + r.name + ' (' + r.effect + ')</span><span style="font-family:\'Space Mono\',monospace;color:var(--accent)">' + fmt(r.amount) + '</span></div>';
-        }).join('');
-      } else {
-        rd.textContent = 'Keine Regeln aktiv';
-      }
-    }
-
-    // Formula result
+    if (rd) rd.textContent = (data.warnings || []).join(', ') || 'Keine Regeln aktiv';
     var fr = document.getElementById('formula-result');
-    if (fr) {
-      fr.textContent = data.formula_result !== null ? 'Ergebnis: ' + fmt(data.formula_result) : '';
-    }
+    if (fr) fr.textContent = '';
   })
   .catch(function() {});
-}
-function row(label, amount) {
-  return '<div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:.2rem"><span style="color:var(--muted)">' + label + '</span><span style="font-family:\'Space Mono\',monospace">' + fmt(amount) + '</span></div>';
 }
 function fmt(n) { return (n || 0).toFixed(2).replace('.', ',') + ' €'; }
 function applyUnifiedToPrice() {

@@ -108,6 +108,7 @@ def event_create(request):
         'pricing_formulas': PricingFormula.objects.filter(is_active=True),
         'pricing_workflows': PricingWorkflow.objects.filter(is_active=True).order_by('-is_default', 'name'),
         'selected_workflow_id': default_wf.pk if default_wf else None,
+        'pricing_v2': config.pricing_engine_mode == 'v2',
     })
 
 
@@ -140,6 +141,7 @@ def event_edit(request, pk):
         'selected_package_id': calc.package_id if calc else None,
         'selected_formula_id': calc.formula_id if calc else None,
         'selected_workflow_id': calc.workflow_id if calc else None,
+        'pricing_v2': config.pricing_engine_mode == 'v2',
     })
 
 
@@ -214,15 +216,19 @@ def _save_event_from_post(request, config, event=None):
     event.wishlist_dj_message = request.POST.get('wishlist_dj_message', '')
     event.default_block_reason = request.POST.get('default_block_reason', '')
     event.default_block_message = request.POST.get('default_block_message', '')
-    try:
-        event.total_price = Decimal(request.POST['total_price']) if request.POST.get('total_price') else None
-    except (InvalidOperation, ValueError):
-        pass  # Ungueltiger Preis: Feld ueberspringen
+    v2_mode = config.pricing_engine_mode == 'v2'
+    if not v2_mode:
+        try:
+            event.total_price = Decimal(request.POST['total_price']) if request.POST.get('total_price') else None
+        except (InvalidOperation, ValueError):
+            pass  # Ungueltiger Preis: Feld ueberspringen
     event.price_notes = request.POST.get('price_notes', '')
     try:
         event.distance_km = Decimal(request.POST['distance_km']) if request.POST.get('distance_km') else None
     except (InvalidOperation, ValueError):
-        pass  # Ungueltige Entfernung: Feld ueberspringen
+        if v2_mode:
+            event.distance_km = None
+        # Legacy: ungueltige Entfernung ueberspringen
 
     # File upload for cover image
     if 'cover_image' in request.FILES:
@@ -263,7 +269,6 @@ def _save_event_from_post(request, config, event=None):
 
     # EventOffer (Preis-Kalkulator)
     if request.POST.get('offer_threshold'):
-        from decimal import Decimal, InvalidOperation
         offer, _ = EventOffer.objects.get_or_create(event=event)
         offer.guest_count = int(request.POST.get('offer_guest_count') or 0)
         offer.threshold = int(request.POST.get('offer_threshold') or 50)
@@ -288,21 +293,62 @@ def _save_event_from_post(request, config, event=None):
         or discount_raw not in (None, '')
     )
     existing_calc = EventPriceCalculation.objects.filter(event=event).exists()
+    invalid_selection = False
     if has_pricing_data or existing_calc:
-        from decimal import Decimal, InvalidOperation
         calc, _ = EventPriceCalculation.objects.get_or_create(event=event)
-        calc.package_id = int(pkg_id) if pkg_id else None
-        calc.formula_id = int(formula_id) if formula_id else None
-        calc.workflow_id = int(workflow_id) if workflow_id else None
+        try:
+            calc.package_id = int(pkg_id) if pkg_id else None
+            calc.formula_id = int(formula_id) if formula_id else None
+            calc.workflow_id = int(workflow_id) if workflow_id else None
+        except ValueError as exc:
+            raise EventFormError('Ungültige Preisauswahl.') from exc
         try:
             calc.discount_percent = Decimal(discount_raw) if discount_raw else Decimal('0')
         except InvalidOperation:
             calc.discount_percent = Decimal('0')
         calc.save()
-        valid_ids = list(
-            PriceItem.objects.filter(pk__in=item_ids).values_list('pk', flat=True)
-        )
+        try:
+            valid_ids = list(PriceItem.objects.filter(pk__in=item_ids).values_list('pk', flat=True))
+        except (ValueError, TypeError) as exc:
+            if not v2_mode:
+                raise
+            valid_ids = []
+            invalid_selection = True
+        if v2_mode:
+            invalid_selection = invalid_selection or (len(set(item_ids)) != len(valid_ids) or
+                                 PriceItem.objects.filter(pk__in=valid_ids, is_active=False).exists())
+            valid_ids = list(dict.fromkeys([*valid_ids, *PriceItem.objects.filter(
+                is_active=True, is_required=True).values_list('pk', flat=True)]))
         calc.selected_items.set(valid_ids)
+
+    if config.pricing_engine_mode == 'shadow':
+        from .pricing_v2.services import calculate_with_mode
+        calculate_with_mode(event=event, actor=request.user, persist_comparison=True,
+                            comparison_scope='submission')
+
+    if v2_mode:
+        from .pricing_v2.input import PricingValidationError
+        from .pricing_v2.services import calculate_with_mode, save_revision
+        from .models import PriceCalculationRevision
+
+        # A failed quote is a review, never a posted or stale definite price.
+        released_offer = PriceCalculationRevision.objects.filter(
+            event=event, status__in=(PriceCalculationRevision.Status.RELEASED,
+                                    PriceCalculationRevision.Status.SENT)).exists()
+        if event.distance_km is None or invalid_selection:
+            if not released_offer:
+                event.total_price = None
+                event.save(update_fields=['total_price'])
+        else:
+            try:
+                result = calculate_with_mode(event=event, actor=request.user).visible_result
+            except PricingValidationError:
+                if not released_offer:
+                    event.total_price = None
+                    event.save(update_fields=['total_price'])
+            else:
+                save_revision(event, result, kind=PriceCalculationRevision.Kind.DRAFT,
+                              actor=request.user, update_event_total=True)
 
     return event
 
@@ -827,12 +873,25 @@ def api_audio_features(request, wish_id):
 @staff_member_required
 @require_POST
 def api_price_calculate(request):
-    from .price_engine import PriceEngine
+    from .pricing_v2.input import PricingValidationError
+    from .pricing_v2.services import calculate_with_mode
     data, err = _parse_json_body(request)
     if err:
         return err
+    if not isinstance(data, dict):
+        return JsonResponse({'ok': False, 'error': 'Ungültige Eingabe'}, status=400)
     event_id = data.get('event_id')
-    event = get_object_or_404(Event, pk=event_id) if event_id else Event()
+    try:
+        event = Event.objects.get(pk=event_id) if event_id else None
+    except (Event.DoesNotExist, TypeError, ValueError):
+        return JsonResponse({'ok': False, 'error': 'Ungültiges Event'}, status=400)
+
+    mode = AppConfig.load().pricing_engine_mode
+    test_context = data.get('test_context')
+    if mode == 'v2' and test_context:
+        return JsonResponse({'ok': False, 'error': 'test_context wird in V2 nicht unterstützt'}, status=400)
+    if test_context is not None and not isinstance(test_context, dict):
+        return JsonResponse({'ok': False, 'error': 'Ungültiger Test-Kontext'}, status=400)
 
     workflow_id = data.get('workflow_id')
     if not workflow_id:
@@ -842,35 +901,40 @@ def api_price_calculate(request):
 
     ALLOWED_CONTEXT_KEYS = {'guest_count', 'duration_hours', 'distance_km',
                             'date_weekday', 'date_month', 'event_type'}
-    test_context = data.get('test_context') or None
     if test_context:
         test_context = {k: v for k, v in test_context.items() if k in ALLOWED_CONTEXT_KEYS}
 
-    kwargs = dict(
-        event=event,
-        package_id=data.get('package_id'),
-        selected_item_ids=data.get('selected_item_ids', []),
-        formula_id=data.get('formula_id'),
-        custom_items=data.get('custom_items', []),
-        discount_percent=data.get('discount_percent', 0),
-        context_override=test_context,
-    )
-
-    if workflow_id:
-        result = PriceEngine.calculate_workflow(workflow_id=workflow_id, **kwargs)
-    else:
-        result = PriceEngine.calculate(**kwargs)
-
-    def to_json(v):
-        from decimal import Decimal
-        if isinstance(v, Decimal):
-            return float(v)
-        if isinstance(v, dict):
-            return {k: to_json(val) for k, val in v.items()}
-        if isinstance(v, list):
-            return [to_json(i) for i in v]
-        return v
-    return JsonResponse(to_json(result))
+    selection = data.get('selected_item_ids', [])
+    if not isinstance(selection, list) or any(isinstance(item, bool) or
+            not isinstance(item, (str, int)) or not str(item).isdigit() for item in selection):
+        return JsonResponse({'ok': False, 'status': 'individual_review', 'gross_total': None,
+                             'error': 'Ungültige Preisauswahl'}, status=400)
+    payload = dict(event_date=data.get('event_date', data.get('date') or (event.date if event else None)),
+                   start_time=data.get('start_time', event.time_start if event else None),
+                   end_time=data.get('end_time', event.time_end if event else None),
+                   guest_count=data.get('guest_count', event.guest_count if event else 0) or 0,
+                   distance_km=data.get('distance_km', event.distance_km if event else None),
+                   event_type=data.get('event_type', event.event_type if event else ''),
+                   package_id=data.get('package_id'),
+                   selected_item_ids=[str(identity) for identity in selection],
+                   formula_id=data.get('formula_id'), custom_items=data.get('custom_items', []),
+                   discount_percent=data.get('discount_percent', 0), workflow_id=workflow_id,
+                   context_override=test_context)
+    try:
+        decision = calculate_with_mode(payload, event=event, public=False)
+    except (PricingValidationError, ValueError, TypeError, OverflowError) as exc:
+        logger.info('Invalid admin pricing preview: %s', exc)
+        return JsonResponse({'ok': False, 'status': 'individual_review', 'gross_total': None,
+                             'error': 'Preisauswahl muss individuell geprüft werden'}, status=400)
+    result = decision.visible_result
+    response = {'ok': True, 'engine_version': result.engine_version,
+                'status': 'ok', 'lines': result.to_dict()['lines'],
+                'gross_total': str(result.gross_total), 'warnings': []}
+    if payload['distance_km'] is None:
+        response.update(status='individual_review', gross_total=None,
+                        warnings=['Entfernung fehlt – Preis wird individuell geprüft'])
+    response['grand_total'] = response['gross_total']
+    return JsonResponse(response)
 
 
 @staff_member_required

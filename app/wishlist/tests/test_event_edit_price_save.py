@@ -5,6 +5,7 @@ import pytest
 from django.urls import reverse
 
 from wishlist.models import (
+    AppConfig,
     Event,
     EventPriceCalculation,
     PriceItem,
@@ -101,3 +102,16 @@ def test_invalid_guest_count_is_skipped(staff_client, event):
     data["guest_count"] = "abc"
     resp = staff_client.post(reverse("dj_admin:event_edit", args=[event.pk]), data)
     assert resp.status_code == 302
+
+
+def test_v2_form_freezes_manual_total_but_legacy_keeps_it(staff_client, event):
+    config = AppConfig.load()
+    config.pricing_engine_mode = 'v2'
+    config.save()
+    v2 = staff_client.get(reverse('dj_admin:event_edit', args=[event.pk]))
+    assert b'name="total_price"' not in v2.content
+    assert b'id="admin-current-estimate"' in v2.content
+    config.pricing_engine_mode = 'legacy'
+    config.save()
+    legacy = staff_client.get(reverse('dj_admin:event_edit', args=[event.pk]))
+    assert b'name="total_price"' in legacy.content
