@@ -483,6 +483,8 @@ def event_restore(request, pk):
 
     config = AppConfig.load()
     restore_status = event.status_before_cancellation or EventStatus.INQUIRY
+    if event.date < timezone.localdate():
+        restore_status = EventStatus.PAST
     event.status = restore_status
     event.cancellation_reason = ''
     event.cancelled_at = None
