@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timezone, timedelta
 from dataclasses import FrozenInstanceError
 from decimal import Decimal
 
@@ -96,3 +96,48 @@ def test_result_serializes_decimals_dates_times_and_ordered_lines():
     assert expected["inputs"]["event_date"] == "2026-01-02"
     assert expected["inputs"]["at"] == "09:00:00"
     assert result.to_dict() == expected
+
+
+def test_input_deep_freezes_custom_items_against_caller_mutation():
+    custom = [{"code": "foo", "values": ["a"]}]
+    value = PricingInput.from_mapping(valid_data(custom_items=custom), requested_at=datetime.now(timezone.utc))
+    custom[0]["values"].append("changed")
+    custom.append({"code": "later"})
+    assert value.custom_items[0]["code"] == "foo"
+    assert value.custom_items[0]["values"] == ("a",)
+
+
+@pytest.mark.parametrize("custom_items", [None, "foo", 3, [None], [{"bad": object()}]])
+def test_malformed_custom_items_are_typed_validation_errors(custom_items):
+    with pytest.raises(PricingValidationError) as exc:
+        PricingInput.from_mapping(valid_data(custom_items=custom_items), requested_at=datetime.now(timezone.utc))
+    assert (exc.value.code, exc.value.field) == ("invalid_input", "custom_items")
+
+
+def test_result_deep_freezes_nested_inputs_and_subtotals():
+    inputs = {"nested": ["before"]}
+    subtotals = [{"amount": Decimal("11.00")}]
+    result = PricingResult("2.0", inputs=inputs, block_subtotals=subtotals)
+    inputs["nested"].append("after")
+    subtotals[0]["amount"] = Decimal("99.00")
+    assert result.to_dict()["inputs"] == {"nested": ["before"]}
+    assert result.to_dict()["block_subtotals"] == [{"amount": "11.00"}]
+
+
+@pytest.mark.parametrize("field", ["distance_km", "discount_percent", "discount_amount"])
+def test_float_decimal_inputs_are_rejected(field):
+    with pytest.raises(PricingValidationError) as exc:
+        PricingInput.from_mapping(valid_data(**{field: 1.25}), requested_at=datetime.now(timezone.utc))
+    assert (exc.value.code, exc.value.field) == ("invalid_input", field)
+
+
+def test_requested_at_converts_non_utc_offset_to_utc():
+    value = PricingInput.from_mapping(valid_data(), requested_at="2026-10-22T12:30:00+02:00")
+    assert value.requested_at == datetime(2026, 10, 22, 10, 30, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize("requested_at", ["2026-10-22T12:30:00+02", "2026-10-22T12:30:00+99:00", "not-a-datetime"])
+def test_malformed_requested_at_is_typed_validation_error(requested_at):
+    with pytest.raises(PricingValidationError) as exc:
+        PricingInput.from_mapping(valid_data(), requested_at=requested_at)
+    assert (exc.value.code, exc.value.field) == ("invalid_input", "requested_at")
