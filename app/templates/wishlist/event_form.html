@@ -270,7 +270,7 @@
         <div id="rules-info" class="text-xs text-subtle mb-2"></div>
         <div class="flex justify-between items-center pt-2 border-t border-border">
           <span class="font-display text-xl tracking-wide">Gesamt</span>
-          <span class="font-display text-3xl text-accent" id="price-total" aria-live="polite">0 €</span>
+          <span class="font-display text-3xl text-accent" id="price-total" aria-live="polite">Preis wird individuell geprüft</span>
         </div>
       </div>
 
@@ -308,7 +308,7 @@
 <div id="sticky-price" class="bg-surface/90 backdrop-blur border-t border-border px-4 py-2 sm:hidden" style="display:none!important" aria-hidden="true">
   <div class="flex justify-between items-center max-w-xl mx-auto">
     <span class="text-xs text-subtle">Gesamt</span>
-    <span class="font-mono text-accent font-semibold" id="sticky-total">0 €</span>
+    <span class="font-mono text-accent font-semibold" id="sticky-total">Preis wird individuell geprüft</span>
   </div>
 </div>
 
@@ -411,29 +411,69 @@ document.getElementById('f-date').addEventListener('change', async function() {
     btn.disabled = true; btn.setAttribute('aria-disabled','true');
     btn.classList.add('opacity-40','cursor-not-allowed');
   }
-  updateTotal();
+  updatePrice();
 });
 
 /* ── Price helpers ── */
 function updateTotal() {
-  var t = 0;
-  document.querySelectorAll('.price-checkbox:checked').forEach(function(c) { t += parseFloat(c.dataset.price); });
-  var el = document.getElementById('price-total');
-  if (el) el.textContent = t.toFixed(2) + ' €';
-  var st = document.getElementById('sticky-total');
-  if (st) st.textContent = t.toFixed(2) + ' €';
+  showPriceReview();
 }
 
 var _priceTimer;
+var _priceSequence = 0;
+var _priceController = null;
+function showPriceReview(message) {
+  var text = message || 'Preis wird individuell geprüft';
+  document.getElementById('price-total').textContent = text;
+  document.getElementById('sticky-total').textContent = text;
+  document.getElementById('price-breakdown').replaceChildren();
+  document.getElementById('rules-info').textContent = '';
+}
+function formatPrice(value) {
+  return new Intl.NumberFormat('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(Number(value)) + ' €';
+}
+function showPriceResult(data) {
+  if (!data.ok || data.status !== 'ok' || data.gross_total == null) {
+    showPriceReview();
+    document.getElementById('rules-info').textContent = (data.warnings || []).join(', ');
+    return;
+  }
+  var price = 'Unverbindliche Schätzung: ca. ' + formatPrice(data.gross_total) + ' brutto';
+  document.getElementById('price-total').textContent = price;
+  document.getElementById('sticky-total').textContent = price;
+  var breakdown = document.getElementById('price-breakdown');
+  breakdown.replaceChildren();
+  (data.lines || []).forEach(function(line) {
+    var row = document.createElement('div');
+    row.className = 'flex justify-between';
+    var label = document.createElement('span');
+    label.textContent = line.label;
+    var amount = document.createElement('span');
+    amount.className = 'font-mono';
+    amount.textContent = formatPrice(line.amount);
+    row.appendChild(label);
+    row.appendChild(amount);
+    breakdown.appendChild(row);
+  });
+  document.getElementById('rules-info').textContent = (data.warnings || []).join(', ');
+}
 function updatePrice() {
-  updateTotal();
+  ++_priceSequence;
+  if (_priceController) _priceController.abort();
+  showPriceReview();
   clearTimeout(_priceTimer);
-  _priceTimer = setTimeout(doUpdatePrice, 400);
+  var pkgRadio = document.querySelector('input[name="f-package"]:checked');
+  if (!pkgRadio || !pkgRadio.value) return;
+  var sequence = _priceSequence;
+  _priceTimer = setTimeout(function() { doUpdatePrice(sequence); }, 400);
 }
 
-function doUpdatePrice() {
+function doUpdatePrice(sequence) {
+  if (sequence === undefined) sequence = ++_priceSequence;
+  if (sequence !== _priceSequence) return;
   var pkgRadio = document.querySelector('input[name="f-package"]:checked');
   var pkgId = pkgRadio ? (parseInt(pkgRadio.value) || null) : null;
+  if (!pkgId) { showPriceReview(); return; }
   var itemIds = [];
   document.querySelectorAll('.price-checkbox:checked').forEach(function(c) { itemIds.push(parseInt(c.value)); });
   var body = {
@@ -446,29 +486,20 @@ function doUpdatePrice() {
     selected_item_ids: itemIds,
     distance_km: eventDistanceKm
   };
+  var controller = new AbortController();
+  _priceController = controller;
   fetch('/api/price-estimate/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: controller.signal
   })
   .then(function(r) { return r.json(); })
   .then(function(d) {
-    var el = document.getElementById('price-total');
-    if (el) el.textContent = d.grand_total.toFixed(2) + ' €';
-    var st = document.getElementById('sticky-total');
-    if (st) st.textContent = d.grand_total.toFixed(2) + ' €';
-    var bd = document.getElementById('price-breakdown');
-    if (bd) {
-      var h = '';
-      if (d.package) h += '<div class="flex justify-between"><span>' + d.package.name + '</span><span class="font-mono">' + d.package.price.toFixed(2) + ' €</span></div>';
-      d.items.forEach(function(i) { h += '<div class="flex justify-between"><span>' + i.name + '</span><span class="font-mono">' + i.price.toFixed(2) + ' €</span></div>'; });
-      d.rules_applied.forEach(function(r) { h += '<div class="flex justify-between text-purple-300"><span>⚡ ' + r.name + '</span><span class="font-mono">' + r.amount.toFixed(2) + ' €</span></div>'; });
-      bd.innerHTML = h;
-    }
-    var ri = document.getElementById('rules-info');
-    if (ri && d.rules_applied.length) ri.textContent = d.rules_applied.map(function(r) { return r.name + ' (' + r.effect + ')'; }).join(', ');
-    else if (ri) ri.textContent = '';
-  }).catch(function() {});
+    if (sequence === _priceSequence) showPriceResult(d);
+  }).catch(function() {
+    if (sequence === _priceSequence) showPriceReview();
+  });
 }
 
 /* ── Submit button state ── */
@@ -604,7 +635,7 @@ goStep = function(n) {
 };
 
 /* ── Init ── */
-updateTotal();
+updatePrice();
 updateProgressUI();
 </script>
 {% endblock %}

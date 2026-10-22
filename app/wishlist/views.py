@@ -641,64 +641,76 @@ def artist_top_tracks(request):
 
 @require_POST
 def api_price_estimate(request):
-    import json as _json
-    from .price_engine import PriceEngine
-    from .models import Event, PricingPackage, PriceItem
     from decimal import Decimal, InvalidOperation
+    from .pricing_v2.input import PricingValidationError
+    from .pricing_v2.services import calculate_with_mode
+
+    review = 'Preis wird individuell geprüft'
+
+    def failure(status=400):
+        return JsonResponse({'ok': False, 'engine_version': None, 'status': 'individual_review',
+                             'lines': [], 'gross_total': None, 'warnings': [], 'message': review,
+                             'error': review}, status=status)
 
     try:
-        data = _json.loads(request.body)
-    except (json.JSONDecodeError, ValueError):
-        return JsonResponse({'error': 'Ungültige Anfrage'}, status=400)
-    if not isinstance(data, dict):
-        return JsonResponse({'error': 'Ungültige Anfrage'}, status=400)
-
-    event = Event()
-    try:
-        event.date = datetime.strptime(data['date'], '%Y-%m-%d').date() if data.get('date') else None
-    except (ValueError, TypeError):
-        return JsonResponse({'error': 'Ungültiges Datum'}, status=400)
-    try:
-        event.guest_count = int(data['guest_count']) if data.get('guest_count') else None
-    except (ValueError, TypeError):
-        return JsonResponse({'error': 'Ungültige Gästezahl'}, status=400)
-    event.event_type = data.get('event_type', '')
-    try:
-        ts = data.get('time_start')
-        event.time_start = datetime.strptime(ts, '%H:%M').time() if ts else None
-        te = data.get('time_end')
-        event.time_end = datetime.strptime(te, '%H:%M').time() if te else None
-    except (ValueError, TypeError):
-        return JsonResponse({'error': 'Ungültige Uhrzeit'}, status=400)
-    try:
-        event.distance_km = Decimal(str(data['distance_km'])) if data.get('distance_km') is not None else None
-    except (InvalidOperation, ValueError):
-        event.distance_km = None
-
-    pkg_id = data.get('package_id')
-    if pkg_id:
-        if not PricingPackage.objects.filter(pk=pkg_id, is_active=True, is_public=True).exists():
-            pkg_id = None
-
-    item_ids = data.get('selected_item_ids', [])
-    if item_ids:
-        item_ids = list(PriceItem.objects.filter(pk__in=item_ids, is_active=True, is_public=True).values_list('pk', flat=True))
-
-    from .models import PricingWorkflow
-    calc_kwargs = dict(event=event, package_id=pkg_id, selected_item_ids=item_ids)
-    default_wf = PricingWorkflow.objects.filter(is_default=True, is_active=True).first()
-    if default_wf:
-        result = PriceEngine.calculate_workflow(workflow_id=default_wf.pk, **calc_kwargs)
-    else:
-        result = PriceEngine.calculate(**calc_kwargs)
-
-    def to_json(v):
-        if isinstance(v, Decimal):
-            return float(v)
-        if isinstance(v, dict):
-            return {k: to_json(val) for k, val in v.items()}
-        if isinstance(v, list):
-            return [to_json(i) for i in v]
-        return v
-
-    return JsonResponse(to_json(result))
+        data = json.loads(request.body)
+        if not isinstance(data, dict):
+            return failure()
+        package_id = data.get('package_id')
+        if package_id in (None, ''):
+            return failure()
+        package_id = int(package_id)
+        selected = data.get('selected_item_ids', [])
+        if not isinstance(selected, list) or any(isinstance(i, bool) for i in selected):
+            return failure()
+        selected = [int(i) for i in selected]
+        if not PricingPackage.objects.filter(pk=package_id, is_active=True, is_public=True).exists():
+            return failure()
+        available = set(PriceItem.objects.filter(pk__in=selected, is_active=True, is_public=True)
+                        .values_list('pk', flat=True))
+        if set(selected) != available:
+            return failure()
+        required = PriceItem.objects.filter(is_active=True, is_public=True, is_required=True).values_list('pk', flat=True)
+        selected = list(dict.fromkeys([*selected, *required]))
+        guest_count = data.get('guest_count')
+        if guest_count not in (None, ''):
+            guest_count = int(guest_count)
+        else:
+            guest_count = 0
+        distance = data.get('distance_km')
+        if distance not in (None, ''):
+            distance = Decimal(str(distance))
+            if not distance.is_finite() or distance < 0:
+                return failure()
+        else:
+            distance = None
+        payload = {'event_date': data.get('date'), 'start_time': data.get('time_start'),
+                   'end_time': data.get('time_end'), 'package_id': str(package_id),
+                   'selected_item_ids': [str(i) for i in selected], 'guest_count': guest_count,
+                   'event_type': data.get('event_type', ''), 'distance_km': str(distance) if distance is not None else None}
+        decision = calculate_with_mode(payload, public=True)
+        result = decision.visible_result
+        lines = result.to_dict()['lines']
+        missing_distance = distance is None
+        warnings = ['Entfernung unbekannt – Preis wird individuell geprüft'] if missing_distance else []
+        gross = None if missing_distance else str(result.gross_total.quantize(Decimal('0.01')))
+        response = {'ok': True, 'engine_version': str(result.engine_version),
+                    'status': 'individual_review' if missing_distance else result.status,
+                    'lines': lines, 'gross_total': gross, 'warnings': warnings,
+                    # Numeric V1 fields remain available to older form clients.
+                    'grand_total': None if missing_distance else float(result.gross_total),
+                    'package': None, 'items': [], 'rules_applied': []}
+        for line in lines:
+            entry = {'name': line['label'], 'price': float(line['amount'])}
+            if line['code'].startswith('package:'):
+                response['package'] = entry
+            elif line['code'].startswith('item:'):
+                response['items'].append(entry)
+            elif line['code'].startswith('rule:'):
+                response['rules_applied'].append({**entry, 'amount': entry['price'], 'effect': ''})
+        return JsonResponse(response)
+    except (json.JSONDecodeError, ValueError, TypeError, OverflowError, InvalidOperation, PricingValidationError):
+        return failure()
+    except Exception:
+        logger.exception('Public price estimate failed')
+        return failure(status=503)
