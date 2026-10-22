@@ -108,6 +108,18 @@ class Migration(migrations.Migration):
             constraint=models.UniqueConstraint(condition=models.Q(('status', 'active')), fields=('status',), name='unique_active_pricing_profile'),
         ),
         migrations.AddConstraint(
+            model_name='pricingpackage',
+            constraint=models.CheckConstraint(check=models.Q(('version__gt', 0)), name='pricing_pkg_version_positive'),
+        ),
+        migrations.AddConstraint(
+            model_name='pricingworkflow',
+            constraint=models.CheckConstraint(check=models.Q(('version__gt', 0)), name='pricing_workflow_version_positive'),
+        ),
+        migrations.AddConstraint(
+            model_name='pricingprofile',
+            constraint=models.CheckConstraint(check=models.Q(('version__gt', 0)), name='pricing_profile_version_positive'),
+        ),
+        migrations.AddConstraint(
             model_name='pricingpackageoverride',
             constraint=models.UniqueConstraint(fields=('profile', 'package'), name='unique_pricing_override_profile_package'),
         ),
@@ -118,6 +130,26 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='pricecalculationrevision',
             constraint=models.UniqueConstraint(condition=models.Q(('offer_number__isnull', False)), fields=('event', 'offer_number'), name='unique_price_offer_number_per_event'),
+        ),
+        migrations.AddConstraint(
+            model_name='pricecalculationrevision',
+            constraint=models.CheckConstraint(check=models.Q(('revision_number__gt', 0)), name='price_revision_number_positive'),
+        ),
+        migrations.AddConstraint(
+            model_name='pricecalculationrevision',
+            constraint=models.CheckConstraint(check=models.Q(('offer_number__isnull', True), ('offer_number__gt', 0), _connector='OR'), name='price_offer_number_positive'),
+        ),
+        migrations.AddConstraint(
+            model_name='pricecalculationrevision',
+            constraint=models.CheckConstraint(check=models.Q(('profile_version__isnull', True), ('profile_version__gt', 0), _connector='OR'), name='price_profile_version_positive'),
+        ),
+        migrations.AddConstraint(
+            model_name='pricecalculationrevision',
+            constraint=models.CheckConstraint(check=models.Q(('package_version__isnull', True), ('package_version__gt', 0), _connector='OR'), name='price_package_version_positive'),
+        ),
+        migrations.AddConstraint(
+            model_name='pricecalculationrevision',
+            constraint=models.CheckConstraint(check=models.Q(('workflow_version__isnull', True), ('workflow_version__gt', 0), _connector='OR'), name='price_workflow_version_positive'),
         ),
         migrations.AddConstraint(
             model_name='manualpriceadjustment',

@@ -35,7 +35,7 @@ def create_profile(name="Standard", version=1, status=PricingProfile.Status.DRAF
     )
 
 
-def create_revision(event, revision_number, offer_number=None):
+def create_revision(event, revision_number, offer_number=None, **snapshot_versions):
     return PriceCalculationRevision.objects.create(
         event=event,
         kind=PriceCalculationRevision.Kind.DRAFT,
@@ -46,6 +46,7 @@ def create_revision(event, revision_number, offer_number=None):
         input_json={},
         result_json={},
         gross_total=Decimal("100.00"),
+        **snapshot_versions,
     )
 
 
@@ -166,6 +167,60 @@ def test_pricing_v2_defaults_and_version_fields():
     assert event.teardown_minutes is None
     assert package.version == 1
     assert workflow.version == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("model", "kwargs"),
+    [
+        (PricingPackage, {"name": "Zero package", "version": 0}),
+        (PricingWorkflow, {"name": "Zero workflow", "version": 0}),
+        (
+            PricingProfile,
+            {
+                "name": "Zero profile",
+                "version": 0,
+                "valid_from": timezone.now(),
+                "config_json": {},
+            },
+        ),
+    ],
+    ids=["package", "workflow", "profile"],
+)
+def test_pricing_model_versions_reject_zero(model, kwargs):
+    with pytest.raises(IntegrityError), transaction.atomic():
+        model.objects.create(**kwargs)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("revision_number", "offer_number"),
+    [(0, None), (1, 0)],
+    ids=["revision-number", "offer-number"],
+)
+def test_revision_and_nonnull_offer_numbers_reject_zero(
+    revision_number, offer_number,
+):
+    with pytest.raises(IntegrityError), transaction.atomic():
+        create_revision(
+            create_event(),
+            revision_number=revision_number,
+            offer_number=offer_number,
+        )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "version_field",
+    ["profile_version", "package_version", "workflow_version"],
+)
+def test_nonnull_snapshot_versions_reject_zero(version_field):
+    with pytest.raises(IntegrityError), transaction.atomic():
+        create_revision(
+            create_event(),
+            revision_number=1,
+            **{version_field: 0},
+        )
 
 
 @pytest.mark.django_db

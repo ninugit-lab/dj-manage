@@ -389,6 +389,12 @@ class PricingPackage(models.Model):
         verbose_name = "Preis-Paket"
         verbose_name_plural = "Preis-Pakete"
         ordering = ['sort_order']
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(version__gt=0),
+                name='pricing_pkg_version_positive',
+            ),
+        ]
     def __str__(self):
         return f"{self.name} — {self.base_price} €"
 
@@ -414,6 +420,12 @@ class PricingWorkflow(models.Model):
     class Meta:
         verbose_name = "Preis-Workflow"
         verbose_name_plural = "Preis-Workflows"
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(version__gt=0),
+                name='pricing_workflow_version_positive',
+            ),
+        ]
     def __str__(self):
         return self.name
 
@@ -442,6 +454,10 @@ class PricingProfile(models.Model):
             models.UniqueConstraint(
                 fields=['status'], condition=models.Q(status='active'),
                 name='unique_active_pricing_profile',
+            ),
+            models.CheckConstraint(
+                check=models.Q(version__gt=0),
+                name='pricing_profile_version_positive',
             ),
         ]
 
@@ -517,6 +533,30 @@ class PriceCalculationRevision(models.Model):
                 fields=['event', 'offer_number'],
                 condition=models.Q(offer_number__isnull=False),
                 name='unique_price_offer_number_per_event',
+            ),
+            models.CheckConstraint(
+                check=models.Q(revision_number__gt=0),
+                name='price_revision_number_positive',
+            ),
+            models.CheckConstraint(
+                check=(models.Q(offer_number__isnull=True)
+                       | models.Q(offer_number__gt=0)),
+                name='price_offer_number_positive',
+            ),
+            models.CheckConstraint(
+                check=(models.Q(profile_version__isnull=True)
+                       | models.Q(profile_version__gt=0)),
+                name='price_profile_version_positive',
+            ),
+            models.CheckConstraint(
+                check=(models.Q(package_version__isnull=True)
+                       | models.Q(package_version__gt=0)),
+                name='price_package_version_positive',
+            ),
+            models.CheckConstraint(
+                check=(models.Q(workflow_version__isnull=True)
+                       | models.Q(workflow_version__gt=0)),
+                name='price_workflow_version_positive',
             ),
         ]
 
