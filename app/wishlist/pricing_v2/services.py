@@ -2,20 +2,161 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
+from copy import deepcopy
+from datetime import date, time
 from decimal import Decimal, InvalidOperation
+import logging
 from types import SimpleNamespace
 
 from django.db import transaction
 from django.utils import timezone
 
-from wishlist.models import (Event, EventPriceCalculation, PriceCalculationRevision, PriceItem,
-                             PricingFormula, PricingPackage, PricingPackageOverride,
-                             PricingProfile, PricingRule, PricingWorkflow)
+from wishlist.models import (AppConfig, Event, EventPriceCalculation, PriceCalculationRevision, PriceItem,
+                              PricingFormula, PricingPackage, PricingPackageOverride,
+                              PricingProfile, PricingRule, PricingWorkflow)
+from wishlist.price_engine import PriceEngine
 
 from .config import resolve_pricing_config
 from .engine import PricingEngineV2
 from .input import PricingInput, PricingValidationError
+from .result import PricingLine, PricingResult
 from .workflow import DEFAULT_BLOCKS, ValidatedWorkflow, validate_workflow
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class PricingDecision:
+    visible_result: PricingResult
+    v2_result: PricingResult | None = None
+    comparison_revision: PriceCalculationRevision | None = None
+
+
+def _legacy_result(raw):
+    """Keep V1's arithmetic untouched; adapt its gross amounts for the common response."""
+    lines = []
+    for category, entries in (("package", [raw["package"]] if raw.get("package") else []),
+                              ("item", raw.get("items", [])), ("custom", raw.get("custom_items", []))):
+        for index, entry in enumerate(entries):
+            amount = Decimal(str(entry["price"]))
+            lines.append(PricingLine(f"{category}:{index}", entry["name"], "V1 gross", 1,
+                                     "EUR", amount, amount, "legacy"))
+    for index, rule in enumerate(raw.get("rules_applied", [])):
+        amount = Decimal(str(rule["amount"]))
+        lines.append(PricingLine(f"rule:{index}", rule["name"], "V1 gross", 1, "EUR", amount, amount, "legacy"))
+    if raw.get("offer_breakdown"):
+        amount = Decimal(str(raw["offer_breakdown"]["grand_total"]))
+        lines.append(PricingLine("offer", "Offer", "V1 gross", 1, "EUR", amount, amount, "legacy"))
+    if raw.get("discount_amount"):
+        amount = -Decimal(str(raw["discount_amount"]))
+        lines.append(PricingLine("discount", "Discount", "V1 gross", 1, "EUR", amount, amount, "legacy"))
+    return PricingResult(engine_version="1", gross_total=Decimal(str(raw["grand_total"])),
+                         lines=tuple(lines), inputs={"source": "legacy"})
+
+
+def _legacy_calculate(payload, event):
+    if event is None:
+        def parsed(value, kind):
+            return kind.fromisoformat(value) if isinstance(value, str) else value
+        event = Event(date=parsed(payload.get("event_date"), date),
+                      time_start=parsed(payload.get("start_time"), time),
+                      time_end=parsed(payload.get("end_time"), time), guest_count=payload.get("guest_count"),
+                      distance_km=payload.get("distance_km"), event_type=payload.get("event_type", ""))
+    if payload is None:
+        calc = EventPriceCalculation.objects.filter(event=event).first()
+        params = dict(package_id=calc.package_id if calc else None,
+                      selected_item_ids=list(calc.selected_items.values_list("pk", flat=True)) if calc else None,
+                      formula_id=calc.formula_id if calc else None,
+                      custom_items=calc.custom_items_json if calc else None,
+                      discount_percent=calc.discount_percent if calc else 0)
+        workflow_id = calc.workflow_id if calc and calc.workflow_id else None
+    else:
+        params = dict(package_id=payload.get("package_id"),
+                      selected_item_ids=payload.get("selected_item_ids", payload.get("selected_items")),
+                      formula_id=payload.get("formula_id"), custom_items=payload.get("custom_items"),
+                      discount_percent=payload.get("discount_percent", 0),
+                      offer_data=payload.get("offer_data"), context_override=payload.get("context_override"))
+        workflow_id = payload.get("workflow_id")
+    if workflow_id is None:
+        workflow_id = PricingWorkflow.objects.filter(is_default=True, is_active=True).values_list("pk", flat=True).first()
+    if workflow_id:
+        raw = PriceEngine.calculate_workflow(event, workflow_id=workflow_id, **params)
+    else:
+        raw = PriceEngine.calculate(event, **params)
+    return _legacy_result(raw)
+
+
+def _save_failed_comparison(event, legacy, diagnostic, actor):
+    """Persist a typed internal diagnostic without fabricating a V2 price or difference."""
+    serialized = {"engine_version": "2", "diagnostic": diagnostic}
+    with transaction.atomic():
+        locked = Event.objects.select_for_update().get(pk=event.pk)
+        existing = PriceCalculationRevision.objects.filter(
+            event=locked, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
+            status=PriceCalculationRevision.Status.DRAFT, result_json=serialized,
+            legacy_total=legacy.gross_total, created_by=actor).first()
+        if existing:
+            return existing
+        previous = PriceCalculationRevision.objects.filter(event=locked).order_by("-revision_number").first()
+        return PriceCalculationRevision.objects.create(
+            event=locked, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
+            status=PriceCalculationRevision.Status.DRAFT,
+            revision_number=previous.revision_number + 1 if previous else 1,
+            previous_revision=previous, engine_version="2", input_json={"source": "shadow"},
+            result_json=serialized, gross_total=legacy.gross_total,
+            legacy_total=legacy.gross_total, created_by=actor)
+
+
+def _comparison_identity(result):
+    snapshot = deepcopy(result)
+    snapshot.get("inputs", {}).pop("requested_at", None)
+    return snapshot
+
+
+def _save_comparison(event, v2, legacy, actor):
+    # The V2 service timestamps each request. Retries with identical economics
+    # must not create new comparisons solely because the wall clock advanced.
+    with transaction.atomic():
+        locked = Event.objects.select_for_update().get(pk=event.pk)
+        identity = _comparison_identity(v2.to_dict())
+        for previous in PriceCalculationRevision.objects.filter(
+                event=locked, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
+                status=PriceCalculationRevision.Status.DRAFT,
+                legacy_total=legacy.gross_total, created_by=actor):
+            if _comparison_identity(previous.result_json) == identity:
+                return previous
+        return save_revision(event, v2, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
+                             actor=actor, legacy_total=legacy.gross_total)
+
+
+def calculate_with_mode(payload=None, *, event=None, public=False, actor=None, persist_comparison=False):
+    """Unified entry for Tasks 3–5: pass payload for previews/submits, or event for saved admin.
+
+    The persisted AppConfig selects the engine. Only shadow with explicit opt-in and
+    a saved Event writes a comparison; callers must handle their own V1 event writes.
+    """
+    mode = AppConfig.objects.filter(pk=1).values_list("pricing_engine_mode", flat=True).first() or "legacy"
+    if mode == "v2":
+        result = calculate_payload(payload, public=public, actor=actor) if payload is not None else calculate_event(event, actor=actor)
+        return PricingDecision(result, result)
+    legacy = _legacy_calculate(payload, event)
+    if mode == "legacy":
+        return PricingDecision(legacy)
+    if mode != "shadow":
+        raise PricingValidationError("invalid_input", "unknown pricing engine mode", "pricing_engine_mode")
+    try:
+        v2 = calculate_payload(payload, public=public, actor=actor) if payload is not None else calculate_event(event, actor=actor)
+    except Exception as exc:
+        logger.exception("Shadow V2 calculation failed")
+        diagnostic = {"code": exc.code if isinstance(exc, PricingValidationError) else "internal_error"}
+        revision = (_save_failed_comparison(event, legacy, diagnostic, actor)
+                    if persist_comparison and event is not None and event.pk else None)
+        return PricingDecision(legacy, comparison_revision=revision)
+    revision = (_save_comparison(event, v2, legacy, actor)
+                if persist_comparison and event is not None and event.pk else None)
+    return PricingDecision(legacy, v2, revision)
 
 
 def _reference(name, field=None):

@@ -217,6 +217,13 @@ class GoogleToken(models.Model):
 
 class AppConfig(models.Model):
     """Singleton config – pk always 1."""
+    class PricingEngineMode(models.TextChoices):
+        LEGACY = 'legacy', 'Legacy'
+        SHADOW = 'shadow', 'Shadow'
+        V2 = 'v2', 'V2'
+
+    pricing_engine_mode = models.CharField(max_length=6, choices=PricingEngineMode.choices,
+                                           default=PricingEngineMode.LEGACY)
     spotify_client_id = models.CharField(max_length=200, blank=True, verbose_name="Spotify Client ID")
     spotify_client_secret = models.CharField(max_length=200, blank=True, verbose_name="Spotify Client Secret")
     spotify_redirect_uri = models.URLField(blank=True, verbose_name="Spotify Redirect URI")
