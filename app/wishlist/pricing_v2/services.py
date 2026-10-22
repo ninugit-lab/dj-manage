@@ -96,7 +96,7 @@ def _save_failed_comparison(event, legacy, diagnostic, actor):
         existing = PriceCalculationRevision.objects.filter(
             event=locked, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
             status=PriceCalculationRevision.Status.DRAFT, result_json=serialized,
-            legacy_total=legacy.gross_total, created_by=actor).first()
+            legacy_total=legacy.gross_total).first()
         if existing:
             return existing
         previous = PriceCalculationRevision.objects.filter(event=locked).order_by("-revision_number").first()
@@ -124,7 +124,7 @@ def _save_comparison(event, v2, legacy, actor):
         for previous in PriceCalculationRevision.objects.filter(
                 event=locked, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
                 status=PriceCalculationRevision.Status.DRAFT,
-                legacy_total=legacy.gross_total, created_by=actor):
+                legacy_total=legacy.gross_total):
             if _comparison_identity(previous.result_json) == identity:
                 return previous
         return save_revision(event, v2, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
@@ -138,24 +138,40 @@ def calculate_with_mode(payload=None, *, event=None, public=False, actor=None, p
     a saved Event writes a comparison; callers must handle their own V1 event writes.
     """
     mode = AppConfig.objects.filter(pk=1).values_list("pricing_engine_mode", flat=True).first() or "legacy"
+    if mode not in AppConfig.PricingEngineMode.values:
+        raise PricingValidationError("invalid_input", "unknown pricing engine mode", "pricing_engine_mode")
+    if payload is None and (event is None or isinstance(event, Event) and event.pk is None):
+        raise PricingValidationError("missing_input", "payload or event required", "payload")
+    if payload is not None and not isinstance(payload, Mapping):
+        raise PricingValidationError("invalid_input", "expected a mapping", "payload")
+    if payload is not None and not payload:
+        raise PricingValidationError("missing_input", "nonempty payload required", "payload")
+    if event is not None and not isinstance(event, Event):
+        raise PricingValidationError("invalid_input", "expected an event", "event")
     if mode == "v2":
         result = calculate_payload(payload, public=public, actor=actor) if payload is not None else calculate_event(event, actor=actor)
         return PricingDecision(result, result)
     legacy = _legacy_calculate(payload, event)
     if mode == "legacy":
         return PricingDecision(legacy)
-    if mode != "shadow":
-        raise PricingValidationError("invalid_input", "unknown pricing engine mode", "pricing_engine_mode")
     try:
         v2 = calculate_payload(payload, public=public, actor=actor) if payload is not None else calculate_event(event, actor=actor)
     except Exception as exc:
         logger.exception("Shadow V2 calculation failed")
         diagnostic = {"code": exc.code if isinstance(exc, PricingValidationError) else "internal_error"}
-        revision = (_save_failed_comparison(event, legacy, diagnostic, actor)
-                    if persist_comparison and event is not None and event.pk else None)
+        revision = None
+        if persist_comparison and event is not None and event.pk:
+            try:
+                revision = _save_failed_comparison(event, legacy, diagnostic, actor)
+            except Exception:
+                logger.exception("Shadow diagnostic comparison could not be persisted")
         return PricingDecision(legacy, comparison_revision=revision)
-    revision = (_save_comparison(event, v2, legacy, actor)
-                if persist_comparison and event is not None and event.pk else None)
+    revision = None
+    if persist_comparison and event is not None and event.pk:
+        try:
+            revision = _save_comparison(event, v2, legacy, actor)
+        except Exception:
+            logger.exception("Shadow comparison could not be persisted")
     return PricingDecision(legacy, v2, revision)
 
 

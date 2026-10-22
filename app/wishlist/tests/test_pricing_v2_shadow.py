@@ -3,7 +3,10 @@ from datetime import date, time
 from decimal import Decimal
 
 import pytest
+from django.contrib.auth import get_user_model
+from django.db.migrations.loader import MigrationLoader
 from django.utils import timezone
+from unittest.mock import patch
 
 from wishlist.models import (AppConfig, Event, EventPriceCalculation, PriceCalculationRevision,
                              PriceItem, PricingPackage, PricingProfile, PricingWorkflow)
@@ -125,3 +128,83 @@ def test_legacy_payload_preserves_v1_discount_custom_and_rule_paths(catalog):
     decision = calculate_with_mode(payload, public=False)
     assert decision.visible_result.gross_total == Decimal("126")
     assert Decimal(decision.visible_result.to_dict()["gross_total"]) == Decimal("126")
+
+
+@pytest.mark.parametrize("kwargs", [{}, {"payload": None}, {"payload": None, "event": None},
+                                  {"payload": {}}, {"event": Event()}])
+def test_no_usable_input_is_a_typed_error(catalog, kwargs):
+    with pytest.raises(PricingValidationError) as error:
+        calculate_with_mode(**kwargs)
+    assert error.value.code == "missing_input"
+
+
+@pytest.mark.parametrize("mode", ["legacy", "shadow", "v2"])
+def test_missing_input_is_typed_in_every_mode(catalog, mode):
+    config = AppConfig.load()
+    config.pricing_engine_mode = mode
+    config.save(update_fields=["pricing_engine_mode"])
+    with pytest.raises(PricingValidationError) as error:
+        calculate_with_mode()
+    assert error.value.code == "missing_input"
+
+
+def test_invalid_mode_is_rejected_before_any_engine_or_bad_input(catalog):
+    AppConfig.load()
+    AppConfig.objects.update(pricing_engine_mode="bogus")
+    with patch("wishlist.pricing_v2.services.PriceEngine.calculate", side_effect=AssertionError("V1 called")), \
+         patch("wishlist.pricing_v2.services.PriceEngine.calculate_workflow", side_effect=AssertionError("V1 called")), \
+         patch("wishlist.pricing_v2.services.calculate_payload", side_effect=AssertionError("V2 called")):
+        with pytest.raises(PricingValidationError) as error:
+            calculate_with_mode(payload=request(catalog))
+    assert (error.value.code, error.value.field) == ("invalid_input", "pricing_engine_mode")
+
+
+def test_non_mapping_payload_is_typed(catalog):
+    with pytest.raises(PricingValidationError) as error:
+        calculate_with_mode(payload="not a mapping")
+    assert error.value.code == "invalid_input"
+
+
+@pytest.mark.parametrize("profile_enabled", [False, True], ids=["diagnostic", "successful"])
+def test_shadow_comparison_retry_ignores_actor_but_preserves_first_creator(catalog, profile_enabled):
+    if profile_enabled:
+        enable_v2()
+    event = event_with_calculation(catalog)
+    AppConfig.objects.create(pricing_engine_mode="shadow")
+    first_actor = get_user_model().objects.create_user(username="first")
+    later_actor = get_user_model().objects.create_user(username="later")
+    first = calculate_with_mode(event=event, actor=first_actor, persist_comparison=True)
+    retried = calculate_with_mode(event=event, actor=later_actor, persist_comparison=True)
+    assert retried.visible_result.gross_total == Decimal("130")
+    assert retried.comparison_revision.pk == first.comparison_revision.pk
+    assert retried.comparison_revision.created_by_id == first_actor.pk
+    assert PriceCalculationRevision.objects.filter(event=event).count() == 1
+
+
+@pytest.mark.parametrize("profile_enabled", [False, True], ids=["diagnostic", "successful"])
+def test_shadow_comparison_write_failure_is_internal_and_never_interrupts_v1(catalog, profile_enabled, caplog):
+    if profile_enabled:
+        enable_v2()
+    event = event_with_calculation(catalog)
+    AppConfig.objects.create(pricing_engine_mode="shadow")
+    target = "_save_comparison" if profile_enabled else "_save_failed_comparison"
+    with patch(f"wishlist.pricing_v2.services.{target}", side_effect=RuntimeError("database unavailable")):
+        decision = calculate_with_mode(event=event, persist_comparison=True)
+    assert decision.visible_result.gross_total == Decimal("130")
+    assert decision.comparison_revision is None
+    assert (decision.v2_result is not None) == profile_enabled
+    assert "database unavailable" in caplog.text
+    assert "database unavailable" not in str(decision.visible_result.to_dict())
+    event.refresh_from_db()
+    assert event.total_price == Decimal("777")
+    assert not PriceCalculationRevision.objects.exists()
+
+
+def test_mode_migration_applies_after_default_workflow_constraint(db):
+    loader = MigrationLoader(None)
+    plan = loader.graph.forwards_plan(("wishlist", "0015_pricing_engine_mode"))
+    assert plan.index(("wishlist", "0014_pricing_workflow_default_constraint")) < plan.index(
+        ("wishlist", "0015_pricing_engine_mode"))
+    field = AppConfig._meta.get_field("pricing_engine_mode")
+    assert field.default == "legacy"
+    assert [value for value, _ in field.choices] == ["legacy", "shadow", "v2"]
