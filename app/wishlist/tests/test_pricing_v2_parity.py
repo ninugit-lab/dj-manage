@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from wishlist.models import (AppConfig, Event, EventPriceCalculation, PriceCalculationRevision,
-                             PriceItem, PricingPackage, PricingProfile, PricingWorkflow)
+                             PriceItem, PricingFormula, PricingPackage, PricingProfile, PricingWorkflow)
 from wishlist.pricing_v2.services import calculate_with_mode
 
 
@@ -184,3 +184,100 @@ def test_v2_test_context_rejected_with_validation(staff, catalog):
     response = preview(staff, package, [], test_context={'guest_count': 500})
     assert response.status_code == 400
     assert 'test_context' in response.json()['error']
+
+
+def test_v2_valid_retry_after_review_restores_total_without_rewriting_draft(staff, catalog):
+    config, package, _, extra, _ = catalog
+    config.pricing_engine_mode = 'v2'
+    config.save()
+    event = Event.objects.create(name='Gig', date=date(2999, 6, 20), location='X')
+    assert save(staff, event, package, [str(extra.pk)]).status_code == 302
+    first = event.price_revisions.get(kind='draft')
+    snapshot = first.result_json.copy()
+    event.refresh_from_db()
+    assert event.total_price == Decimal('150.00')
+
+    assert save(staff, event, package, [str(extra.pk)], distance_km='').status_code == 302
+    event.refresh_from_db()
+    assert event.total_price is None
+    assert save(staff, event, package, [str(extra.pk)]).status_code == 302
+    event.refresh_from_db()
+    first.refresh_from_db()
+    assert event.total_price == Decimal('150.00')
+    assert event.price_revisions.filter(kind='draft').count() == 1
+    assert first.result_json == snapshot
+
+
+@pytest.mark.parametrize('mode', ['legacy', 'shadow'])
+def test_existing_event_preview_prices_edited_fields_without_persisting(staff, catalog, mode):
+    config, package, _, extra, _ = catalog
+    config.pricing_engine_mode = mode
+    config.save()
+    formula = PricingFormula.objects.create(name='Form fields',
+        expression='guests + hours + distance + base', mode='replace')
+    workflow = PricingWorkflow.objects.get(is_default=True)
+    workflow.workflow_json.append({'type': 'formula'})
+    workflow.save()
+    event = Event.objects.create(name='Gig', date=date(2999, 6, 19),
+        time_start='10:00', time_end='11:00', guest_count=1,
+        distance_km=Decimal('1'), event_type='old', location='X')
+    response = preview(staff, package, [extra.pk], event_id=event.pk, formula_id=formula.pk,
+        event_date='2999-06-20', start_time='18:00', end_time='21:00',
+        guest_count=10, distance_km='12', event_type='new')
+    assert response.status_code == 200
+    assert response.json()['engine_version'] == '1'
+    assert response.json()['gross_total'] == '155.00'  # V1: 130 package/items + 10 + 3 + 12
+    event.refresh_from_db()
+    assert event.date == date(2999, 6, 19)
+    assert event.guest_count == 1
+    assert event.distance_km == Decimal('1')
+    assert event.event_type == 'old'
+    assert event.total_price is None
+    assert not event.price_revisions.exists()
+
+
+@pytest.mark.parametrize('mode', ['legacy', 'shadow'])
+def test_existing_event_preview_applies_edited_type_and_date_rules(staff, catalog, mode):
+    from wishlist.models import PricingRule
+
+    config, package, _, extra, _ = catalog
+    config.pricing_engine_mode = mode
+    config.save()
+    workflow = PricingWorkflow.objects.get(is_default=True)
+    workflow.workflow_json.append({'type': 'rules'})
+    workflow.save()
+    PricingRule.objects.create(name='Thursday new type', effect_type='flat_add',
+        effect_value=Decimal('7'), condition_json=[
+            {'field': 'date_weekday', 'op': 'eq', 'value': 3},
+            {'field': 'event_type', 'op': 'eq', 'value': 'new'}])
+    event = Event.objects.create(name='Gig', date=date(2999, 6, 19),
+        time_start='10:00', time_end='11:00', guest_count=1,
+        distance_km=Decimal('1'), event_type='old', location='X')
+    response = preview(staff, package, [extra.pk], event_id=event.pk,
+        event_date='2999-06-20', event_type='new')
+    assert response.status_code == 200
+    assert response.json()['gross_total'] == '137.00'
+    event.refresh_from_db()
+    assert event.date == date(2999, 6, 19)
+    assert event.event_type == 'old'
+    assert not event.price_revisions.exists()
+
+
+@pytest.mark.parametrize('mode', ['legacy', 'shadow'])
+def test_existing_event_preview_retains_test_context_override(staff, catalog, mode):
+    config, package, _, extra, _ = catalog
+    config.pricing_engine_mode = mode
+    config.save()
+    formula = PricingFormula.objects.create(name='Test guest override', expression='guests + base')
+    workflow = PricingWorkflow.objects.get(is_default=True)
+    workflow.workflow_json.append({'type': 'formula'})
+    workflow.save()
+    event = Event.objects.create(name='Gig', date=date(2999, 6, 19),
+        time_start='10:00', time_end='11:00', guest_count=1, distance_km=Decimal('1'), location='X')
+    response = preview(staff, package, [extra.pk], event_id=event.pk, formula_id=formula.pk,
+        guest_count=10, test_context={'guest_count': 25})
+    assert response.status_code == 200
+    assert response.json()['gross_total'] == '155.00'
+    event.refresh_from_db()
+    assert event.guest_count == 1
+    assert not event.price_revisions.exists()

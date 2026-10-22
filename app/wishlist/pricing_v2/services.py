@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from copy import deepcopy
+from copy import copy, deepcopy
 from datetime import date, time
 from decimal import Decimal, InvalidOperation
 import logging
@@ -62,9 +62,22 @@ def _legacy_calculate(payload, event, *, public=False):
         def parsed(value, kind):
             return kind.fromisoformat(value) if isinstance(value, str) else value
         event = Event(date=parsed(payload.get("event_date"), date),
-                      time_start=parsed(payload.get("start_time"), time),
-                      time_end=parsed(payload.get("end_time"), time), guest_count=payload.get("guest_count"),
-                      distance_km=payload.get("distance_km"), event_type=payload.get("event_type", ""))
+                       time_start=parsed(payload.get("start_time"), time),
+                       time_end=parsed(payload.get("end_time"), time), guest_count=payload.get("guest_count"),
+                       distance_km=payload.get("distance_km"), event_type=payload.get("event_type", ""))
+    elif payload is not None:
+        # Preview an unsaved form against the saved event's offer/selections without
+        # allowing its stale fields to override the current form economics.
+        event = copy(event)
+        for field, payload_key, kind in (("date", "event_date", date),
+                                         ("time_start", "start_time", time),
+                                         ("time_end", "end_time", time)):
+            if payload_key in payload:
+                value = payload[payload_key]
+                setattr(event, field, kind.fromisoformat(value) if isinstance(value, str) else value)
+        for field in ("guest_count", "distance_km", "event_type"):
+            if field in payload:
+                setattr(event, field, payload[field])
     if payload is None:
         calc = EventPriceCalculation.objects.filter(event=event).first()
         params = dict(package_id=calc.package_id if calc else None,
@@ -421,6 +434,14 @@ def save_revision(event, result, *, kind, actor=None, legacy_total=None, update_
                      _comparison_identity(existing.result_json) == _comparison_identity(serialized)
                      or kind not in (PriceCalculationRevision.Kind.ESTIMATE, PriceCalculationRevision.Kind.DRAFT)
                      and existing.result_json == serialized):
+                if update_event_total and kind in (PriceCalculationRevision.Kind.ESTIMATE,
+                                                   PriceCalculationRevision.Kind.DRAFT):
+                    released = PriceCalculationRevision.objects.filter(
+                        event=locked, status__in=(PriceCalculationRevision.Status.RELEASED,
+                                                 PriceCalculationRevision.Status.SENT)).exists()
+                    if not released:
+                        Event.objects.filter(pk=locked.pk).update(total_price=existing.gross_total)
+                        event.total_price = existing.gross_total
                 return existing
         revision = PriceCalculationRevision.objects.create(
             event=locked, kind=kind, status=PriceCalculationRevision.Status.DRAFT,

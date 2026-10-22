@@ -929,7 +929,7 @@ def api_price_calculate(request):
     result = decision.visible_result
     response = {'ok': True, 'engine_version': result.engine_version,
                 'status': 'ok', 'lines': result.to_dict()['lines'],
-                'gross_total': str(result.gross_total), 'warnings': []}
+                'gross_total': str(result.gross_total.quantize(Decimal('0.01'))), 'warnings': []}
     if payload['distance_km'] is None:
         response.update(status='individual_review', gross_total=None,
                         warnings=['Entfernung fehlt – Preis wird individuell geprüft'])
