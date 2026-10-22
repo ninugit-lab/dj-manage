@@ -35,7 +35,7 @@ const timers = [];
 const document = {
   getElementById: get, createElement: () => new Element(), addEventListener() {},
   querySelector: selector => selector === 'input[name="f-package"]:checked' ? {value: packageId} : null,
-  querySelectorAll: selector => selector === '.price-checkbox:checked' ? selected : []
+  querySelectorAll: selector => selector === '.price-checkbox:checked' ? selected.filter(item => item.checked) : []
 };
 const sandbox = {document, console, AbortController, setTimeout: f => {timers.push(f); return timers.length;}, clearTimeout: () => {},
   window: {scrollTo(){}}, fetch: (url, options) => new Promise(resolve => pending.push({resolve, options}))};
@@ -64,14 +64,36 @@ const result = (name, total) => ({ok:true, engine_version:'2', status:'ok', gros
   sandbox.updatePrice();
   assert.doesNotMatch(get('price-total').textContent, /230/);
   await flush();
-  assert.equal(pending.length, 2, 'package removal must not issue a stale request');
+  timers.shift()();
+  assert.equal(pending.length, 3, 'package removal must request an individual-items estimate');
+  pending[2].resolve({json:async () => result('No package', '0.00')});
+  await flush();
   packageId = '3'; sandbox.updatePrice(); timers.shift()();
-  pending[2].resolve({json:async () => ({ok:false,status:'individual_review',message:'Preis wird individuell geprüft'})});
+  pending[3].resolve({json:async () => ({ok:false,status:'individual_review',message:'Preis wird individuell geprüft'})});
   await flush();
   assert.match(get('price-total').textContent, /individuell geprüft/);
-  pending[2].resolve({json:async () => result('late', '999.00')});
+  pending[3].resolve({json:async () => result('late', '999.00')});
   await flush();
   assert.doesNotMatch(get('price-total').textContent, /999/);
+  const required = new Element(); required.value = '17'; required.checked = true; required.disabled = true;
+  selected.push(required);
+  packageId = '';
+  sandbox.updatePrice(); timers.shift()();
+  assert.equal(pending.length, 5, 'individual items request must be sent without a package');
+  const individual = JSON.parse(pending[4].options.body);
+  assert.equal(individual.package_id, null);
+  assert.deepEqual(individual.selected_item_ids, [17], 'checked disabled required checkbox must be included');
+  packageId = '3'; sandbox.updatePrice();
+  pending[4].resolve({json:async () => result('obsolete', '999.00')});
+  await flush();
+  assert.doesNotMatch(get('price-total').textContent, /999/);
+  timers.shift()(); // This request is superseded by the next no-package selection.
+  packageId = ''; sandbox.updatePrice(); timers.shift()();
+  assert.equal(pending.length, 7);
+  assert.deepEqual(JSON.parse(pending[6].options.body).selected_item_ids, [17]);
+  pending[6].resolve({json:async () => result('Required', '20.00')});
+  await flush();
+  assert.match(get('price-total').textContent, /20,00/);
 })().catch(err => { console.error(err); process.exitCode = 1; });
 """
 

@@ -25,6 +25,7 @@ from .workflow import DEFAULT_BLOCKS, ValidatedWorkflow, validate_workflow
 
 
 logger = logging.getLogger(__name__)
+_PUBLIC_INDIVIDUAL_PACKAGE = "individual-items"
 
 
 @dataclass(frozen=True)
@@ -56,7 +57,7 @@ def _legacy_result(raw):
                          lines=tuple(lines), inputs={"source": "legacy"})
 
 
-def _legacy_calculate(payload, event):
+def _legacy_calculate(payload, event, *, public=False):
     if event is None:
         def parsed(value, kind):
             return kind.fromisoformat(value) if isinstance(value, str) else value
@@ -81,6 +82,10 @@ def _legacy_calculate(payload, event):
         workflow_id = payload.get("workflow_id")
     if workflow_id is None:
         workflow_id = PricingWorkflow.objects.filter(is_default=True, is_active=True).values_list("pk", flat=True).first()
+    # A public individual-items request must not inherit a workflow's configured
+    # package: V1 uses that package as a fallback even when package_id is None.
+    if public and payload is not None and payload.get("package_id") is None:
+        workflow_id = None
     if workflow_id:
         raw = PriceEngine.calculate_workflow(event, workflow_id=workflow_id, **params)
     else:
@@ -148,10 +153,28 @@ def calculate_with_mode(payload=None, *, event=None, public=False, actor=None, p
         raise PricingValidationError("missing_input", "nonempty payload required", "payload")
     if event is not None and not isinstance(event, Event):
         raise PricingValidationError("invalid_input", "expected an event", "event")
+    if public and payload is not None:
+        selected = payload.get("selected_item_ids", ())
+        if not isinstance(selected, (list, tuple)) or any(
+                isinstance(identity, bool) or not isinstance(identity, (str, int))
+                or not str(identity).isdigit() or int(identity) < 1 for identity in selected):
+            raise PricingValidationError("invalid_input", "invalid public item selection", "selected_item_ids")
+        ids = {int(identity) for identity in selected}
+        if ids != set(PriceItem.objects.filter(pk__in=ids, is_active=True, is_public=True)
+                      .values_list("pk", flat=True)):
+            _reference("item", "selected_item_ids")
+        required = PriceItem.objects.filter(is_active=True, is_public=True, is_required=True).values_list("pk", flat=True)
+        payload = {**payload, "selected_item_ids": [str(identity) for identity in dict.fromkeys(
+            [*selected, *required])]}
+        if payload.get("package_id") in (None, ""):
+            payload["package_id"] = None
+        elif not PricingPackage.objects.filter(pk=_identifier(payload["package_id"], "package_id"),
+                                                is_active=True, is_public=True).exists():
+            _reference("package", "package_id")
     if mode == "v2":
         result = calculate_payload(payload, public=public, actor=actor) if payload is not None else calculate_event(event, actor=actor)
         return PricingDecision(result, result)
-    legacy = _legacy_calculate(payload, event)
+    legacy = _legacy_calculate(payload, event, public=public)
     if mode == "legacy":
         return PricingDecision(legacy)
     try:
@@ -235,25 +258,27 @@ def _calculate(payload, *, public, actor=None):
     # Strip browser-calculated values; never copy a caller-supplied price into the catalog.
     if public and payload.get("custom_items"):
         raise PricingValidationError("invalid_input", "custom items require an administrator", "custom_items")
-    request = PricingInput.from_mapping(payload, requested_at=timezone.now())
-    package_id = _identifier(request.package_id, "package_id")
+    individual = public and payload.get("package_id") in (None, "")
+    package_id = _PUBLIC_INDIVIDUAL_PACKAGE if individual else _identifier(payload.get("package_id"), "package_id")
+    request = PricingInput.from_mapping({**payload, "package_id": package_id}, requested_at=timezone.now())
     profiles = list(PricingProfile.objects.filter(status=PricingProfile.Status.ACTIVE)[:2])
     if len(profiles) != 1:
         _reference("active profile", "profile")
     profile = profiles[0]
-    package = PricingPackage.objects.filter(pk=package_id, is_active=True, **({"is_public": True} if public else {})).first()
-    if package is None:
+    package = None if individual else PricingPackage.objects.filter(
+        pk=package_id, is_active=True, **({"is_public": True} if public else {})).first()
+    if package is None and not individual:
         _reference("package", "package_id")
     workflows = list(PricingWorkflow.objects.filter(is_active=True, is_default=True)[:2])
     if len(workflows) != 1:
         _reference("default workflow", "workflow")
     workflow = workflows[0]
-    override = PricingPackageOverride.objects.filter(profile=profile, package=package).first()
-    resolved = resolve_pricing_config(profile, SimpleNamespace(
+    override = PricingPackageOverride.objects.filter(profile=profile, package=package).first() if package else None
+    resolved = resolve_pricing_config(profile, None if individual else SimpleNamespace(
         id=package.pk, version=package.version,
         overrides_json=override.overrides_json if override else {}))
     selected = tuple(_identifier(identity, "selected_item_ids") for identity in request.selected_item_ids)
-    included = tuple(str(item.pk) for item in package.included_items.all())
+    included = () if individual else tuple(str(item.pk) for item in package.included_items.all())
     required = tuple(str(item.pk) for item in PriceItem.objects.filter(is_active=True, is_required=True,
                       **({"is_public": True} if public else {})))
     ids = set(selected + included + required)
@@ -275,11 +300,21 @@ def _calculate(payload, *, public, actor=None):
                                  "mode": formula.mode, "is_active": True}
                 for formula in PricingFormula.objects.filter(is_active=True)}
     catalog = {"profile_id": profile.pk, "packages": {package_id: {
-        "label": package.name, "base_price": str(package.base_price), "version": package.version,
-        "description": package.description, "included_item_ids": included,
-        "required_item_ids": required, "is_active": package.is_active, "is_public": package.is_public}},
+        "label": "Einzelne Posten" if individual else package.name,
+        "base_price": "0.00" if individual else str(package.base_price),
+        "version": "individual" if individual else package.version,
+        "description": "" if individual else package.description, "included_item_ids": included,
+        "required_item_ids": required, "is_active": True if individual else package.is_active,
+        "is_public": True if individual else package.is_public}},
         "items": items, "rules": rules, "formulas": formulas}
-    blocks = _legacy_blocks(workflow.workflow_json, package_id, catalog)
+    # The default workflow still selects all price-building and adjustment blocks,
+    # but a package-specific reference cannot select a package the user declined.
+    workflow_blocks = workflow.workflow_json
+    if individual:
+        workflow_blocks = [dict(block, config={key: value for key, value in block.get("config", {}).items()
+                                               if key != "package_id"}) if block.get("type") == "package" else block
+                           for block in workflow.workflow_json]
+    blocks = _legacy_blocks(workflow_blocks, package_id, catalog)
     # V1 configuration cannot silently pick a different item selection.
     for block in blocks:
         if block["type"] == "items" and "item_ids" in block and set(block["item_ids"]) != set(selected):

@@ -657,14 +657,13 @@ def api_price_estimate(request):
         if not isinstance(data, dict):
             return failure()
         package_id = data.get('package_id')
-        if package_id in (None, ''):
-            return failure()
-        package_id = int(package_id)
+        package_id = None if package_id in (None, '') else int(package_id)
         selected = data.get('selected_item_ids', [])
         if not isinstance(selected, list) or any(isinstance(i, bool) for i in selected):
             return failure()
         selected = [int(i) for i in selected]
-        if not PricingPackage.objects.filter(pk=package_id, is_active=True, is_public=True).exists():
+        if package_id is not None and not PricingPackage.objects.filter(
+                pk=package_id, is_active=True, is_public=True).exists():
             return failure()
         available = set(PriceItem.objects.filter(pk__in=selected, is_active=True, is_public=True)
                         .values_list('pk', flat=True))
@@ -685,7 +684,8 @@ def api_price_estimate(request):
         else:
             distance = None
         payload = {'event_date': data.get('date'), 'start_time': data.get('time_start'),
-                   'end_time': data.get('time_end'), 'package_id': str(package_id),
+                   'end_time': data.get('time_end'),
+                   'package_id': str(package_id) if package_id is not None else None,
                    'selected_item_ids': [str(i) for i in selected], 'guest_count': guest_count,
                    'event_type': data.get('event_type', ''), 'distance_km': str(distance) if distance is not None else None}
         decision = calculate_with_mode(payload, public=True)
@@ -697,11 +697,11 @@ def api_price_estimate(request):
         response = {'ok': True, 'engine_version': str(result.engine_version),
                     'status': 'individual_review' if missing_distance else result.status,
                     'lines': lines, 'gross_total': gross, 'warnings': warnings,
-                    # Numeric V1 fields remain available to older form clients.
-                    'grand_total': None if missing_distance else float(result.gross_total),
+                    # Retain V1 response keys; money is always transported as decimal text.
+                    'grand_total': gross,
                     'package': None, 'items': [], 'rules_applied': []}
         for line in lines:
-            entry = {'name': line['label'], 'price': float(line['amount'])}
+            entry = {'name': line['label'], 'price': line['amount']}
             if line['code'].startswith('package:'):
                 response['package'] = entry
             elif line['code'].startswith('item:'):

@@ -43,11 +43,13 @@ def test_mode_preserves_gross_arithmetic_and_decimal_contract(client, catalog, m
     assert data["engine_version"] == version
     assert data["status"] == "ok"
     assert data["gross_total"] == "150.00"
-    assert data["grand_total"] == 150.0  # pre-cutover response compatibility
+    assert data["grand_total"] == '150.00'  # pre-cutover key, decimal-string amount
     assert data["warnings"] == []
     assert data["lines"] and all(isinstance(line["amount"], str) and isinstance(line["unit_price"], str)
                                  for line in data["lines"])
     assert {line["label"] for line in data["lines"]} >= {"Party", "Required", "Extra"}
+    assert isinstance(data['package']['price'], str)
+    assert all(isinstance(item['price'], str) for item in data['items'])
 
 
 def test_public_rejects_private_items_without_leaking_diagnostics(client, catalog):
@@ -103,3 +105,28 @@ def test_browser_cannot_submit_admin_only_adjustments(client, catalog, mode):
                         discount_percent='99', formula_id=1, workflow_id=999)
     assert response.status_code == 200
     assert response.json()['gross_total'] == '150.00'
+
+
+@pytest.mark.parametrize('mode,version', [('legacy', '1'), ('shadow', '1'), ('v2', '2')])
+def test_no_package_individual_items_keep_public_arithmetic(client, catalog, mode, version):
+    AppConfig.objects.create(pricing_engine_mode=mode)
+    response = estimate(client, catalog, package_id=None, selected_item_ids=[catalog[2].pk])
+    assert response.status_code == 200
+    data = response.json()
+    assert data['ok'] is True
+    assert data['engine_version'] == version
+    assert data['gross_total'] == '50.00'
+    assert data['grand_total'] == '50.00'
+    assert data['package'] is None
+    assert {line['label'] for line in data['lines']} == {'Required', 'Extra'}
+    assert all(isinstance(line['amount'], str) for line in data['lines'])
+
+
+@pytest.mark.parametrize('mode', ['legacy', 'shadow', 'v2'])
+def test_no_package_required_only_does_not_trust_empty_browser_selection(client, catalog, mode):
+    AppConfig.objects.create(pricing_engine_mode=mode)
+    response = estimate(client, catalog, package_id='', selected_item_ids=[])
+    assert response.status_code == 200
+    assert response.json()['gross_total'] == '20.00'
+    assert response.json()['grand_total'] == '20.00'
+    assert [line['label'] for line in response.json()['lines']] == ['Required']
