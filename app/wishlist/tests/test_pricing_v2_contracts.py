@@ -124,6 +124,38 @@ def test_result_deep_freezes_nested_inputs_and_subtotals():
     assert result.to_dict()["block_subtotals"] == [{"amount": "11.00"}]
 
 
+def test_json_null_is_preserved_in_all_nested_payloads():
+    value = PricingInput.from_mapping(
+        valid_data(custom_items=[{"optional": None}]), requested_at=datetime.now(timezone.utc)
+    )
+    result = PricingResult("2.0", inputs={"optional": None}, block_subtotals=[None])
+    assert value.custom_items[0]["optional"] is None
+    assert result.to_dict()["inputs"]["optional"] is None
+    assert result.to_dict()["block_subtotals"] == [None]
+
+
+@pytest.mark.parametrize("field,value", [
+    ("inputs", {"bad": object()}),
+    ("block_subtotals", [object()]),
+    ("warnings", [object()]),
+    ("errors", {"bad": object()}),
+    ("engine_version", object()),
+])
+def test_result_rejects_unsupported_values_at_construction(field, value):
+    with pytest.raises((PricingValidationError, TypeError)):
+        PricingResult("2.0", **{field: value})
+
+
+def test_result_freezes_warning_and_error_sequences():
+    warnings = ["warn"]
+    errors = {"code": "problem", "details": [None]}
+    result = PricingResult("2.0", warnings=warnings, errors=errors)
+    warnings.append("later")
+    errors["details"].append("later")
+    assert result.to_dict()["warnings"] == ["warn"]
+    assert result.to_dict()["errors"] == {"code": "problem", "details": [None]}
+
+
 @pytest.mark.parametrize("field", ["distance_km", "discount_percent", "discount_amount"])
 def test_float_decimal_inputs_are_rejected(field):
     with pytest.raises(PricingValidationError) as exc:

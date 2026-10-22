@@ -110,7 +110,9 @@ class FrozenMapping(ABCMapping):
 
 
 def _freeze_json(value, field):
-    if value is None or isinstance(value, (str, int, bool, Decimal, date, time, datetime)):
+    if value is None:
+        return None
+    if isinstance(value, (str, int, bool, Decimal, date, time, datetime)):
         if isinstance(value, bool) or isinstance(value, int) or isinstance(value, str):
             return value
         if isinstance(value, (date, time, datetime, Decimal)):

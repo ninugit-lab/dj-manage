@@ -5,10 +5,12 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
-from .input import FrozenMapping, _freeze_json
+from .input import FrozenMapping, PricingValidationError, _freeze_json
 
 
 def _serialize(value):
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, (datetime, date, time)):
@@ -21,7 +23,7 @@ def _serialize(value):
         return {key: _serialize(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
         return [_serialize(item) for item in value]
-    return value
+    raise TypeError(f"unsupported serialization value: {type(value).__name__}")
 
 
 @dataclass(frozen=True)
@@ -62,11 +64,22 @@ class PricingResult:
     rounding_difference: Decimal = Decimal("0")
 
     def __post_init__(self):
+        if self.engine_version is not None and not isinstance(self.engine_version, (str, int)):
+            raise PricingValidationError("invalid_input", "engine_version must be a string, integer, or null", "engine_version")
+        for field_name in ("profile_version", "package_version", "workflow_version"):
+            value = getattr(self, field_name)
+            if value is not None and not isinstance(value, (str, int)):
+                raise PricingValidationError("invalid_input", f"{field_name} must be a string, integer, or null", field_name)
         object.__setattr__(self, "inputs", None if self.inputs is None else _freeze_json(self.inputs, "inputs"))
         object.__setattr__(self, "block_subtotals", _freeze_json(self.block_subtotals, "block_subtotals"))
         object.__setattr__(self, "lines", tuple(self.lines))
-        object.__setattr__(self, "warnings", tuple(self.warnings))
-        object.__setattr__(self, "errors", tuple(self.errors))
+        if not all(isinstance(line, PricingLine) for line in self.lines):
+            raise PricingValidationError("invalid_input", "lines must contain PricingLine values", "lines")
+        object.__setattr__(self, "warnings", _freeze_json(self.warnings, "warnings"))
+        object.__setattr__(self, "errors", _freeze_json(self.errors, "errors"))
+        for field_name in ("status", "mode"):
+            if not isinstance(getattr(self, field_name), str):
+                raise PricingValidationError("invalid_input", f"{field_name} must be a string", field_name)
         for field_name in ("gross_total", "discount_total", "rounding_difference"):
             value = getattr(self, field_name)
             if isinstance(value, float) or isinstance(value, bool) or not isinstance(value, Decimal):
