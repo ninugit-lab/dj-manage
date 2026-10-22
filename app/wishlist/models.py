@@ -356,7 +356,10 @@ class PricingRule(models.Model):
     APPLIES_TO_CHOICES = [
         ('subtotal', 'Zwischensumme'),
         ('base', 'Grundpreis'),
+        ('package', 'Paket'),
         ('tech', 'Technik'),
+        ('extras', 'Extras'),
+        ('travel', 'Anfahrt'),
     ]
     name = models.CharField(max_length=200, verbose_name="Bezeichnung")
     description = models.CharField(max_length=300, blank=True, verbose_name="Beschreibung")
@@ -400,8 +403,10 @@ class PricingPackage(models.Model):
 
 
 class PricingFormula(models.Model):
+    MODE_CHOICES = [('add', 'Hinzufügen'), ('subtract', 'Abziehen'), ('replace', 'Ersetzen')]
     name = models.CharField(max_length=200, verbose_name="Bezeichnung")
     expression = models.CharField(max_length=500, verbose_name="Formel")
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='add', verbose_name="Modus")
     description = models.CharField(max_length=300, blank=True, verbose_name="Beschreibung")
     is_active = models.BooleanField(default=True, verbose_name="Aktiv")
     class Meta:
