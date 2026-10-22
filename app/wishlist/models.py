@@ -92,6 +92,9 @@ class Event(models.Model):
     review_requested_at = models.DateTimeField(null=True, blank=True,
         verbose_name="Bewertungsanfrage gesendet",
         help_text="Zeitpunkt der automatischen Nachfass-Mail. Leer = noch nicht gesendet.")
+    pricing_region = models.CharField(max_length=10, default='NW')
+    setup_minutes = models.PositiveIntegerField(null=True, blank=True)
+    teardown_minutes = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Event"
@@ -373,6 +376,7 @@ class PricingRule(models.Model):
 
 class PricingPackage(models.Model):
     name = models.CharField(max_length=200, verbose_name="Bezeichnung")
+    version = models.PositiveIntegerField(default=1)
     description = models.TextField(blank=True, verbose_name="Beschreibung")
     base_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Grundpreis (€)")
     included_items = models.ManyToManyField('PriceItem', blank=True, verbose_name="Enthaltene Posten")
@@ -403,6 +407,7 @@ class PricingFormula(models.Model):
 
 class PricingWorkflow(models.Model):
     name = models.CharField(max_length=200, verbose_name="Bezeichnung")
+    version = models.PositiveIntegerField(default=1)
     workflow_json = models.JSONField(default=list, verbose_name="Workflow-Blöcke")
     is_active = models.BooleanField(default=True, verbose_name="Aktiv")
     is_default = models.BooleanField(default=False, verbose_name="Standard")
@@ -411,6 +416,138 @@ class PricingWorkflow(models.Model):
         verbose_name_plural = "Preis-Workflows"
     def __str__(self):
         return self.name
+
+
+class PricingProfile(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Draft'
+        ACTIVE = 'active', 'Active'
+        RETIRED = 'retired', 'Retired'
+
+    name = models.CharField(max_length=200)
+    version = models.PositiveIntegerField(default=1)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    valid_from = models.DateTimeField()
+    config_json = models.JSONField(default=dict)
+    created_by = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name', 'version'], name='unique_pricing_profile_name_version',
+            ),
+            models.UniqueConstraint(
+                fields=['status'], condition=models.Q(status='active'),
+                name='unique_active_pricing_profile',
+            ),
+        ]
+
+
+class PricingPackageOverride(models.Model):
+    profile = models.ForeignKey(PricingProfile, on_delete=models.CASCADE)
+    package = models.ForeignKey(PricingPackage, on_delete=models.CASCADE)
+    overrides_json = models.JSONField(default=dict)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['profile', 'package'],
+                name='unique_pricing_override_profile_package',
+            ),
+        ]
+
+
+class PriceCalculationRevision(models.Model):
+    class Kind(models.TextChoices):
+        ESTIMATE = 'estimate', 'Estimate'
+        DRAFT = 'draft', 'Draft'
+        OFFER = 'offer', 'Offer'
+        LEGACY = 'legacy', 'Legacy'
+        MIGRATION_COMPARE = 'migration_compare', 'Migration compare'
+
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Draft'
+        RELEASED = 'released', 'Released'
+        SENT = 'sent', 'Sent'
+        SEND_FAILED = 'send_failed', 'Send failed'
+        SUPERSEDED = 'superseded', 'Superseded'
+
+    event = models.ForeignKey(
+        Event, on_delete=models.CASCADE, related_name='price_revisions',
+    )
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    status = models.CharField(max_length=20, choices=Status.choices)
+    revision_number = models.PositiveIntegerField()
+    offer_number = models.PositiveIntegerField(null=True, blank=True)
+    engine_version = models.CharField(max_length=100)
+    profile_id_snapshot = models.PositiveBigIntegerField(null=True, blank=True)
+    profile_version = models.PositiveIntegerField(null=True, blank=True)
+    package_id_snapshot = models.PositiveBigIntegerField(null=True, blank=True)
+    package_version = models.PositiveIntegerField(null=True, blank=True)
+    workflow_id_snapshot = models.PositiveBigIntegerField(null=True, blank=True)
+    workflow_version = models.PositiveIntegerField(null=True, blank=True)
+    input_json = models.JSONField(default=dict)
+    result_json = models.JSONField(default=dict)
+    gross_total = models.DecimalField(max_digits=12, decimal_places=2)
+    previous_revision = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+    )
+    legacy_total = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+    )
+    difference = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+    )
+    created_by = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['event', 'revision_number'],
+                name='unique_price_revision_number_per_event',
+            ),
+            models.UniqueConstraint(
+                fields=['event', 'offer_number'],
+                condition=models.Q(offer_number__isnull=False),
+                name='unique_price_offer_number_per_event',
+            ),
+        ]
+
+
+class ManualPriceAdjustment(models.Model):
+    event = models.ForeignKey(
+        Event, on_delete=models.CASCADE, related_name='price_adjustments',
+    )
+    label = models.CharField(max_length=200)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.TextField()
+    created_by = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=~models.Q(reason=''), name='price_adjustment_reason_not_empty',
+            ),
+            models.CheckConstraint(
+                check=~models.Q(amount=0), name='price_adjustment_amount_not_zero',
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if not self.reason.strip():
+            from django.core.exceptions import ValidationError
+            raise ValidationError({'reason': 'Reason must not be blank.'})
 
 
 class EventPriceCalculation(models.Model):
