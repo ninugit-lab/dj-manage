@@ -1,12 +1,13 @@
 """Mode selection must never let a shadow calculation replace a V1 price."""
 from datetime import date, time
 from decimal import Decimal
+import logging
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.db.migrations.loader import MigrationLoader
 from django.utils import timezone
-from unittest.mock import patch
 
 from wishlist.models import (AppConfig, Event, EventPriceCalculation, PriceCalculationRevision,
                              PriceItem, PricingPackage, PricingProfile, PricingWorkflow)
@@ -188,12 +189,22 @@ def test_shadow_comparison_write_failure_is_internal_and_never_interrupts_v1(cat
     event = event_with_calculation(catalog)
     AppConfig.objects.create(pricing_engine_mode="shadow")
     target = "_save_comparison" if profile_enabled else "_save_failed_comparison"
-    with patch(f"wishlist.pricing_v2.services.{target}", side_effect=RuntimeError("database unavailable")):
-        decision = calculate_with_mode(event=event, persist_comparison=True)
+    service_logger = logging.getLogger("wishlist.pricing_v2.services")
+    service_logger.addHandler(caplog.handler)
+    try:
+        with patch(f"wishlist.pricing_v2.services.{target}", side_effect=RuntimeError("database unavailable")):
+            decision = calculate_with_mode(event=event, persist_comparison=True)
+    finally:
+        service_logger.removeHandler(caplog.handler)
     assert decision.visible_result.gross_total == Decimal("130")
     assert decision.comparison_revision is None
     assert (decision.v2_result is not None) == profile_enabled
     assert "database unavailable" in caplog.text
+    assert any(record.name == "wishlist.pricing_v2.services"
+               and "could not be persisted" in record.getMessage()
+               and record.exc_info
+               and "database unavailable" in str(record.exc_info[1])
+               for record in caplog.records)
     assert "database unavailable" not in str(decision.visible_result.to_dict())
     event.refresh_from_db()
     assert event.total_price == Decimal("777")
