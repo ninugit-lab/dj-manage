@@ -311,10 +311,20 @@ def check_date_availability(request):
 @require_POST
 def submit_event_form(request):
     """Handle public event booking form submission."""
+    from decimal import Decimal, InvalidOperation
+    from django.db import transaction
+    from .models import PriceCalculationRevision, PricingWorkflow
+    from .pricing_v2.services import calculate_with_mode, save_revision
+
+    def invalid():
+        return JsonResponse({'success': False, 'error': 'Ungültige Anfrage'}, status=400)
+
     try:
         data = json.loads(request.body)
     except (json.JSONDecodeError, ValueError):
-        return JsonResponse({'success': False, 'error': 'Ungültige Anfrage'}, status=400)
+        return invalid()
+    if not isinstance(data, dict):
+        return invalid()
 
     # IP-basiertes Throttling: max 3 Anfragen pro IP pro Stunde
     client_ip = _get_client_ip(request) or 'unknown'
@@ -352,31 +362,73 @@ def submit_event_form(request):
         return JsonResponse({'success': False, 'error': 'Vergangene Daten sind nicht auswählbar'}, status=400)
 
     parsed_time_start = None
+    if data.get('time_start') is not None and not isinstance(data['time_start'], str):
+        return invalid()
     if data.get('time_start'):
         try:
             parsed_time_start = datetime.strptime(data['time_start'], '%H:%M').time()
-        except ValueError:
-            pass
+        except (ValueError, TypeError):
+            return invalid()
         else:
             if parsed_time_start.minute not in (0, 30):
                 return JsonResponse({'success': False, 'error': 'Uhrzeit muss in 30-Minuten-Schritten gewählt werden'}, status=400)
 
     parsed_time_end = None
+    if data.get('time_end') is not None and not isinstance(data['time_end'], str):
+        return invalid()
     if data.get('time_end'):
         try:
             parsed_time_end = datetime.strptime(data['time_end'], '%H:%M').time()
-        except ValueError:
-            pass
+        except (ValueError, TypeError):
+            return invalid()
         else:
             if parsed_time_end.minute not in (0, 30):
                 return JsonResponse({'success': False, 'error': 'Uhrzeit-Ende muss in 30-Minuten-Schritten gewählt werden'}, status=400)
 
     try:
-        guest_count = int(data['guest_count']) if data.get('guest_count') else None
-    except (ValueError, TypeError):
+        guest_raw = data.get('guest_count')
+        if isinstance(guest_raw, bool):
+            return invalid()
+        guest_count = int(guest_raw) if guest_raw not in (None, '') else None
+        if guest_count is not None and guest_count < 0:
+            return invalid()
+    except (ValueError, TypeError, OverflowError):
         return JsonResponse({'success': False, 'error': 'Ungültige Gästezahl'}, status=400)
 
-    event = Event.objects.create(
+    try:
+        distance_raw = data.get('distance_km')
+        if isinstance(distance_raw, (bool, float)):
+            return invalid()
+        distance = Decimal(str(distance_raw)) if distance_raw not in (None, '') else None
+        if distance is not None and (not distance.is_finite() or distance < 0 or distance > Decimal('999999.9')):
+            return invalid()
+    except (InvalidOperation, ValueError, TypeError):
+        return invalid()
+
+    selected_item_ids = data.get('selected_items', [])
+    package_id = data.get('package_id')
+    if not isinstance(selected_item_ids, list) or any(
+            isinstance(i, bool) or not isinstance(i, (int, str)) or not str(i).isdigit() or int(i) < 1
+            for i in selected_item_ids):
+        return invalid()
+    if package_id not in (None, '') and (isinstance(package_id, bool) or
+            not isinstance(package_id, (int, str)) or not str(package_id).isdigit() or int(package_id) < 1):
+        return invalid()
+    selected_item_ids = list(dict.fromkeys(int(i) for i in selected_item_ids))
+    available = set(PriceItem.objects.filter(pk__in=selected_item_ids, is_active=True, is_public=True)
+                    .values_list('pk', flat=True))
+    if set(selected_item_ids) != available:
+        return invalid()
+    package = None
+    if package_id not in (None, ''):
+        package = PricingPackage.objects.filter(pk=package_id, is_active=True, is_public=True).first()
+        if package is None:
+            return invalid()
+    required_ids = PriceItem.objects.filter(is_active=True, is_public=True, is_required=True).values_list('pk', flat=True)
+    selected_item_ids = list(dict.fromkeys([*selected_item_ids, *required_ids]))
+
+    with transaction.atomic():
+        event = Event.objects.create(
         name=data['name'],
         date=parsed_date,
         time_start=parsed_time_start,
@@ -392,7 +444,7 @@ def submit_event_form(request):
         client_phone=data.get('client_phone', ''),
         client_company=data.get('client_company', ''),
         guest_count=guest_count,
-        distance_km=data.get('distance_km') if data.get('distance_km') is not None else None,
+        distance_km=distance,
         special_requests=data.get('special_requests', ''),
         status=EventStatus.INQUIRY,
         max_wishes_per_session=config.default_max_wishes,
@@ -401,42 +453,50 @@ def submit_event_form(request):
         wishlist_show_preview=config.default_show_preview,
         wishlist_show_duration=config.default_show_duration,
         wishlist_require_name=config.default_require_name,
-    )
-
-    # Save price calculation with PriceEngine
-    from .models import PricingWorkflow
-    selected_item_ids = data.get('selected_items', [])
-    package_id = data.get('package_id')
-    package = None
-    if package_id:
-        package = PricingPackage.objects.filter(pk=package_id, is_active=True, is_public=True).first()
-
-    default_wf = PricingWorkflow.objects.filter(is_default=True, is_active=True).first()
-    calc = EventPriceCalculation.objects.create(event=event, package=package, workflow=default_wf)
-    if selected_item_ids:
-        calc.selected_items.set(PriceItem.objects.filter(pk__in=selected_item_ids, is_active=True))
-
-    try:
-        calc_kwargs = dict(
-            event=event,
-            package_id=package.pk if package else None,
-            selected_item_ids=selected_item_ids,
         )
-        if default_wf:
-            result = PriceEngine.calculate_workflow(workflow_id=default_wf.pk, **calc_kwargs)
+
+        default_wf = PricingWorkflow.objects.filter(is_default=True, is_active=True).first()
+        calc = EventPriceCalculation.objects.create(event=event, package=package, workflow=default_wf)
+        calc.selected_items.set(selected_item_ids)
+        pricing_payload = {
+            'event_date': event.date, 'start_time': event.time_start, 'end_time': event.time_end,
+            'guest_count': event.guest_count or 0, 'event_type': event.event_type,
+            'distance_km': (event.distance_km.quantize(Decimal('0.1')) if event.distance_km is not None else None),
+            'package_id': str(package.pk) if package else None,
+            'selected_item_ids': [str(i) for i in selected_item_ids],
+        }
+        mode = config.pricing_engine_mode
+        if mode != 'v2':
+            try:
+                calc_kwargs = dict(event=event, package_id=package.pk if package else None,
+                                   selected_item_ids=selected_item_ids)
+                if default_wf and package:
+                    result = PriceEngine.calculate_workflow(workflow_id=default_wf.pk, **calc_kwargs)
+                else:
+                    result = PriceEngine.calculate(**calc_kwargs)
+                calc.calculation_snapshot = json.loads(json.dumps(result, default=str))
+                active_rule_ids = [r['rule_id'] for r in result.get('rules_applied', []) if r.get('rule_id')]
+                if active_rule_ids:
+                    calc.applied_rules.set(PricingRule.objects.filter(pk__in=active_rule_ids))
+                calc.save()
+                event.total_price = result.get('grand_total', calc.total)
+            except Exception:
+                logger.warning("PriceEngine calculation failed for event %s, using legacy total", event.pk, exc_info=True)
+                event.total_price = calc.total
+            event.save(update_fields=['total_price'])
+            if mode == 'shadow':
+                try:
+                    calculate_with_mode(pricing_payload, event=event, public=True, persist_comparison=True)
+                except Exception:
+                    logger.warning('Shadow comparison failed for event %s', event.pk, exc_info=True)
         else:
-            result = PriceEngine.calculate(**calc_kwargs)
-        # JSONField cannot serialize Decimal values returned by PriceEngine.
-        calc.calculation_snapshot = json.loads(json.dumps(result, default=str))
-        active_rule_ids = [r['rule_id'] for r in result.get('rules_applied', []) if r.get('rule_id')]
-        if active_rule_ids:
-            calc.applied_rules.set(PricingRule.objects.filter(pk__in=active_rule_ids))
-        calc.save()
-        event.total_price = result.get('grand_total', calc.total)
-    except Exception:
-        logger.warning("PriceEngine calculation failed for event %s, using legacy total", event.pk)
-        event.total_price = calc.total
-    event.save(update_fields=['total_price'])
+            try:
+                with transaction.atomic():
+                    decision = calculate_with_mode(pricing_payload, event=event, public=True)
+                    save_revision(event, decision.visible_result, kind=PriceCalculationRevision.Kind.ESTIMATE,
+                                  update_event_total=True)
+            except Exception:
+                logger.warning('V2 pricing failed for event %s; individual review required', event.pk, exc_info=True)
 
     # Admin-Link vor dem Thread-Start bauen (request ist im Thread nicht sicher nutzbar)
     admin_link = request.build_absolute_uri(f'/dj-admin/events/{event.pk}/edit/?token={event.admin_token}')

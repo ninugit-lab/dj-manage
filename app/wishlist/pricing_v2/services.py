@@ -165,7 +165,7 @@ def calculate_with_mode(payload=None, *, event=None, public=False, actor=None, p
             _reference("item", "selected_item_ids")
         required = PriceItem.objects.filter(is_active=True, is_public=True, is_required=True).values_list("pk", flat=True)
         payload = {**payload, "selected_item_ids": [str(identity) for identity in dict.fromkeys(
-            [*selected, *required])]}
+            [*(int(identity) for identity in selected), *required])]}
         if payload.get("package_id") in (None, ""):
             payload["package_id"] = None
         elif not PricingPackage.objects.filter(pk=_identifier(payload["package_id"], "package_id"),
@@ -386,7 +386,10 @@ def save_revision(event, result, *, kind, actor=None, legacy_total=None, update_
             revision_number=1 if previous is None else previous.revision_number + 1,
             previous_revision=previous, engine_version=str(result.engine_version),
             profile_id_snapshot=inputs.get("profile_id"), profile_version=result.profile_version,
-            package_id_snapshot=int(inputs["package_snapshot_id"]), package_version=result.package_version,
+            package_id_snapshot=(None if inputs["package_snapshot_id"] == _PUBLIC_INDIVIDUAL_PACKAGE
+                                 else int(inputs["package_snapshot_id"])),
+            package_version=(None if inputs["package_snapshot_id"] == _PUBLIC_INDIVIDUAL_PACKAGE
+                             else result.package_version),
             workflow_id_snapshot=inputs.get("workflow_id"), workflow_version=result.workflow_version,
             input_json=inputs, result_json=serialized, gross_total=result.gross_total,
             legacy_total=comparison,
