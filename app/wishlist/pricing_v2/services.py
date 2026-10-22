@@ -29,10 +29,16 @@ def _identifier(value, field):
 
 
 def _legacy_blocks(raw, package_id, catalog):
-    """Translate only known V1 block shapes, retaining the full V2 pipeline."""
+    """Translate V1 blocks without activating adjustments absent in the source."""
     if not isinstance(raw, list):
         raise PricingValidationError("invalid_input", "workflow must be a list", "workflow")
-    blocks = [dict(block) for block in DEFAULT_BLOCKS]
+    declared = {block.get("type") for block in raw if isinstance(block, Mapping)}
+    # The canonical V2 minimum pipeline includes items, even if the old
+    # package-only workflow omitted that block. Other blocks are opt-in.
+    blocks = [dict(block) for block in DEFAULT_BLOCKS
+              if block["type"] in ("package", "items", "rules") or block["type"] in declared]
+    if "rules" not in declared:
+        next(block for block in blocks if block["type"] == "rules")["rule_ids"] = []
     positions = {block["type"]: block for block in blocks}
     seen = set()
     for block in raw:
@@ -118,13 +124,9 @@ def _calculate(payload, *, public, actor=None):
         "items": items, "rules": rules, "formulas": formulas}
     blocks = _legacy_blocks(workflow.workflow_json, package_id, catalog)
     # V1 configuration cannot silently pick a different item selection.
-    for block in blocks[:]:
+    for block in blocks:
         if block["type"] == "items" and "item_ids" in block and set(block["item_ids"]) != set(selected):
             _reference("workflow item selection", "workflow")
-        if block["type"] == "formula" and "formula_id" not in block and formulas:
-            # Formula selection is explicit; a V1 workflow with no formula does not use it.
-            blocks.remove(block)
-            break
     validated = validate_workflow(blocks, catalog)
     normalized = PricingInput.from_mapping({**payload, "package_id": package_id,
                                             "selected_item_ids": list(selected)},
@@ -167,8 +169,8 @@ def calculate_event(event, *, actor=None):
     return calculate_payload(data, public=False, actor=actor)
 
 
-def save_revision(event, result, *, kind, actor=None, legacy_total=None):
-    """Atomically append a calculation; preserve historical and released prices."""
+def save_revision(event, result, *, kind, actor=None, legacy_total=None, update_event_total=False):
+    """Append a frozen calculation; only the V2-mode caller opts into total writes."""
     if kind not in PriceCalculationRevision.Kind.values:
         raise PricingValidationError("invalid_input", "invalid revision kind", "kind")
     serialized = result.to_dict()
@@ -182,12 +184,11 @@ def save_revision(event, result, *, kind, actor=None, legacy_total=None):
     with transaction.atomic():
         locked = Event.objects.select_for_update().get(pk=event.pk)
         previous = PriceCalculationRevision.objects.filter(event=locked).order_by("-revision_number").first()
-        if kind == PriceCalculationRevision.Kind.ESTIMATE:
-            existing = PriceCalculationRevision.objects.filter(
-                event=locked, kind=kind, status=PriceCalculationRevision.Status.DRAFT,
-                result_json=serialized).first()
-            if existing is not None:
-                return existing
+        existing = PriceCalculationRevision.objects.filter(
+            event=locked, kind=kind, status=PriceCalculationRevision.Status.DRAFT,
+            result_json=serialized, created_by=actor, legacy_total=comparison).first()
+        if existing is not None:
+            return existing
         revision = PriceCalculationRevision.objects.create(
             event=locked, kind=kind, status=PriceCalculationRevision.Status.DRAFT,
             revision_number=1 if previous is None else previous.revision_number + 1,
@@ -199,7 +200,7 @@ def save_revision(event, result, *, kind, actor=None, legacy_total=None):
             legacy_total=comparison,
             difference=None if comparison is None else result.gross_total - comparison,
             created_by=actor)
-        if kind in (PriceCalculationRevision.Kind.ESTIMATE, PriceCalculationRevision.Kind.DRAFT):
+        if update_event_total and kind in (PriceCalculationRevision.Kind.ESTIMATE, PriceCalculationRevision.Kind.DRAFT):
             released = PriceCalculationRevision.objects.filter(
                 event=locked, status__in=(PriceCalculationRevision.Status.RELEASED,
                                          PriceCalculationRevision.Status.SENT)).exists()

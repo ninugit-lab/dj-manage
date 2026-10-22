@@ -30,7 +30,8 @@ def stock(db):
     extra = PriceItem.objects.create(name="Extra", category="tech", price=Decimal("30"))
     package.included_items.add(included)
     workflow = PricingWorkflow.objects.create(name="Standard", version=4, is_default=True,
-        workflow_json=[{"type": "package", "config": {"package_id": package.pk}}])
+        workflow_json=[{"type": "package", "config": {"package_id": package.pk}},
+                       {"type": "items"}])
     return profile, package, included, required, extra, workflow
 
 
@@ -72,6 +73,8 @@ def test_public_rejects_internal_and_inactive_catalog_and_custom_prices(stock):
 
 
 def test_admin_event_and_payload_share_normalization_and_override(stock):
+    stock[5].workflow_json.append({"type": "minimum_price"})
+    stock[5].save(update_fields=["workflow_json"])
     PricingPackageOverride.objects.create(profile=stock[0], package=stock[1],
         overrides_json={"minimum_price": {"mode": "override", "value": "200"}})
     event = Event.objects.create(name="Party", date=date(2026, 12, 2), location="X",
@@ -109,10 +112,36 @@ def test_advanced_catalog_is_frozen_and_unreferenced_formulas_are_not_executed(s
     PricingRule.objects.create(name="Surcharge", effect_type="flat_add", effect_value=Decimal("5"))
     PricingFormula.objects.create(name="Dormant", expression="1000")
     result = calculate_payload(payload(stock), public=False)
-    assert result.gross_total == Decimal("155.00")
+    assert result.gross_total == Decimal("150.00")
     snapshot = result.inputs["catalog_snapshot"]
-    assert next(iter(snapshot["rules"].values()))["effect_value"] == "5.00"
+    assert snapshot["rules"] == {}
     assert snapshot["formulas"] == {}
+    assert not any(line.code.startswith("rule:") for line in result.lines)
+
+
+def test_package_only_legacy_workflow_does_not_enable_other_price_blocks(stock):
+    stock[5].workflow_json = [{"type": "package", "config": {"package_id": stock[1].pk}}]
+    stock[5].save(update_fields=["workflow_json"])
+    PricingRule.objects.create(name="Unselected", effect_type="flat_add", effect_value=Decimal("5"))
+    stock[0].config_json["minimum_price"] = "500"
+    stock[0].save(update_fields=["config_json"])
+    result = calculate_payload(payload(stock), public=True)
+    # V2 requires package+items; the adapter must not additionally enable
+    # unlisted rules, minimum or other adjustment blocks.
+    assert result.gross_total == Decimal("150.00")
+    assert result.inputs["catalog_snapshot"]["rules"] == {}
+    rules_block = next(block for block in result.inputs["workflow_blocks"] if block["type"] == "rules")
+    assert rules_block["rule_ids"] == ()
+
+
+def test_explicit_legacy_rules_still_apply_and_are_frozen(stock):
+    rule = PricingRule.objects.create(name="Surcharge", effect_type="flat_add", effect_value=Decimal("5"))
+    stock[5].workflow_json = [{"type": "package", "config": {"package_id": stock[1].pk}},
+                              {"type": "rules", "config": {"rule_ids": [rule.pk]}}]
+    stock[5].save()
+    result = calculate_payload(payload(stock), public=True)
+    assert result.gross_total == Decimal("155.00")
+    assert result.inputs["catalog_snapshot"]["rules"][str(rule.pk)]["effect_value"] == "5.00"
 
 
 def test_admin_custom_items_and_explicit_workflow_references(stock):
@@ -155,13 +184,14 @@ def test_revision_snapshots_sequence_idempotency_and_actor(stock):
     first = save_revision(event, result, kind="estimate", actor=actor, legacy_total=Decimal("140"))
     assert first.revision_number == 1
     assert first.created_by == actor
-    assert first.gross_total == event.total_price == Decimal("150.00")
+    assert first.gross_total == Decimal("150.00")
+    assert event.total_price is None
     assert (first.profile_id_snapshot, first.profile_version) == (stock[0].pk, 3)
     assert (first.package_id_snapshot, first.package_version) == (stock[1].pk, 2)
     assert (first.workflow_id_snapshot, first.workflow_version) == (stock[5].pk, 4)
     assert first.input_json["catalog_snapshot"]["items"][str(stock[3].pk)]["price"] == "20.00"
     assert first.difference == Decimal("10.00")
-    assert save_revision(event, result, kind="estimate", actor=actor).pk == first.pk
+    assert save_revision(event, result, kind="estimate", actor=actor, legacy_total=Decimal("140")).pk == first.pk
     second = save_revision(event, result, kind="draft", actor=actor)
     assert (second.revision_number, second.previous_revision_id) == (2, first.pk)
     assert PriceCalculationRevision.objects.filter(event=event).count() == 2
@@ -200,3 +230,74 @@ def test_retries_after_other_revisions_do_not_duplicate_estimate(stock):
     save_revision(event, result, kind="migration_compare")
     assert save_revision(event, result, kind="estimate").pk == estimate.pk
     assert PriceCalculationRevision.objects.filter(event=event).count() == 2
+
+
+@pytest.mark.parametrize("kind", ["estimate", "draft", "offer", "migration_compare"])
+def test_exact_same_revision_retry_is_idempotent_for_each_kind(stock, kind):
+    actor = get_user_model().objects.create_user(username=f"pricing-{kind}", password="x")
+    event = Event.objects.create(name="Party", date=date(2026, 12, 2), location="X",
+                                 total_price=Decimal("777"))
+    result = calculate_payload(payload(stock), public=True)
+    first = save_revision(event, result, kind=kind, actor=actor, legacy_total=Decimal("140"))
+    repeated = save_revision(event, result, kind=kind, actor=actor, legacy_total=Decimal("140"))
+    event.refresh_from_db()
+    assert repeated.pk == first.pk
+    assert PriceCalculationRevision.objects.filter(event=event).count() == 1
+    assert event.total_price == Decimal("777")
+
+
+def test_explicit_total_update_requires_opt_in_and_never_replaces_released_offer(stock):
+    event = Event.objects.create(name="Party", date=date(2026, 12, 2), location="X",
+                                 total_price=Decimal("777"))
+    result = calculate_payload(payload(stock), public=True)
+    save_revision(event, result, kind="draft", update_event_total=True)
+    event.refresh_from_db()
+    assert event.total_price == Decimal("150.00")
+    event.total_price = Decimal("999")
+    event.save(update_fields=["total_price"])
+    PriceCalculationRevision.objects.create(event=event, kind="offer", status="released",
+        revision_number=2, engine_version="2", gross_total=Decimal("999"))
+    save_revision(event, result, kind="estimate", update_event_total=True)
+    event.refresh_from_db()
+    assert event.total_price == Decimal("999")
+
+
+def test_opted_in_estimate_can_set_total_for_new_event(stock):
+    event = Event.objects.create(name="Party", date=date(2026, 12, 2), location="X")
+    save_revision(event, calculate_payload(payload(stock), public=True),
+                  kind="estimate", update_event_total=True)
+    event.refresh_from_db()
+    assert event.total_price == Decimal("150.00")
+
+
+def test_new_snapshot_and_actor_produce_new_draft_or_offer_revision(stock):
+    event = Event.objects.create(name="Party", date=date(2026, 12, 2), location="X")
+    actor = get_user_model().objects.create_user(username="first", password="x")
+    other = get_user_model().objects.create_user(username="second", password="x")
+    initial = calculate_payload(payload(stock), public=False)
+    changed = calculate_payload(payload(stock, selected_item_ids=[]), public=False)
+    for kind in ("draft", "offer"):
+        first = save_revision(event, initial, kind=kind, actor=actor)
+        second = save_revision(event, changed, kind=kind, actor=actor)
+        third = save_revision(event, initial, kind=kind, actor=other)
+        assert len({first.pk, second.pk, third.pk}) == 3
+
+
+def test_same_result_but_different_comparison_is_a_new_revision(stock):
+    event = Event.objects.create(name="Party", date=date(2026, 12, 2), location="X")
+    result = calculate_payload(payload(stock), public=True)
+    first = save_revision(event, result, kind="migration_compare", legacy_total=Decimal("100"))
+    second = save_revision(event, result, kind="migration_compare", legacy_total=Decimal("105"))
+    assert second.pk != first.pk
+    assert (first.difference, second.difference) == (Decimal("50.00"), Decimal("45.00"))
+
+
+def test_released_offer_retry_does_not_return_historical_offer(stock):
+    event = Event.objects.create(name="Party", date=date(2026, 12, 2), location="X")
+    result = calculate_payload(payload(stock), public=False)
+    first = save_revision(event, result, kind="offer")
+    first.status = PriceCalculationRevision.Status.RELEASED
+    first.save(update_fields=["status"])
+    second = save_revision(event, result, kind="offer")
+    assert (second.revision_number, second.previous_revision_id) == (2, first.pk)
+    assert second.status == PriceCalculationRevision.Status.DRAFT
