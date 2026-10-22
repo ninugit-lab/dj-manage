@@ -78,6 +78,6 @@ def validate_workflow(blocks, references) -> ValidatedWorkflow:
                     if identity not in references.get(collection, {}):
                         _reference(f"missing {collection} reference: {identity}")
         result.append(_freeze_json(raw, "workflow"))
-    if not seen.intersection(("package", "items")):
-        _invalid("workflow needs a price-building block")
+    if not {"package", "items"}.issubset(seen):
+        _invalid("workflow needs package and items price-building blocks")
     return ValidatedWorkflow(tuple(result))

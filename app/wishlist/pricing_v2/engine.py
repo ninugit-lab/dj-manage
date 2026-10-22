@@ -12,7 +12,7 @@ from .blocks import (BlockResult, calendar_factors_block, discount_block, durati
 from .calendar import calendar_factors
 from .config import ResolvedPricingConfig
 from .input import PricingInput, PricingValidationError
-from .result import PricingResult, _serialize
+from .result import PricingLine, PricingResult, _serialize
 from .workflow import DEFAULT_BLOCKS, ValidatedWorkflow, validate_workflow
 
 
@@ -77,18 +77,20 @@ class PricingEngineV2:
             _reference("package not found", "package_id")
         if "version" in package and (type(package["version"]) not in (str, int) or not package["version"]):
             _invalid("invalid package version", "catalog")
-        for block in workflow.blocks:
-            if block["type"] == "package" and "package_id" in block and block["package_id"] != request.package_id:
-                _reference("workflow package does not match request", "package_id")
-            if block["type"] == "items":
-                for identity in block.get("item_ids", ()):
-                    if identity not in (*request.selected_item_ids, *package.get("required_item_ids", ()),
-                                        *package.get("included_item_ids", ())):
-                        _reference("workflow item not selected", "selected_item_ids")
+        # Validate package-owned item lists before inspecting workflow selections or unpacking IDs.
         for key in ("included_item_ids", "required_item_ids"):
             ids = package.get(key, ())
             if not isinstance(ids, (tuple, list)) or any(not isinstance(i, str) or not i for i in ids):
                 _invalid(f"invalid {key}", "catalog")
+        for block in workflow.blocks:
+            if block["type"] == "package" and "package_id" in block and block["package_id"] != request.package_id:
+                _reference("workflow package does not match request", "package_id")
+            if block["type"] == "items":
+                # Explicit item_ids are a frozen copy of the user selection, not a
+                # substitute for it. Required items are always supplied by the package.
+                if "item_ids" in block and (len(block["item_ids"]) != len(set(block["item_ids"]))
+                                            or set(block["item_ids"]) != set(request.selected_item_ids)):
+                    _reference("workflow item selection differs from request", "selected_item_ids")
         for identity in (*request.selected_item_ids, *package.get("included_item_ids", ()), *package.get("required_item_ids", ())):
             if not isinstance(catalog["items"].get(identity), Mapping):
                 _reference(f"item not found: {identity}", "selected_item_ids")
@@ -148,6 +150,12 @@ class PricingEngineV2:
             gross = current.quantize(_MONEY, rounding=ROUND_HALF_UP)
         except DecimalException as exc:
             raise PricingValidationError("invalid_input", "invalid price precision", "gross_total") from exc
+        difference = gross - current
+        if difference:
+            lines += (PricingLine("rounding:cent", "Cent rounding", "final cent quantization",
+                                  Decimal("1"), "EUR", difference, difference, "engine"),)
+            rounded += difference
+            subtotals[-1]["subtotal"] = gross
         return PricingResult(engine_version=PricingEngineV2.VERSION,
                              profile_version=config.included_hours.profile_version,
                              package_version=package.get("version", config.included_hours.package_version),

@@ -103,11 +103,11 @@ def test_workflow_rejects_unresolved_references(blocks, stock):
 
 
 def test_discount_and_minimum_placement_changes_gross():
-    before = [dict(type=name) for name in ("package", "minimum_price", "discount", "rounding")]
-    after = [dict(type=name) for name in ("package", "discount", "minimum_price", "rounding")]
+    before = [dict(type=name) for name in ("package", "items", "minimum_price", "discount", "rounding")]
+    after = [dict(type=name) for name in ("package", "items", "discount", "minimum_price", "rounding")]
     req = request(discount_percent=Decimal("50"))
-    assert run(req=req, cfg=config(minimum_price="120"), blocks=before).gross_total == Decimal("60.00")
-    assert run(req=req, cfg=config(minimum_price="120"), blocks=after).gross_total == Decimal("120.00")
+    assert run(req=req, cfg=config(minimum_price="160"), blocks=before).gross_total == Decimal("80.00")
+    assert run(req=req, cfg=config(minimum_price="160"), blocks=after).gross_total == Decimal("160.00")
 
 
 def test_nrw_holiday_factor_can_be_disabled_and_json_is_reproducible():
@@ -130,18 +130,18 @@ def test_rules_and_formula_each_apply_once_with_explicit_mode():
     stock = catalog(rules={"bonus": dict(id="bonus", name="Bonus", applies_to="subtotal",
                                               effect_type="flat_add", effect_value="5", condition_json=[])},
                     formulas={"calc": dict(id="calc", name="Calc", mode="replace", expression="base + 2")})
-    blocks = [dict(type="package"), dict(type="rules", rule_ids=["bonus"]),
+    blocks = [dict(type="package"), dict(type="items"), dict(type="rules", rule_ids=["bonus"]),
               dict(type="formula", formula_id="calc"), dict(type="rounding")]
-    result = run(blocks=blocks, stock=stock)
-    assert [line.code for line in result.lines] == ["package:party", "rule:bonus", "formula:calc"]
-    assert result.gross_total == Decimal("107.00")
+    result = run(req=request(selected_item_ids=()), blocks=blocks, stock=stock)
+    assert [line.code for line in result.lines] == ["package:party", "item:required", "rule:bonus", "formula:calc"]
+    assert result.gross_total == Decimal("117.00")
 
 
 @pytest.mark.parametrize("stock,blocks", [
     (catalog(formulas={"calc": dict(id="calc", name="Bad", mode="add", expression="unknown + 1")}),
-     [dict(type="package"), dict(type="formula", formula_id="calc")]),
+     [dict(type="package"), dict(type="items"), dict(type="formula", formula_id="calc")]),
     (catalog(rules={"bad": dict(id="bad", name="Bad", effect_type="nonsense", effect_value="5")}),
-     [dict(type="package"), dict(type="rules", rule_ids=["bad"])]),
+     [dict(type="package"), dict(type="items"), dict(type="rules", rule_ids=["bad"])]),
 ])
 def test_invalid_advanced_expressions_and_effects_are_typed(stock, blocks):
     with pytest.raises(PricingValidationError) as exc:
@@ -161,7 +161,7 @@ def test_missing_request_and_malformed_catalog_fail_closed():
 def test_workflow_selected_package_must_match_request_not_silently_price_another():
     stock = catalog(packages={**catalog()["packages"], "other": dict(label="Other", base_price="900")})
     with pytest.raises(PricingValidationError) as exc:
-        run(blocks=[dict(type="package", package_id="other")], stock=stock)
+        run(blocks=[dict(type="package", package_id="other"), dict(type="items")], stock=stock)
     assert exc.value.code == "reference_error"
 
 
@@ -189,7 +189,7 @@ def test_malformed_advanced_rule_sort_order_is_typed_not_raw_type_error():
                            "two": dict(id="two", name="Two", effect_type="flat_add", effect_value="1",
                                           sort_order=0)})
     with pytest.raises(PricingValidationError) as exc:
-        run(stock=stock, blocks=[dict(type="package"), dict(type="rules", rule_ids=["one", "two"])])
+        run(stock=stock, blocks=[dict(type="package"), dict(type="items"), dict(type="rules", rule_ids=["one", "two"])])
     assert exc.value.code == "invalid_input"
 
 
@@ -198,3 +198,65 @@ def test_invalid_frozen_workflow_version_is_rejected_before_result_serialization
     with pytest.raises(PricingValidationError) as exc:
         PricingEngineV2.calculate(request(), config(), workflow, catalog())
     assert exc.value.code == "invalid_input"
+
+
+@pytest.mark.parametrize("blocks", [
+    [dict(type="package"), dict(type="rounding")],
+    [dict(type="package"), dict(type="discount"), dict(type="rounding")],
+])
+def test_package_without_items_block_must_not_drop_required_extras(blocks):
+    with pytest.raises(PricingValidationError) as exc:
+        validate_workflow(blocks, catalog())
+    assert exc.value.code == "invalid_input"
+    with pytest.raises(PricingValidationError) as exc:
+        PricingEngineV2.calculate(request(), config(), blocks, catalog())
+    assert exc.value.code == "invalid_input"
+
+
+@pytest.mark.parametrize("field,bad", [
+    ("required_item_ids", None), ("included_item_ids", None),
+    ("required_item_ids", "required"), ("included_item_ids", {"included": True}),
+])
+def test_invalid_catalog_item_id_sequences_are_typed_before_unpacked(field, bad):
+    stock = catalog()
+    stock["packages"]["party"][field] = bad
+    with pytest.raises(PricingValidationError) as exc:
+        run(stock=stock)
+    assert exc.value.code == "invalid_input"
+
+
+def test_explicit_workflow_selection_matches_request_and_still_charges_required_item():
+    blocks = [dict(type="package"), dict(type="items", item_ids=["lights"]), dict(type="rounding")]
+    result = run(req=request(selected_item_ids=("lights",)), blocks=blocks)
+    assert [(line.code, line.amount) for line in result.lines] == [
+        ("package:party", Decimal("100")), ("item:lights", Decimal("30")),
+        ("item:required", Decimal("10"))]
+    assert result.gross_total == Decimal("140.00")
+
+
+@pytest.mark.parametrize("chosen,listed", [
+    (("lights",), ()), (("lights", "included"), ("lights",)),
+    ((), ("lights",)), (("lights",), ("required", "lights")),
+])
+def test_explicit_item_ids_never_ignore_or_override_request_selection(chosen, listed):
+    blocks = [dict(type="package"), dict(type="items", item_ids=list(listed))]
+    with pytest.raises(PricingValidationError) as exc:
+        run(req=request(selected_item_ids=chosen), blocks=blocks)
+    assert exc.value.code == "reference_error"
+
+
+def test_cent_quantization_reconciles_line_and_last_subtotal():
+    stock = catalog(packages={"party": dict(label="Party", base_price="1.005", version=3,
+                                             required_item_ids=(), included_item_ids=())})
+    blocks = [dict(type="package"), dict(type="items"), dict(type="rounding")]
+    result = run(req=request(selected_item_ids=()), cfg=config(rounding_step="0.001"),
+                 blocks=blocks, stock=stock)
+    assert result.gross_total == Decimal("1.01")
+    assert result.block_subtotals[-1]["subtotal"] == result.gross_total
+    assert sum((line.amount for line in result.lines), Decimal("0")) == result.gross_total
+    assert result.rounding_difference == Decimal("0.005")
+    assert [(line.code, line.amount) for line in result.lines] == [
+        ("package:party", Decimal("1.005")), ("rounding:cent", Decimal("0.005"))]
+    assert json.dumps(result.to_dict(), sort_keys=True) == json.dumps(
+        run(req=request(selected_item_ids=()), cfg=config(rounding_step="0.001"),
+            blocks=blocks, stock=stock).to_dict(), sort_keys=True)
