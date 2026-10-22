@@ -44,6 +44,26 @@ def test_rule_conditions_combine_guest_time_and_event_type():
     assert apply_rules(request(), Decimal("170"), lines(), (rule,), event_type="club").lines == ()
 
 
+def test_rule_sequence_orders_deterministically_and_rebases_only_subtotal_percentage():
+    rules = (
+        {"id": "scoped", "name": "Tech surcharge", "applies_to": "tech", "effect_type": "percent_add",
+         "effect_value": "10", "condition_json": [], "is_active": True, "sort_order": 10},
+        {"id": "subtotal", "name": "Subtotal surcharge", "applies_to": "subtotal", "effect_type": "percent_add",
+         "effect_value": "10", "condition_json": [], "is_active": True, "sort_order": 20},
+    )
+    result = apply_rules(request(), Decimal("170"), lines(), rules)
+    assert [(line.code, line.amount) for line in result.lines] == [
+        ("rule:scoped", Decimal("4")), ("rule:subtotal", Decimal("17.4"))]
+    assert result.subtotal == Decimal("191.4")
+
+
+def test_division_by_zero_formula_has_calculation_error_code():
+    with pytest.raises(PricingValidationError) as exc:
+        apply_formula(request(), Decimal("170"), lines(),
+                      {"id": 3, "name": "Divide", "expression": "1 / 0", "mode": "add"})
+    assert exc.value.code == "calculation_error"
+
+
 @pytest.mark.parametrize("mode,amount,total", [("add", "0.3", "170.3"),
                                                 ("subtract", "-0.3", "169.7"),
                                                 ("replace", "-169.7", "0.3")])
