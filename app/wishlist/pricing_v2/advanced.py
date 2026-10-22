@@ -164,6 +164,13 @@ def _evaluate(expression, variables):
                 return OPERATORS[type(node.op)](walk(node.left), walk(node.right))
             if isinstance(node, ast.UnaryOp) and type(node.op) in UNARY:
                 return UNARY[type(node.op)](walk(node.operand))
+            if isinstance(node, ast.Compare) and len(node.ops) == 1 and type(node.ops[0]) in (
+                    ast.Eq, ast.NotEq, ast.Gt, ast.GtE, ast.Lt, ast.LtE):
+                comparison = {ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Gt: operator.gt,
+                              ast.GtE: operator.ge, ast.Lt: operator.lt, ast.LtE: operator.le}
+                return comparison[type(node.ops[0])](walk(node.left), walk(node.comparators[0]))
+            if isinstance(node, ast.IfExp):
+                return walk(node.body if walk(node.test) else node.orelse)
             _error("calculation_error", "unsupported formula syntax", "expression")
 
         result = walk(tree.body)

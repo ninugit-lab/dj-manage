@@ -77,6 +77,14 @@ def validate_workflow(blocks, references) -> ValidatedWorkflow:
                 for identity in selected:
                     if identity not in references.get(collection, {}):
                         _reference(f"missing {collection} reference: {identity}")
+                    if name in ("rules", "formula"):
+                        definition = references[collection][identity]
+                        if not isinstance(definition, Mapping) or definition.get("is_active", True) is False:
+                            _reference(f"inactive or invalid {collection} reference: {identity}")
+        if name == "formula" and "formula_id" not in raw:
+            formulas = references.get("formulas", {})
+            if any(isinstance(value, Mapping) and value.get("is_active", True) for value in formulas.values()):
+                _reference("active formula requires an explicit formula_id")
         result.append(_freeze_json(raw, "workflow"))
     if not {"package", "items"}.issubset(seen):
         _invalid("workflow needs package and items price-building blocks")

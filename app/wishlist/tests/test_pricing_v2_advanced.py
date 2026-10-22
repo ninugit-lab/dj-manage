@@ -114,3 +114,18 @@ def test_rule_rejects_missing_category_and_does_not_modify_inputs():
             "effect_value": "10", "applies_to": "tech"},))
     assert exc.value.code == "reference_error"
     assert originals == lines()
+
+
+def test_conditional_formula_uses_decimal_comparison_and_only_selected_branch():
+    formula = {"id": "conditional", "name": "Conditional", "mode": "add",
+               "expression": "0.1 + 0.2 if guests >= 70 else 1 / 0"}
+    result = apply_formula(request(), Decimal("170"), lines(), formula)
+    assert result.subtotal == Decimal("170.3")
+
+
+@pytest.mark.parametrize("expression", ["1 if base.real else 2", "1 if guests[0] else 2",
+                                        "1 if __import__('os') else 2"])
+def test_conditional_formula_does_not_expand_ast_permissions(expression):
+    with pytest.raises(PricingValidationError) as exc:
+        apply_formula(request(), Decimal("170"), lines(), {"name": "Bad", "expression": expression})
+    assert exc.value.code == "calculation_error"

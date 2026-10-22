@@ -198,7 +198,8 @@ def travel_block(request: PricingInput, config, subtotal: Decimal, catalog: Mapp
     if quantity <= 0:
         return BlockResult((), _subtotal(subtotal))
     amount = quantity * rate
-    line = _line("travel", "Travel", "one-way distance beyond included km", quantity, "km", rate, amount, config.km_rate.source)
+    line = _line("travel", "Travel", "one-way distance beyond included km", quantity, "km", rate, amount,
+                 "override" if km_rate is not None else config.km_rate.source)
     return BlockResult((line,), _subtotal(subtotal) + amount)
 
 

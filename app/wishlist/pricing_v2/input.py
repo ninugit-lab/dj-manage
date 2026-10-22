@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timezone
 from decimal import Decimal, InvalidOperation
 from collections.abc import Mapping as ABCMapping, Sequence
@@ -153,11 +153,21 @@ class PricingInput:
     distance_km: Decimal | None = None
     setup_minutes: int | None = None
     teardown_minutes: int | None = None
-    pricing_region: str = "NW"
+    pricing_region: str | None = None
     requested_at: datetime | None = None
     discount_percent: Decimal | None = None
     discount_amount: Decimal | None = None
     custom_items: tuple[Any, ...] = ()
+    event_type: str = ""
+    pricing_region_explicit: bool = field(default=False, init=False)
+
+    def __post_init__(self):
+        if not isinstance(self.event_type, str):
+            _error("event_type", "must be a string")
+        object.__setattr__(self, "event_type", self.event_type.strip().lower())
+        object.__setattr__(self, "pricing_region_explicit", self.pricing_region is not None)
+        if self.pricing_region is None:
+            object.__setattr__(self, "pricing_region", "NW")
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any], *, requested_at: datetime | str) -> "PricingInput":
@@ -175,10 +185,13 @@ class PricingInput:
             _error("selected_item_ids", "must be a sequence of identifiers")
         if any(not isinstance(item, str) or not item.strip() for item in ids):
             _error("selected_item_ids", "identifiers must be nonempty strings")
-        region = data.get("pricing_region", "NW")
-        if region is None or not isinstance(region, str):
+        region = data.get("pricing_region")
+        if region is not None and (not isinstance(region, str) or not region.strip()):
             _error("pricing_region", "must be a region code")
-        region = region.strip().upper() or "NW"
+        region = region.strip().upper() if region is not None else None
+        event_type = data.get("event_type", "")
+        if not isinstance(event_type, str):
+            _error("event_type", "must be a string")
         return cls(
             event_date=_date(data["event_date"], "event_date"), start_time=_time(data["start_time"], "start_time"),
             end_time=_time(data["end_time"], "end_time"), package_id=package.strip(), selected_item_ids=tuple(ids),
@@ -190,4 +203,5 @@ class PricingInput:
             discount_percent=None if data.get("discount_percent") is None else _decimal(data["discount_percent"], "discount_percent"),
             discount_amount=None if data.get("discount_amount") is None else _decimal(data["discount_amount"], "discount_amount"),
             custom_items=_custom_items(data.get("custom_items", ())),
+            event_type=event_type.strip().lower(),
         )

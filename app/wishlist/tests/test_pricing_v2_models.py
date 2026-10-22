@@ -233,3 +233,12 @@ def test_revision_preserves_nullable_snapshot_identity_fields():
     assert revision.package_version is None
     assert revision.workflow_id_snapshot is None
     assert revision.workflow_version is None
+
+
+@pytest.mark.django_db
+def test_only_one_active_default_workflow_but_nondefault_or_inactive_are_allowed():
+    PricingWorkflow.objects.create(name="Primary", is_default=True, is_active=True)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        PricingWorkflow.objects.create(name="Duplicate", is_default=True, is_active=True)
+    assert PricingWorkflow.objects.create(name="Inactive", is_default=True, is_active=False)
+    assert PricingWorkflow.objects.create(name="Alternate", is_default=False, is_active=True)

@@ -31,10 +31,34 @@ def _reference(message, field="catalog"):
     raise PricingValidationError("reference_error", message, field)
 
 
-def _snapshot(request, config, workflow, catalog):
+def _snapshot(request, config, workflow, catalog, region):
     package_factor = config.included_hours
-    return {**{field.name: getattr(request, field.name) for field in fields(request)},
-            "profile_id": catalog.get("profile_id"), "package_snapshot_id": request.package_id,
+    selected_rules = set()
+    selected_formulas = set()
+    selections = []
+    for block in workflow.blocks:
+        if block["type"] == "rules":
+            identities = block.get("rule_ids", tuple(identity for identity, rule in catalog.get("rules", {}).items()
+                                                     if isinstance(rule, Mapping) and rule.get("is_active", True)))
+            selected_rules.update(identities)
+            selections.append({"type": "rules", "selection": "explicit" if "rule_ids" in block else "active_catalog",
+                               "selected_ids": list(identities)})
+        if block["type"] == "formula":
+            identity = block.get("formula_id")
+            if identity is not None:
+                selected_formulas.add(identity)
+            selections.append({"type": "formula", "selection": "explicit" if identity is not None else "no_active_formula",
+                               "selected_id": identity})
+    package = catalog["packages"][request.package_id]
+    item_ids = set(request.selected_item_ids) | set(package.get("included_item_ids", ())) | set(package.get("required_item_ids", ()))
+    snapshot = {"packages": {str(request.package_id): package},
+                "items": {str(key): value for key, value in catalog["items"].items() if key in item_ids},
+                "rules": {str(key): value for key, value in catalog.get("rules", {}).items() if key in selected_rules},
+                "formulas": {str(key): value for key, value in catalog.get("formulas", {}).items() if key in selected_formulas}}
+    return {**{field.name: region if field.name == "pricing_region" else getattr(request, field.name) for field in fields(request)},
+             "profile_id": catalog.get("profile_id"), "package_snapshot_id": request.package_id,
+             "catalog_snapshot": snapshot,
+             "advanced_selections": selections,
             "workflow_id": workflow.id, "workflow_version": workflow.version,
             "profile_version": package_factor.profile_version,
             "package_version": catalog["packages"][request.package_id].get("version", package_factor.package_version),
@@ -98,7 +122,8 @@ class PricingEngineV2:
             _invalid("requested_at must be timezone-aware", "requested_at")
         if request.start_time == request.end_time:
             _invalid("start and end times must differ", "end_time")
-        factors = calendar_factors(request.event_date, request.requested_at, request.pricing_region, config)
+        region = request.pricing_region if request.pricing_region_explicit else config.holiday_region.value
+        factors = calendar_factors(request.event_date, request.requested_at, region, config)
         current = Decimal("0")
         lines = ()
         subtotals = []
@@ -112,10 +137,11 @@ class PricingEngineV2:
             elif name == "calendar_factors":
                 result = calendar_factors_block(request, config, current, factors)
             elif name == "rules":
-                rule_ids = block.get("rule_ids", ())
                 rules = catalog.get("rules", {})
                 if not isinstance(rules, Mapping):
                     _reference("rules must be a mapping")
+                rule_ids = block.get("rule_ids", tuple(identity for identity, rule in rules.items()
+                                                      if isinstance(rule, Mapping) and rule.get("is_active", True)))
                 selected = []
                 for identity in rule_ids:
                     rule = rules.get(identity)
@@ -124,7 +150,7 @@ class PricingEngineV2:
                     if type(rule.get("sort_order", 0)) is not int:
                         _invalid("rule sort order must be an integer", "rules")
                     selected.append(rule)
-                result = apply_rules(request, current, lines, tuple(selected))
+                result = apply_rules(request, current, lines, tuple(selected), event_type=request.event_type)
             elif name == "formula":
                 identity = block.get("formula_id")
                 formulas = catalog.get("formulas", {})
@@ -159,6 +185,6 @@ class PricingEngineV2:
         return PricingResult(engine_version=PricingEngineV2.VERSION,
                              profile_version=config.included_hours.profile_version,
                              package_version=package.get("version", config.included_hours.package_version),
-                             workflow_version=workflow.version, inputs=_snapshot(request, config, workflow, catalog),
+                              workflow_version=workflow.version, inputs=_snapshot(request, config, workflow, catalog, region),
                              lines=lines, gross_total=gross, block_subtotals=tuple(subtotals),
                              discount_total=discount, rounding_difference=rounded)

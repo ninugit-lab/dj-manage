@@ -96,6 +96,9 @@ def test_explicit_zero_event_setup_overrides_configured_default():
 def test_travel_free_boundary_fractional_distance_missing_and_disabled():
     assert travel_block(request(distance_km=Decimal("25")), config(), Decimal("0"), catalog()).lines == ()
     assert travel_block(request(), config(), Decimal("0"), catalog()).lines[0].amount == Decimal("0.975")
+    override = travel_block(request(), config(), Decimal("0"), catalog(), km_rate=Decimal("2"))
+    assert override.lines[0].unit_price == Decimal("2")
+    assert override.lines[0].source == "override"
     with pytest.raises(PricingValidationError, match="distance") as exc:
         travel_block(request(distance_km=None), config(), Decimal("0"), catalog())
     assert exc.value.code == "missing_input"

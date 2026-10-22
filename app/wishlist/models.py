@@ -430,6 +430,10 @@ class PricingWorkflow(models.Model):
                 check=models.Q(version__gt=0),
                 name='pricing_workflow_version_positive',
             ),
+            models.UniqueConstraint(
+                fields=['is_default'], condition=models.Q(is_default=True, is_active=True),
+                name='unique_active_default_pricing_workflow',
+            ),
         ]
     def __str__(self):
         return self.name

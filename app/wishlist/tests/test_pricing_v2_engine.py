@@ -260,3 +260,115 @@ def test_cent_quantization_reconciles_line_and_last_subtotal():
     assert json.dumps(result.to_dict(), sort_keys=True) == json.dumps(
         run(req=request(selected_item_ids=()), cfg=config(rounding_step="0.001"),
             blocks=blocks, stock=stock).to_dict(), sort_keys=True)
+
+
+def test_active_catalog_rules_apply_by_default_but_explicit_empty_selection_is_intentional():
+    stock = catalog(rules={"club": dict(id="club", name="Club", is_active=True, sort_order=1,
+                                         effect_type="flat_add", effect_value="7", condition_json=[]),
+                           "off": dict(id="off", name="Off", is_active=False, sort_order=2,
+                                       effect_type="flat_add", effect_value="100", condition_json=[])})
+    blocks = [dict(type="package"), dict(type="items"), dict(type="rules")]
+    active = run(req=request(selected_item_ids=()), stock=stock, blocks=blocks)
+    assert active.gross_total == Decimal("117.00")
+    assert active.inputs["catalog_snapshot"]["rules"]["club"]["effect_value"] == "7"
+    empty = run(req=request(selected_item_ids=()), stock=stock,
+                blocks=[*blocks[:2], dict(type="rules", rule_ids=[])])
+    assert empty.gross_total == Decimal("110.00")
+    assert empty.inputs["workflow_blocks"][-1]["rule_ids"] == ()
+    assert empty.to_dict()["inputs"]["advanced_selections"][-1] == {
+        "type": "rules", "selection": "explicit", "selected_ids": []}
+
+
+def test_active_formula_requires_reference_instead_of_silently_skipping():
+    stock = catalog(formulas={"plus": dict(id="plus", name="Plus", is_active=True,
+                                           expression="5", mode="add")})
+    with pytest.raises(PricingValidationError) as exc:
+        run(stock=stock, blocks=[dict(type="package"), dict(type="items"), dict(type="formula")])
+    assert exc.value.code == "reference_error"
+    assert exc.value.field == "workflow"
+    chosen = run(req=request(selected_item_ids=()), stock=stock,
+                 blocks=[dict(type="package"), dict(type="items"), dict(type="formula", formula_id="plus")])
+    assert chosen.gross_total == Decimal("115.00")
+
+
+def test_intentionally_empty_formula_block_has_explicit_status_when_catalog_has_no_active_formula():
+    result = run(req=request(selected_item_ids=()), blocks=[dict(type="package"), dict(type="items"),
+                                                             dict(type="formula")])
+    assert result.gross_total == Decimal("110.00")
+    assert result.to_dict()["inputs"]["advanced_selections"] == [
+        {"type": "formula", "selection": "no_active_formula", "selected_id": None}]
+
+
+@pytest.mark.parametrize("collection,selection", [
+    ("rules", {"type": "rules", "rule_ids": ["off"]}),
+    ("formulas", {"type": "formula", "formula_id": "off"}),
+])
+def test_explicit_inactive_advanced_reference_cannot_silently_disappear(collection, selection):
+    stock = catalog(**{collection: {"off": {"name": "Off", "is_active": False,
+        "effect_type": "flat_add", "effect_value": "5", "expression": "5", "mode": "add"}}})
+    with pytest.raises(PricingValidationError) as exc:
+        run(stock=stock, blocks=[dict(type="package"), dict(type="items"), selection])
+    assert exc.value.code == "reference_error"
+
+
+def test_event_type_condition_applies_only_to_matching_event_and_is_snapshotted():
+    stock = catalog(rules={"wedding": dict(id="wedding", name="Wedding", is_active=True,
+        effect_type="flat_add", effect_value="15", condition_json=[
+            dict(field="event_type", op="eq", value="wedding")])})
+    blocks = [dict(type="package"), dict(type="items"), dict(type="rules")]
+    wedding = run(req=request(event_type=" Wedding ", selected_item_ids=()), blocks=blocks, stock=stock)
+    club = run(req=request(event_type="club", selected_item_ids=()), blocks=blocks, stock=stock)
+    assert wedding.gross_total == Decimal("125.00")
+    assert club.gross_total == Decimal("110.00")
+    assert wedding.to_dict()["inputs"]["event_type"] == "wedding"
+
+
+def test_result_freezes_full_price_affecting_catalog_after_caller_mutation():
+    stock = catalog(rules={"bonus": dict(id="bonus", name="Bonus", is_active=True,
+                                         effect_type="flat_add", effect_value="2", condition_json=[])},
+                    formulas={"calc": dict(id="calc", name="Calc", is_active=True,
+                                          expression="3", mode="add")})
+    blocks = [dict(type="package"), dict(type="items"), dict(type="rules"),
+              dict(type="formula", formula_id="calc")]
+    result = run(stock=stock, blocks=blocks)
+    frozen = result.to_dict()
+    snapshot = frozen["inputs"]["catalog_snapshot"]
+    assert snapshot["packages"]["party"]["base_price"] == "100"
+    assert snapshot["packages"]["party"]["included_item_ids"] == ["included"]
+    assert snapshot["packages"]["party"]["required_item_ids"] == ["required"]
+    assert snapshot["items"]["included"]["price"] == "20"
+    assert snapshot["items"]["lights"]["price"] == "30"
+    assert snapshot["items"]["required"]["price"] == "10"
+    assert snapshot["rules"]["bonus"]["effect_value"] == "2"
+    assert snapshot["formulas"]["calc"]["expression"] == "3"
+    stock["packages"]["party"]["base_price"] = "999"
+    stock["packages"]["party"]["included_item_ids"] = []
+    stock["items"]["included"]["price"] = "999"
+    stock["rules"]["bonus"]["effect_value"] = "999"
+    stock["formulas"]["calc"]["expression"] = "999"
+    assert result.to_dict() == frozen
+
+
+def test_snapshot_preserves_numeric_catalog_identifiers_as_json_keys():
+    stock = catalog(rules={3: dict(id=3, name="Numeric", is_active=True, effect_type="flat_add",
+                                  effect_value="2", condition_json=[])},
+                    formulas={4: dict(id=4, name="Numeric formula", is_active=True,
+                                     expression="3", mode="add")})
+    result = run(req=request(selected_item_ids=()), stock=stock,
+                 blocks=[dict(type="package"), dict(type="items"),
+                         dict(type="rules", rule_ids=[3]), dict(type="formula", formula_id=4)])
+    assert result.gross_total == Decimal("115.00")
+    assert result.to_dict()["inputs"]["catalog_snapshot"]["rules"]["3"]["effect_value"] == "2"
+    assert result.to_dict()["inputs"]["catalog_snapshot"]["formulas"]["4"]["expression"] == "3"
+
+
+def test_omitted_region_uses_profile_region_but_explicit_nw_overrides_it():
+    from_mapping = dict(event_date="2026-01-06", start_time="18:00", end_time="22:00", package_id="party")
+    timestamp = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    cfg = config(holiday_region="BY", holiday_percent="20")
+    blocks = [dict(type="package"), dict(type="items"), dict(type="calendar_factors")]
+    omitted = PricingInput.from_mapping(from_mapping, requested_at=timestamp)
+    explicit = PricingInput.from_mapping({**from_mapping, "pricing_region": "NW"}, requested_at=timestamp)
+    assert run(req=omitted, cfg=cfg, blocks=blocks).gross_total == Decimal("132.00")
+    assert run(req=explicit, cfg=cfg, blocks=blocks).gross_total == Decimal("110.00")
+    assert run(req=omitted, cfg=cfg, blocks=blocks).to_dict()["inputs"]["pricing_region"] == "BY"
