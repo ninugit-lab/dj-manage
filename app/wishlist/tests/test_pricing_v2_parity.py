@@ -150,6 +150,69 @@ def test_released_total_survives_review_on_missing_distance(staff, catalog):
     assert event.total_price == Decimal('777')
 
 
+@pytest.mark.parametrize('distance,items', [('', []), ('not-a-distance', []), ('12', ['invalid'])])
+def test_send_failed_offer_survives_admin_review(staff, catalog, distance, items):
+    config, package, _, _, _ = catalog
+    config.pricing_engine_mode = 'v2'
+    config.save()
+    event = Event.objects.create(name='Gig', date=date(2999, 6, 20), location='X',
+                                 total_price=Decimal('777'))
+    PriceCalculationRevision.objects.create(event=event, kind='offer', status='send_failed',
+        revision_number=1, engine_version='2', gross_total=Decimal('777'),
+        input_json={}, result_json={'gross_total': '777.00'})
+    assert save(staff, event, package, items, distance_km=distance).status_code == 302
+    event.refresh_from_db()
+    assert event.total_price == Decimal('777')
+
+
+def test_selected_admin_workflow_preview_and_saved_draft_match(staff, catalog):
+    config, package, _, extra, _ = catalog
+    config.pricing_engine_mode = 'v2'
+    config.save()
+    alternate = PricingWorkflow.objects.create(name='Alternate', workflow_json=[
+        {'type': 'package'}, {'type': 'items'}, {'type': 'discount'}])
+    event = Event.objects.create(name='Gig', date=date(2999, 6, 20), location='X')
+    response = preview(staff, package, [extra.pk], workflow_id=alternate.pk, discount_percent='12.34')
+    assert response.status_code == 200
+    assert response.json()['gross_total'] == '131.49'
+    assert save(staff, event, package, [str(extra.pk)], pricing_workflow_id=str(alternate.pk),
+                pricing_discount_percent='12.34').status_code == 302
+    event.refresh_from_db()
+    assert event.total_price == Decimal(response.json()['gross_total'])
+    assert event.price_revisions.get(kind='draft').workflow_id_snapshot == alternate.pk
+
+
+@pytest.mark.parametrize('workflow_id', ['999999', 'inactive', 'not-an-id'])
+def test_invalid_admin_workflow_reference_is_not_replaced_by_default(staff, catalog, workflow_id):
+    config, package, _, _, _ = catalog
+    config.pricing_engine_mode = 'v2'
+    config.save()
+    inactive = PricingWorkflow.objects.create(name='Inactive', is_active=False, workflow_json=[])
+    identity = str(inactive.pk) if workflow_id == 'inactive' else workflow_id
+    response = preview(staff, package, [], workflow_id=identity)
+    assert response.status_code == 400
+    event = Event.objects.create(name='Gig', date=date(2999, 6, 20), location='X')
+    saved = save(staff, event, package, pricing_workflow_id=identity)
+    assert saved.status_code != 302
+    assert not event.price_revisions.exists()
+    assert not EventPriceCalculation.objects.filter(event=event).exists()
+
+
+def test_public_keeps_default_when_admin_selects_alternate(staff, client, catalog):
+    config, package, _, extra, _ = catalog
+    config.pricing_engine_mode = 'v2'
+    config.save()
+    alternate = PricingWorkflow.objects.create(name='Alternate', workflow_json=[
+        {'type': 'package'}, {'type': 'items'}, {'type': 'discount'}])
+    admin = preview(staff, package, [extra.pk], workflow_id=alternate.pk, discount_percent='10')
+    public = client.post('/api/price-estimate/', data=json.dumps(dict(
+        date='2999-06-20', time_start='18:00', time_end='21:00', distance_km='12',
+        package_id=package.pk, selected_item_ids=[extra.pk], guest_count=10)),
+        content_type='application/json', secure=True)
+    assert admin.json()['gross_total'] == '135.00'
+    assert public.json()['gross_total'] == '150.00'
+
+
 def test_v2_invalid_saved_item_is_review_not_server_error(staff, catalog):
     config, package, _, _, _ = catalog
     config.pricing_engine_mode = 'v2'

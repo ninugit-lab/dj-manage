@@ -612,12 +612,17 @@ calcAdminTotal();
 
 // Unified recalculate via PriceEngine API
 var _recalcTimer;
+var _recalcSequence = 0;
 var _lastUnifiedTotal = 0;
 function recalculate() {
+  ++_recalcSequence;
   clearTimeout(_recalcTimer);
-  _recalcTimer = setTimeout(doRecalculate, 300);
+  var sequence = _recalcSequence;
+  _recalcTimer = setTimeout(function() { doRecalculate(sequence); }, 300);
 }
-function doRecalculate() {
+function doRecalculate(sequence) {
+  if (sequence === undefined) sequence = ++_recalcSequence;
+  if (sequence !== _recalcSequence) return;
   var eventId = {% if event %}{{ event.pk }}{% else %}null{% endif %};
   var pkgRadio = document.querySelector('input[name="pricing_package_id"]:checked');
   var pkgId = pkgRadio ? (parseInt(pkgRadio.value) || null) : null;
@@ -630,7 +635,7 @@ function doRecalculate() {
   var workflowId = wfEl ? (parseInt(wfEl.value) || null) : null;
 
   var discEl = document.getElementById('pricing-discount');
-  var discount = discEl ? (parseFloat(discEl.value) || 0) : 0;
+  var discount = discEl ? (discEl.value || '0') : '0';
 
   var body = {
     event_id: eventId,
@@ -654,6 +659,7 @@ function doRecalculate() {
   })
   .then(function(r) { return r.json(); })
   .then(function(data) {
+    if (sequence !== _recalcSequence) return;
     var bd = document.getElementById('unified-breakdown');
     if (!bd) return;
     bd.replaceChildren();
@@ -678,6 +684,16 @@ function doRecalculate() {
   })
   .catch(function() {});
 }
+['date', 'time_start', 'time_end', 'guest_count', 'event_type', 'distance_km'].forEach(function(name) {
+  var field = document.querySelector('[name="' + name + '"]');
+  if (field) {
+    field.addEventListener('change', recalculate);
+    field.addEventListener('input', recalculate);
+  }
+});
+document.querySelectorAll('.admin-price-cb').forEach(function(field) {
+  field.addEventListener('change', recalculate);
+});
 function fmt(n) { return (n || 0).toFixed(2).replace('.', ',') + ' €'; }
 function applyUnifiedToPrice() {
   document.getElementById('admin-total-price').value = _lastUnifiedTotal.toFixed(2);

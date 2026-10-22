@@ -260,19 +260,27 @@ def _legacy_blocks(raw, package_id, catalog):
     if not isinstance(raw, list):
         raise PricingValidationError("invalid_input", "workflow must be a list", "workflow")
     declared = {block.get("type") for block in raw if isinstance(block, Mapping)}
-    # The canonical V2 minimum pipeline includes items, even if the old
-    # package-only workflow omitted that block. Other blocks are opt-in.
-    blocks = [dict(block) for block in DEFAULT_BLOCKS
-              if block["type"] in ("package", "items", "rules") or block["type"] in declared]
+    # Preserve the author's sequence. Add only missing price-building foundations;
+    # validate_workflow rejects explicit blocks whose relative order cannot work.
+    blocks = [dict(type=block.get("type")) if isinstance(block, Mapping) else {}
+              for block in raw]
+    if "package" not in declared:
+        blocks.insert(0, {"type": "package"})
+    if "items" not in declared:
+        package_position = next(index for index, block in enumerate(blocks)
+                                if block.get("type") == "package")
+        blocks.insert(package_position + 1, {"type": "items"})
     if "rules" not in declared:
-        next(block for block in blocks if block["type"] == "rules")["rule_ids"] = []
+        items_position = next(index for index, block in enumerate(blocks)
+                              if block.get("type") == "items")
+        blocks.insert(items_position + 1, {"type": "rules", "rule_ids": []})
     positions = {block["type"]: block for block in blocks}
     seen = set()
-    for block in raw:
+    for block, target in zip(raw, (block for block in blocks if block.get("type") in declared)):
         if not isinstance(block, Mapping) or not isinstance(block.get("type"), str):
             raise PricingValidationError("invalid_input", "invalid workflow block", "workflow")
         name = block["type"]
-        if name not in positions or name in seen or set(block) - {"type", "label", "config", "id", "version"}:
+        if name not in {item["type"] for item in DEFAULT_BLOCKS} or name in seen or set(block) - {"type", "label", "config", "id", "version"}:
             raise PricingValidationError("invalid_input", "unsupported workflow block", "workflow")
         seen.add(name)
         config = block.get("config", {})
@@ -282,7 +290,6 @@ def _legacy_blocks(raw, package_id, catalog):
         allowed = {references[name]} if name in references else set()
         if set(config) - allowed:
             raise PricingValidationError("invalid_input", "unsupported workflow config", "workflow")
-        target = positions[name]
         for key in ("id", "version"):
             if key in block:
                 target[key] = block[key]
@@ -299,6 +306,19 @@ def _legacy_blocks(raw, package_id, catalog):
         elif name == "formula" and "formula_id" in config:
             target["formula_id"] = _identifier(config["formula_id"], "workflow")
     return blocks
+
+
+def resolve_workflow(workflow_id=None, *, public=False):
+    """Select an active admin workflow or the sole active public/default workflow."""
+    if public or workflow_id in (None, ""):
+        workflows = list(PricingWorkflow.objects.filter(is_active=True, is_default=True)[:2])
+        if len(workflows) != 1:
+            _reference("default workflow", "workflow")
+        return workflows[0]
+    workflow = PricingWorkflow.objects.filter(pk=_identifier(workflow_id, "workflow"), is_active=True).first()
+    if workflow is None:
+        _reference("workflow", "workflow")
+    return workflow
 
 
 def _calculate(payload, *, public, actor=None):
@@ -318,10 +338,7 @@ def _calculate(payload, *, public, actor=None):
         pk=package_id, is_active=True, **({"is_public": True} if public else {})).first()
     if package is None and not individual:
         _reference("package", "package_id")
-    workflows = list(PricingWorkflow.objects.filter(is_active=True, is_default=True)[:2])
-    if len(workflows) != 1:
-        _reference("default workflow", "workflow")
-    workflow = workflows[0]
+    workflow = resolve_workflow(payload.get("workflow_id"), public=public)
     override = PricingPackageOverride.objects.filter(profile=profile, package=package).first() if package else None
     resolved = resolve_pricing_config(profile, None if individual else SimpleNamespace(
         id=package.pk, version=package.version,
@@ -402,7 +419,8 @@ def calculate_event(event, *, actor=None):
             "guest_count": event.guest_count or 0, "distance_km": event.distance_km,
             "setup_minutes": event.setup_minutes, "teardown_minutes": event.teardown_minutes,
             "discount_percent": calc.discount_percent, "custom_items": custom,
-            "event_type": event.event_type}
+             "event_type": event.event_type,
+             "workflow_id": str(calc.workflow_id) if calc.workflow_id else None}
     # The model's default NW is not a user-selected override of the profile.
     if event.pricing_region and event.pricing_region != Event._meta.get_field("pricing_region").default:
         data["pricing_region"] = event.pricing_region

@@ -144,6 +144,27 @@ def test_explicit_legacy_rules_still_apply_and_are_frozen(stock):
     assert result.inputs["catalog_snapshot"]["rules"][str(rule.pk)]["effect_value"] == "5.00"
 
 
+def test_explicit_minimum_before_discount_keeps_user_order(stock):
+    stock[0].config_json['minimum_price'] = '200'
+    stock[0].save(update_fields=['config_json'])
+    stock[5].workflow_json = [{'type': 'package'}, {'type': 'minimum_price'},
+                              {'type': 'discount'}]
+    stock[5].save(update_fields=['workflow_json'])
+    result = calculate_payload(payload(stock, discount_percent='10'), public=False)
+    assert result.gross_total == Decimal('180.00')
+    names = [block['type'] for block in result.inputs['workflow_blocks']]
+    assert names.index('minimum_price') < names.index('discount')
+    assert names.index('items') < names.index('minimum_price')
+
+
+def test_irreconcilable_explicit_workflow_order_is_rejected(stock):
+    stock[5].workflow_json = [{'type': 'rounding'}, {'type': 'package'}]
+    stock[5].save(update_fields=['workflow_json'])
+    with pytest.raises(PricingValidationError) as error:
+        calculate_payload(payload(stock), public=False)
+    assert error.value.code == 'invalid_input'
+
+
 def test_admin_custom_items_and_explicit_workflow_references(stock):
     result = calculate_payload(payload(stock, custom_items=[{"code": "special", "label": "Special",
                                                              "amount": "9.50"}]), public=False)

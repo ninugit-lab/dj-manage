@@ -217,6 +217,14 @@ def _save_event_from_post(request, config, event=None):
     event.default_block_reason = request.POST.get('default_block_reason', '')
     event.default_block_message = request.POST.get('default_block_message', '')
     v2_mode = config.pricing_engine_mode == 'v2'
+    workflow_id = request.POST.get('pricing_workflow_id') or None
+    if v2_mode:
+        from .pricing_v2.input import PricingValidationError
+        from .pricing_v2.services import resolve_workflow
+        try:
+            workflow_id = resolve_workflow(workflow_id).pk
+        except PricingValidationError as exc:
+            raise EventFormError('Ungültiger oder inaktiver Preis-Workflow.') from exc
     if not v2_mode:
         try:
             event.total_price = Decimal(request.POST['total_price']) if request.POST.get('total_price') else None
@@ -285,7 +293,6 @@ def _save_event_from_post(request, config, event=None):
     # Preis-Kalkulation in EventPriceCalculation speichern
     pkg_id = request.POST.get('pricing_package_id') or None
     formula_id = request.POST.get('pricing_formula_id') or None
-    workflow_id = request.POST.get('pricing_workflow_id') or None
     item_ids = request.POST.getlist('selected_items')
     discount_raw = request.POST.get('pricing_discount_percent')
     has_pricing_data = (
@@ -334,7 +341,8 @@ def _save_event_from_post(request, config, event=None):
         # A failed quote is a review, never a posted or stale definite price.
         released_offer = PriceCalculationRevision.objects.filter(
             event=event, status__in=(PriceCalculationRevision.Status.RELEASED,
-                                    PriceCalculationRevision.Status.SENT)).exists()
+                                    PriceCalculationRevision.Status.SENT,
+                                    PriceCalculationRevision.Status.SEND_FAILED)).exists()
         if event.distance_km is None or invalid_selection:
             if not released_offer:
                 event.total_price = None
