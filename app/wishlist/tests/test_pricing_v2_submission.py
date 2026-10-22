@@ -187,7 +187,8 @@ def test_same_event_shadow_retry_reuses_existing_comparison(client, stock):
         calculate_with_mode(dict(event_date=event.date, start_time=event.time_start,
             end_time=event.time_end, guest_count=event.guest_count, event_type=event.event_type,
             distance_km=event.distance_km, package_id=str(stock[1].pk),
-            selected_item_ids=chosen), event=event, public=True, persist_comparison=True)
+            selected_item_ids=chosen), event=event, public=True, persist_comparison=True,
+            comparison_scope='submission')
     assert event.price_revisions.count() == 1
 
 
@@ -215,3 +216,108 @@ def test_google_task_runs_only_after_saved_pricing(client, stock):
         response = client.post(reverse('submit_event'), data=json.dumps(payload(stock)), content_type='application/json')
     assert response.status_code == 200
     assert observed == [(Decimal('150.00'), 1)]
+
+
+def test_same_event_estimate_retry_ignores_timestamp_but_not_changed_economics(client, stock):
+    from wishlist.pricing_v2.services import calculate_with_mode, save_revision
+    stock[0].pricing_engine_mode = 'v2'
+    stock[0].save()
+    event = Event.objects.get(pk=post(client, payload(stock)).json()['event_id'])
+    first = event.price_revisions.get()
+    chosen = [str(stock[3].pk), str(stock[2].pk)]
+    request = dict(event_date=event.date, start_time=event.time_start, end_time=event.time_end,
+                   guest_count=event.guest_count, event_type=event.event_type,
+                   distance_km=event.distance_km, package_id=str(stock[1].pk), selected_item_ids=chosen)
+    later = calculate_with_mode(request, event=event, public=True).visible_result
+    assert first.input_json['requested_at'] != later.to_dict()['inputs']['requested_at']
+    retry = save_revision(event, later, kind=PriceCalculationRevision.Kind.ESTIMATE, update_event_total=True)
+    assert retry.pk == first.pk
+    assert event.price_revisions.count() == 1
+    stock[3].price = Decimal('35')
+    stock[3].save(update_fields=['price'])
+    changed = calculate_with_mode(request, event=event, public=True).visible_result
+    new_revision = save_revision(event, changed, kind=PriceCalculationRevision.Kind.ESTIMATE, update_event_total=True)
+    assert new_revision.pk != first.pk
+    assert new_revision.revision_number == 2
+
+
+def test_shadow_submission_retry_with_changed_catalog_reuses_original_comparison(client, stock):
+    from wishlist.pricing_v2.services import calculate_with_mode
+    stock[0].pricing_engine_mode = 'shadow'
+    stock[0].save()
+    event = Event.objects.get(pk=post(client, payload(stock)).json()['event_id'])
+    first = event.price_revisions.get()
+    stock[3].price = Decimal('35')
+    stock[3].save(update_fields=['price'])
+    request = dict(event_date=event.date, start_time=event.time_start, end_time=event.time_end,
+                   guest_count=event.guest_count, event_type=event.event_type,
+                   distance_km=event.distance_km, package_id=str(stock[1].pk),
+                   selected_item_ids=[str(stock[3].pk), str(stock[2].pk)])
+    changed = calculate_with_mode(request, event=event, public=True,
+                                  persist_comparison=True, comparison_scope='submission')
+    assert changed.v2_result.gross_total == Decimal('155')
+    assert changed.comparison_revision.pk == first.pk
+    assert event.price_revisions.count() == 1
+
+
+def test_shadow_submission_success_then_failure_retry_reuses_original_comparison(client, stock):
+    from wishlist.pricing_v2.services import calculate_with_mode
+    stock[0].pricing_engine_mode = 'shadow'
+    stock[0].save()
+    event = Event.objects.get(pk=post(client, payload(stock)).json()['event_id'])
+    first = event.price_revisions.get()
+    request = dict(event_date=event.date, start_time=event.time_start, end_time=event.time_end,
+                   guest_count=event.guest_count, event_type=event.event_type,
+                   distance_km=event.distance_km, package_id=str(stock[1].pk),
+                   selected_item_ids=[str(stock[3].pk), str(stock[2].pk)])
+    with patch('wishlist.pricing_v2.services.calculate_payload', side_effect=RuntimeError('internal')):
+        retried = calculate_with_mode(request, event=event, public=True,
+                                      persist_comparison=True, comparison_scope='submission')
+    assert retried.v2_result is None
+    assert retried.comparison_revision.pk == first.pk
+    assert event.price_revisions.count() == 1
+
+
+def test_explicit_shadow_compare_is_separate_from_submission_sample(client, stock):
+    from wishlist.pricing_v2.services import calculate_with_mode
+    stock[0].pricing_engine_mode = 'shadow'
+    stock[0].save()
+    event = Event.objects.get(pk=post(client, payload(stock)).json()['event_id'])
+    initial = event.price_revisions.get()
+    request = dict(event_date=event.date, start_time=event.time_start, end_time=event.time_end,
+                   guest_count=event.guest_count, event_type=event.event_type,
+                   distance_km=event.distance_km, package_id=str(stock[1].pk),
+                   selected_item_ids=[str(stock[3].pk), str(stock[2].pk)])
+    explicit = calculate_with_mode(request, event=event, public=True, persist_comparison=True)
+    assert explicit.comparison_revision.pk != initial.pk
+    assert event.price_revisions.count() == 2
+
+
+@pytest.mark.parametrize('mode', ['legacy', 'shadow', 'v2'])
+def test_missing_distance_submission_remains_individual_review_like_preview(client, stock, mode):
+    stock[0].pricing_engine_mode = mode
+    stock[0].save()
+    body = payload(stock, distance_km=None)
+    preview = client.post('/api/price-estimate/', data=json.dumps({
+        **body, 'selected_item_ids': body['selected_items']}), content_type='application/json').json()
+    assert preview['status'] == 'individual_review'
+    assert preview['gross_total'] is None
+    response = post(client, body)
+    assert response.status_code == 200
+    assert response.json()['success'] is True
+    assert 'gross_total' not in response.json()
+    event = Event.objects.get(pk=response.json()['event_id'])
+    assert event.status == 'inquiry'
+    assert event.total_price is None
+    assert not event.price_revisions.filter(kind='estimate').exists()
+    assert 'grand_total' not in event.price_calculation.calculation_snapshot
+
+
+@pytest.mark.parametrize('field', ['selected_items', 'package_id'])
+def test_huge_digit_identifier_is_generic_400_without_event(client, stock, field):
+    huge = '9' * 5000
+    body = payload(stock, **{field: [huge] if field == 'selected_items' else huge})
+    response = post(client, body)
+    assert response.status_code == 400
+    assert response.json() == {'success': False, 'error': 'Ungültige Anfrage'}
+    assert not Event.objects.exists()

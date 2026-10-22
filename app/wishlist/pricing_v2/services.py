@@ -117,6 +117,8 @@ def _save_failed_comparison(event, legacy, diagnostic, actor):
 def _comparison_identity(result):
     snapshot = deepcopy(result)
     snapshot.get("inputs", {}).pop("requested_at", None)
+    if snapshot.get("inputs", {}).get("source") == "submission":
+        snapshot["inputs"].pop("source")
     return snapshot
 
 
@@ -130,13 +132,16 @@ def _save_comparison(event, v2, legacy, actor):
                 event=locked, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
                 status=PriceCalculationRevision.Status.DRAFT,
                 legacy_total=legacy.gross_total):
+            if previous.input_json.get("source") == "submission":
+                continue
             if _comparison_identity(previous.result_json) == identity:
                 return previous
         return save_revision(event, v2, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
                              actor=actor, legacy_total=legacy.gross_total)
 
 
-def calculate_with_mode(payload=None, *, event=None, public=False, actor=None, persist_comparison=False):
+def calculate_with_mode(payload=None, *, event=None, public=False, actor=None,
+                        persist_comparison=False, comparison_scope=None):
     """Unified entry for Tasks 3–5: pass payload for previews/submits, or event for saved admin.
 
     The persisted AppConfig selects the engine. Only shadow with explicit opt-in and
@@ -153,6 +158,8 @@ def calculate_with_mode(payload=None, *, event=None, public=False, actor=None, p
         raise PricingValidationError("missing_input", "nonempty payload required", "payload")
     if event is not None and not isinstance(event, Event):
         raise PricingValidationError("invalid_input", "expected an event", "event")
+    if comparison_scope not in (None, "submission"):
+        raise PricingValidationError("invalid_input", "unknown comparison scope", "comparison_scope")
     if public and payload is not None:
         selected = payload.get("selected_item_ids", ())
         if not isinstance(selected, (list, tuple)) or any(
@@ -185,17 +192,44 @@ def calculate_with_mode(payload=None, *, event=None, public=False, actor=None, p
         revision = None
         if persist_comparison and event is not None and event.pk:
             try:
-                revision = _save_failed_comparison(event, legacy, diagnostic, actor)
+                revision = (_save_submission_comparison(event, legacy, actor, diagnostic=diagnostic)
+                            if comparison_scope == "submission" else _save_failed_comparison(event, legacy, diagnostic, actor))
             except Exception:
                 logger.exception("Shadow diagnostic comparison could not be persisted")
         return PricingDecision(legacy, comparison_revision=revision)
     revision = None
     if persist_comparison and event is not None and event.pk:
         try:
-            revision = _save_comparison(event, v2, legacy, actor)
+            revision = (_save_submission_comparison(event, legacy, actor, v2=v2)
+                        if comparison_scope == "submission" else _save_comparison(event, v2, legacy, actor))
         except Exception:
             logger.exception("Shadow comparison could not be persisted")
     return PricingDecision(legacy, v2, revision)
+
+
+def _save_submission_comparison(event, legacy, actor, *, v2=None, diagnostic=None):
+    with transaction.atomic():
+        locked = Event.objects.select_for_update().get(pk=event.pk)
+        prior = PriceCalculationRevision.objects.filter(
+            event=locked, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
+            status=PriceCalculationRevision.Status.DRAFT, input_json__source="submission").first()
+        if prior:
+            return prior
+        if v2 is not None:
+            revision = save_revision(event, v2, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
+                                     actor=actor, legacy_total=legacy.gross_total)
+            revision.input_json = {**revision.input_json, "source": "submission"}
+            revision.result_json = {**revision.result_json, "inputs": revision.input_json}
+            revision.save(update_fields=["input_json", "result_json"])
+            return revision
+        previous = PriceCalculationRevision.objects.filter(event=locked).order_by("-revision_number").first()
+        return PriceCalculationRevision.objects.create(
+            event=locked, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
+            status=PriceCalculationRevision.Status.DRAFT,
+            revision_number=previous.revision_number + 1 if previous else 1,
+            previous_revision=previous, engine_version="2", input_json={"source": "submission"},
+            result_json={"engine_version": "2", "diagnostic": diagnostic}, gross_total=legacy.gross_total,
+            legacy_total=legacy.gross_total, created_by=actor)
 
 
 def _reference(name, field=None):
@@ -376,11 +410,16 @@ def save_revision(event, result, *, kind, actor=None, legacy_total=None, update_
     with transaction.atomic():
         locked = Event.objects.select_for_update().get(pk=event.pk)
         previous = PriceCalculationRevision.objects.filter(event=locked).order_by("-revision_number").first()
-        existing = PriceCalculationRevision.objects.filter(
-            event=locked, kind=kind, status=PriceCalculationRevision.Status.DRAFT,
-            result_json=serialized, created_by=actor, legacy_total=comparison).first()
-        if existing is not None:
-            return existing
+        for existing in PriceCalculationRevision.objects.filter(
+                event=locked, kind=kind, status=PriceCalculationRevision.Status.DRAFT,
+                created_by=actor, legacy_total=comparison):
+            if (kind == PriceCalculationRevision.Kind.MIGRATION_COMPARE and
+                    existing.input_json.get("source") == "submission"):
+                continue
+            if (kind == PriceCalculationRevision.Kind.ESTIMATE and
+                    _comparison_identity(existing.result_json) == _comparison_identity(serialized)
+                    or kind != PriceCalculationRevision.Kind.ESTIMATE and existing.result_json == serialized):
+                return existing
         revision = PriceCalculationRevision.objects.create(
             event=locked, kind=kind, status=PriceCalculationRevision.Status.DRAFT,
             revision_number=1 if previous is None else previous.revision_number + 1,

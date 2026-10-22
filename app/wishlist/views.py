@@ -407,12 +407,18 @@ def submit_event_form(request):
 
     selected_item_ids = data.get('selected_items', [])
     package_id = data.get('package_id')
+    def valid_id(value):
+        # The database identifier is a signed 64-bit value; bound it before int()
+        # (Python also rejects conversions of excessively long digit strings).
+        return (not isinstance(value, bool) and isinstance(value, (int, str))
+                and len(str(value)) <= 19 and str(value).isascii() and str(value).isdigit()
+                and 0 < int(value) <= 9223372036854775807)
+
     if not isinstance(selected_item_ids, list) or any(
-            isinstance(i, bool) or not isinstance(i, (int, str)) or not str(i).isdigit() or int(i) < 1
+            not valid_id(i)
             for i in selected_item_ids):
         return invalid()
-    if package_id not in (None, '') and (isinstance(package_id, bool) or
-            not isinstance(package_id, (int, str)) or not str(package_id).isdigit() or int(package_id) < 1):
+    if package_id not in (None, '') and not valid_id(package_id):
         return invalid()
     selected_item_ids = list(dict.fromkeys(int(i) for i in selected_item_ids))
     available = set(PriceItem.objects.filter(pk__in=selected_item_ids, is_active=True, is_public=True)
@@ -474,7 +480,8 @@ def submit_event_form(request):
                     result = PriceEngine.calculate_workflow(workflow_id=default_wf.pk, **calc_kwargs)
                 else:
                     result = PriceEngine.calculate(**calc_kwargs)
-                calc.calculation_snapshot = json.loads(json.dumps(result, default=str))
+                calc.calculation_snapshot = (json.loads(json.dumps(result, default=str))
+                                             if event.distance_km is not None else {'status': 'individual_review'})
                 active_rule_ids = [r['rule_id'] for r in result.get('rules_applied', []) if r.get('rule_id')]
                 if active_rule_ids:
                     calc.applied_rules.set(PricingRule.objects.filter(pk__in=active_rule_ids))
@@ -483,18 +490,23 @@ def submit_event_form(request):
             except Exception:
                 logger.warning("PriceEngine calculation failed for event %s, using legacy total", event.pk, exc_info=True)
                 event.total_price = calc.total
+            if event.distance_km is None:
+                event.total_price = None
             event.save(update_fields=['total_price'])
             if mode == 'shadow':
                 try:
-                    calculate_with_mode(pricing_payload, event=event, public=True, persist_comparison=True)
+                    if event.distance_km is not None:
+                        calculate_with_mode(pricing_payload, event=event, public=True,
+                                            persist_comparison=True, comparison_scope='submission')
                 except Exception:
                     logger.warning('Shadow comparison failed for event %s', event.pk, exc_info=True)
         else:
             try:
                 with transaction.atomic():
                     decision = calculate_with_mode(pricing_payload, event=event, public=True)
-                    save_revision(event, decision.visible_result, kind=PriceCalculationRevision.Kind.ESTIMATE,
-                                  update_event_total=True)
+                    if event.distance_km is not None:
+                        save_revision(event, decision.visible_result, kind=PriceCalculationRevision.Kind.ESTIMATE,
+                                      update_event_total=True)
             except Exception:
                 logger.warning('V2 pricing failed for event %s; individual review required', event.pk, exc_info=True)
 
