@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 import holidays
 
-from .config import ResolvedPricingConfig, Tier
+from .config import ResolvedPricingConfig, Tier, _GERMAN_REGIONS
 from .input import PricingValidationError
 
 
@@ -49,8 +49,7 @@ def calendar_factors(event_date: date, requested_at: datetime, region: str | Non
         raise PricingValidationError("invalid_input", "requested_at must be timezone-aware", "requested_at")
 
     chosen_region = region if region is not None else config.holiday_region.value
-    subdivisions = set(holidays.Germany.subdivisions)
-    if not isinstance(chosen_region, str) or chosen_region not in subdivisions:
+    if not isinstance(chosen_region, str) or chosen_region not in _GERMAN_REGIONS:
         raise PricingValidationError("invalid_input", "unknown German holiday subdivision", "region")
     try:
         holiday_dates = holidays.Germany(years=event_date.year, subdiv=chosen_region)
