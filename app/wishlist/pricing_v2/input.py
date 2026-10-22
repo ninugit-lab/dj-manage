@@ -151,8 +151,8 @@ class PricingInput:
     selected_item_ids: tuple[str, ...] = ()
     guest_count: int = 0
     distance_km: Decimal | None = None
-    setup_minutes: int = 0
-    teardown_minutes: int = 0
+    setup_minutes: int | None = None
+    teardown_minutes: int | None = None
     pricing_region: str = "NW"
     requested_at: datetime | None = None
     discount_percent: Decimal | None = None
@@ -184,8 +184,8 @@ class PricingInput:
             end_time=_time(data["end_time"], "end_time"), package_id=package.strip(), selected_item_ids=tuple(ids),
             guest_count=_nonnegative_int(data.get("guest_count", 0), "guest_count"),
             distance_km=None if data.get("distance_km") is None else _decimal(data["distance_km"], "distance_km"),
-            setup_minutes=_nonnegative_int(data.get("setup_minutes", 0), "setup_minutes"),
-            teardown_minutes=_nonnegative_int(data.get("teardown_minutes", 0), "teardown_minutes"), pricing_region=region,
+            setup_minutes=None if data.get("setup_minutes") is None else _nonnegative_int(data["setup_minutes"], "setup_minutes"),
+            teardown_minutes=None if data.get("teardown_minutes") is None else _nonnegative_int(data["teardown_minutes"], "teardown_minutes"), pricing_region=region,
             requested_at=_datetime(requested_at, "requested_at"),
             discount_percent=None if data.get("discount_percent") is None else _decimal(data["discount_percent"], "discount_percent"),
             discount_amount=None if data.get("discount_amount") is None else _decimal(data["discount_amount"], "discount_amount"),

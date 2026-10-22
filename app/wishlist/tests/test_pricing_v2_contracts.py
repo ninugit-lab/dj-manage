@@ -47,6 +47,20 @@ def test_decimal_distance_has_no_float_leakage_and_region_defaults():
     assert explicit.pricing_region == "BY"
 
 
+@pytest.mark.parametrize("field", ["setup_minutes", "teardown_minutes"])
+def test_omitted_setup_and_teardown_minutes_are_none(field):
+    data = valid_data()
+    data.pop(field)
+    result = PricingInput.from_mapping(data, requested_at=datetime.now(timezone.utc))
+    assert getattr(result, field) is None
+
+
+@pytest.mark.parametrize("field", ["setup_minutes", "teardown_minutes"])
+def test_explicit_zero_setup_and_teardown_minutes_is_preserved(field):
+    result = PricingInput.from_mapping(valid_data(**{field: 0}), requested_at=datetime.now(timezone.utc))
+    assert getattr(result, field) == 0
+
+
 @pytest.mark.parametrize("data,field", [({key: value for key, value in valid_data().items() if key != "event_date"}, "event_date")])
 def test_missing_required_input_uses_typed_error(data, field):
     with pytest.raises(PricingValidationError) as exc:
