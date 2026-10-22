@@ -119,7 +119,7 @@ def _seasons(value: Any) -> tuple[Season, ...]:
             _invalid("seasons", "each season needs identifier, label, start, end, and percent")
         identifier, label = item["identifier"], item["label"]
         if not all(isinstance(v, str) and v.strip() for v in (identifier, label)) or identifier in identifiers:
-            _invalid("seasons", "identifiers and labels must be stable, nonempty, and unique")
+            _invalid("seasons", "identifiers must be stable, nonempty, and unique; labels must be nonempty")
         start, end = _month_day(item["start"], "seasons"), _month_day(item["end"], "seasons")
         start_day = date(2000, *start).timetuple().tm_yday
         end_day = date(2000, *end).timetuple().tm_yday
@@ -168,7 +168,7 @@ def _normalize(field: str, value: Any) -> Any:
             _invalid(field, "must be an uppercase German subdivision code")
         return value
     if field == "rounding_mode":
-        if value not in {"nearest", "up", "down"}:
+        if not isinstance(value, str) or value not in ("nearest", "up", "down"):
             _invalid(field, "must be nearest, up, or down")
         return value
     if field == "seasons":
@@ -176,8 +176,19 @@ def _normalize(field: str, value: Any) -> Any:
     return _tiers(value, field)
 
 
+def validate_profile_config(config: Any) -> NormalizedProfileConfig:
+    """Validate and normalize a complete profile configuration mapping."""
+    if not isinstance(config, Mapping):
+        _invalid("config_json", "profile config must be a mapping")
+    if set(config) != set(_FIELDS):
+        _invalid("config_json", "profile config has missing or unknown keys")
+    return NormalizedProfileConfig(**{field: _normalize(field, config[field]) for field in _FIELDS})
+
+
 def _reference(value: Any, role: str, json_name: str) -> Mapping:
-    if value is None or getattr(value, "id", None) is None or getattr(value, "version", None) is None:
+    identity, version = getattr(value, "id", None), getattr(value, "version", None)
+    if (value is None or isinstance(identity, bool) or not isinstance(identity, (int, str))
+            or not identity or isinstance(version, bool) or not isinstance(version, (int, str)) or not version):
         raise PricingValidationError("reference_error", f"invalid {role} reference")
     payload = getattr(value, json_name, None)
     if not isinstance(payload, Mapping):
@@ -187,25 +198,23 @@ def _reference(value: Any, role: str, json_name: str) -> Mapping:
 
 def resolve_pricing_config(profile: Any, package: Any = None) -> ResolvedPricingConfig:
     config = _reference(profile, "profile", "config_json")
-    if set(config) != set(_FIELDS):
-        _invalid("config_json", "profile config has missing or unknown keys")
-    normalized = NormalizedProfileConfig(**{field: _normalize(field, config[field]) for field in _FIELDS})
+    normalized = validate_profile_config(config)
     overrides = {} if package is None else _reference(package, "package", "overrides_json")
     if not set(overrides).issubset(_FIELDS):
         _invalid("overrides_json", "package overrides contain unknown factors")
     factors = {}
     for field in _FIELDS:
         global_value = getattr(normalized, field)
-        entry = overrides.get(field)
-        if entry is None:
+        if field not in overrides:
             factors[field] = Factor(global_value, "global", profile.version, None, "global profile configuration")
             continue
+        entry = overrides[field]
         if not isinstance(entry, Mapping) or set(entry) - {"mode", "value"} or "mode" not in entry:
             _invalid("overrides_json", "override must be a mode/value mapping")
         mode = entry["mode"]
         has_value = "value" in entry
         if mode == "inherit" and not has_value:
-            factors[field] = Factor(global_value, "global", profile.version, None, "global profile configuration")
+            factors[field] = Factor(global_value, "global", profile.version, package.version, "inherited from global profile configuration")
         elif mode == "override" and has_value:
             factors[field] = Factor(_normalize(field, entry["value"]), "package_override", profile.version, package.version, "package override")
         elif mode == "disabled" and not has_value:

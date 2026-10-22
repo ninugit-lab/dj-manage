@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from wishlist.pricing_v2.config import resolve_pricing_config
+from wishlist.pricing_v2.config import resolve_pricing_config, validate_profile_config
 from wishlist.pricing_v2.input import PricingValidationError
 
 
@@ -85,6 +85,12 @@ def test_defaults_and_validates_german_holiday_region():
     assert_invalid(profile_config(holiday_region="XX"), "holiday_region")
 
 
+def test_season_percent_rejects_boolean():
+    assert_invalid(profile_config(seasons=[
+        {"identifier": "bool", "label": "Bool", "start": "03-01", "end": "03-02", "percent": True},
+    ]), "seasons")
+
+
 @pytest.mark.parametrize("field,value", [("rounding_mode", "ceil"), ("rounding_step", "0"), ("rounding_step", "-0.01")])
 def test_rejects_bad_rounding_configuration(field, value):
     assert_invalid(profile_config(**{field: value}), field)
@@ -146,6 +152,7 @@ def test_package_override_inherit_override_and_disabled_preserve_metadata():
 
     assert result.included_hours.value == Decimal("4")
     assert result.included_hours.source == "global"
+    assert result.included_hours.package_version == 7
     assert result.extra_hour_rate.value == Decimal("99.00")
     assert result.extra_hour_rate.source == "package_override"
     assert result.extra_hour_rate.package_version == 7
@@ -167,6 +174,38 @@ def test_rejects_malformed_package_overrides(overrides):
     with pytest.raises(PricingValidationError) as exc:
         resolve_pricing_config(profile(), package(overrides))
     assert exc.value.code == "invalid_input"
+
+
+def test_explicit_null_override_is_invalid_not_inherit():
+    with pytest.raises(PricingValidationError) as exc:
+        resolve_pricing_config(profile(), package({"included_hours": None}))
+    assert (exc.value.code, exc.value.field) == ("invalid_input", "overrides_json")
+
+
+@pytest.mark.parametrize("value", [[], {}, None, 1])
+def test_unhashable_or_non_string_rounding_mode_is_typed_invalid_input(value):
+    assert_invalid(profile_config(rounding_mode=value), "rounding_mode")
+
+
+@pytest.mark.parametrize("config", [[], None, {"included_hours": "4"}])
+def test_validate_profile_config_rejects_malformed_mapping_and_exact_keys(config):
+    with pytest.raises(PricingValidationError) as exc:
+        validate_profile_config(config)
+    assert exc.value.code == "invalid_input"
+
+
+def test_validate_profile_config_normalizes_exact_complete_mapping():
+    normalized = validate_profile_config(profile_config())
+    assert normalized.included_hours == Decimal("4")
+
+
+@pytest.mark.parametrize("bad_profile", [
+    None, profile(id=None), profile(id=0), profile(version=None), profile(version=0),
+])
+def test_bad_profile_identity_is_reference_error(bad_profile):
+    with pytest.raises(PricingValidationError) as exc:
+        resolve_pricing_config(bad_profile)
+    assert exc.value.code == "reference_error"
 
 
 @pytest.mark.parametrize("bad_profile,bad_package", [
