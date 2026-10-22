@@ -4,6 +4,7 @@
 <div class="page-header"><h2 class="font-display text-2xl text-bright">Globales Preisprofil V2</h2></div>
 <p>Aktiv: {% if active %}{{ active.name }} · Version {{ active.version }}{% else %}Keines{% endif %}</p>
 <p>Neueste Version: {% if latest %}{{ latest.version }} ({{ latest.get_status_display }}){% else %}Keine{% endif %}</p>
+{% if not profiles %}<p class="text-muted">Dies sind editierbare Startwerte, keine importierten oder automatisch aktivierten Preise. Prüfe und passe sie vor dem Speichern an.</p>{% endif %}
 <h3>Versionen</h3>
 <ul>{% for profile in profiles %}<li>{{ profile.name }} · Version {{ profile.version }} · {{ profile.get_status_display }}
   {% if profile.status == 'draft' %}<button type="button" class="activate-profile" data-profile-id="{{ profile.pk }}">Aktivieren</button>{% endif %}
@@ -48,14 +49,24 @@
       expected_version: JSON.parse(data.get('expected_version'))};
   }
   async function send(url, data) {
-    const response = await fetch(url, {method: 'POST', credentials: 'same-origin',
-      headers: {'Content-Type': 'application/json', 'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value},
-      body: JSON.stringify(data)});
-    const result = await response.json();
-    feedback.textContent = response.ok ? 'Erfolgreich.' :
-      (result.error || Object.entries(result.errors || {}).map(([field, message]) => `${field}: ${message}`).join('; '));
-    if (response.ok && url !== '{% url "dj_admin:pricing_v2_validate" %}') location.reload();
-    return result;
+    try {
+      const response = await fetch(url, {method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value},
+        body: JSON.stringify(data)});
+      let result;
+      try { result = await response.json(); }
+      catch (error) {
+        feedback.textContent = 'Der Server hat eine ungültige Antwort gesendet. Bitte später erneut versuchen.';
+        return null;
+      }
+      feedback.textContent = response.ok ? 'Erfolgreich.' :
+        (result.error || Object.entries(result.errors || {}).map(([field, message]) => `${field}: ${message}`).join('; ') || 'Die Anfrage konnte nicht verarbeitet werden.');
+      if (response.ok && url !== '{% url "dj_admin:pricing_v2_validate" %}') location.reload();
+      return result;
+    } catch (error) {
+      feedback.textContent = 'Verbindungsfehler. Bitte Internetverbindung prüfen und erneut versuchen.';
+      return null;
+    }
   }
   function input() {
     try { feedback.textContent = ''; return values(); }
@@ -65,7 +76,7 @@
     const data = input();
     if (data) {
       const result = await send('{% url "dj_admin:pricing_v2_validate" %}', data);
-      preview.textContent = result.valid ? JSON.stringify(result.preview, null, 2) : '';
+      preview.textContent = result && result.valid ? JSON.stringify(result.preview, null, 2) : '';
     }
   });
   form.addEventListener('submit', async event => {

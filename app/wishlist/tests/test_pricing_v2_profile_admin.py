@@ -70,6 +70,38 @@ def test_staff_page_shows_active_draft_versions_and_escaped_config(staff):
 
 
 @pytest.mark.django_db
+def test_empty_profile_page_shows_complete_valid_editable_defaults(staff):
+    from wishlist.pricing_v2.config import _FIELDS, validate_profile_config
+
+    response = staff.get(reverse('dj_admin:pricing_v2_profile'))
+    assert response.status_code == 200
+    defaults = response.context['initial_config']
+    assert set(defaults) == set(_FIELDS)
+    normalized = validate_profile_config(defaults)
+    assert normalized.holiday_region == 'NW'
+    assert normalized.included_hours == 0
+    assert normalized.rounding_mode == 'nearest'
+    assert normalized.rounding_step > 0
+    assert normalized.seasons == normalized.lead_time_tiers == normalized.guest_tiers == ()
+    assert normalized.setup_minutes == 30 and normalized.teardown_minutes == 30
+    assert 'editierbare startwerte' in response.content.decode().lower()
+    assert PricingProfile.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_staff_can_submit_first_draft_using_rendered_defaults(staff):
+    response = staff.get(reverse('dj_admin:pricing_v2_profile'))
+    config = response.context['initial_config']
+    created = post(staff, 'pricing_v2_profile', {
+        'name': 'Global', 'config_json': config,
+        'expected_profile_id': None, 'expected_version': None,
+    })
+    assert created.status_code == 201
+    first = PricingProfile.objects.get()
+    assert first.version == 1 and first.status == 'draft'
+
+
+@pytest.mark.django_db
 def test_save_clones_active_as_draft_without_mutating_it(staff):
     active = profile()
     config = copy.deepcopy(CONFIG)

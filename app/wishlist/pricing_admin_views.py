@@ -17,6 +17,15 @@ staff_only = user_passes_test(
     lambda user: user.is_active and user.is_staff, login_url='/dj-admin/login/',
 )
 STALE = 'Die Profilversion ist veraltet. Bitte Seite neu laden.'
+INITIAL_CONFIG = {
+    'included_hours': '0', 'extra_hour_rate': '0',
+    'setup_minutes': 30, 'teardown_minutes': 30,
+    'setup_teardown_hour_rate': '0', 'included_km': '0', 'km_rate': '0',
+    'saturday_percent': '0', 'sunday_percent': '0', 'holiday_percent': '0',
+    'holiday_region': 'NW', 'seasons': [], 'lead_time_tiers': [],
+    'guest_tiers': [], 'minimum_price': '0', 'rounding_mode': 'nearest',
+    'rounding_step': '1',
+}
 
 
 def _data(request):
@@ -60,13 +69,14 @@ def profile_page(request):
         active = next((profile for profile in profiles if profile.status == 'active'), None)
         latest = profiles[0] if profiles else None
         source = latest or active
-        config = source.config_json if source else {}
+        config = source.config_json if source else INITIAL_CONFIG
         fields = [{'key': key, 'value': json.dumps(config.get(key, []), ensure_ascii=False)
                    if key in ('seasons', 'lead_time_tiers', 'guest_tiers') else config.get(key, '')}
                   for key in _FIELDS]
         return render(request, 'dj_admin/pricing_v2/profile.html', {
             'profiles': profiles, 'active': active, 'latest': latest,
             'fields': fields, 'name': source.name if source else 'Global',
+            'initial_config': config,
         })
     data = _data(request)
     if data is None:
