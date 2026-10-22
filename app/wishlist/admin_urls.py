@@ -1,9 +1,12 @@
 from django.urls import path
-from . import admin_views
+from . import admin_views, pricing_admin_views
 
 app_name = 'dj_admin'
 
 urlpatterns = [
+    path('pricing-v2/profile/', pricing_admin_views.profile_page, name='pricing_v2_profile'),
+    path('api/pricing-v2/profile/validate/', pricing_admin_views.validate_profile, name='pricing_v2_validate'),
+    path('api/pricing-v2/profile/activate/', pricing_admin_views.activate_profile, name='pricing_v2_activate'),
     path('', admin_views.admin_dashboard, name='dashboard'),
 
     # Wishlist Live View

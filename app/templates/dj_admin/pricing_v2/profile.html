@@ -1,0 +1,87 @@
+{% extends "dj_admin/base.html" %}
+{% block title %}Preisprofil V2 — DJ Admin{% endblock %}
+{% block content %}
+<div class="page-header"><h2 class="font-display text-2xl text-bright">Globales Preisprofil V2</h2></div>
+<p>Aktiv: {% if active %}{{ active.name }} · Version {{ active.version }}{% else %}Keines{% endif %}</p>
+<p>Neueste Version: {% if latest %}{{ latest.version }} ({{ latest.get_status_display }}){% else %}Keine{% endif %}</p>
+<h3>Versionen</h3>
+<ul>{% for profile in profiles %}<li>{{ profile.name }} · Version {{ profile.version }} · {{ profile.get_status_display }}
+  {% if profile.status == 'draft' %}<button type="button" class="activate-profile" data-profile-id="{{ profile.pk }}">Aktivieren</button>{% endif %}
+  </li>{% empty %}<li>Noch keine Versionen vorhanden.</li>{% endfor %}</ul>
+<form id="profile-form" method="post" action="{% url 'dj_admin:pricing_v2_profile' %}">
+  {% csrf_token %}
+  <input type="hidden" name="expected_profile_id" value="{% if latest %}{{ latest.pk }}{% else %}null{% endif %}">
+  <input type="hidden" name="expected_version" value="{% if latest %}{{ latest.version }}{% else %}null{% endif %}">
+  <label for="profile-name">Profilname</label><input id="profile-name" name="name" value="{{ name }}" required maxlength="200">
+  {% for field in fields %}
+  <div class="mb-3">
+    <label for="profile-{{ field.key }}">{{ field.key }}</label>
+    {% if field.key == 'seasons' or field.key == 'lead_time_tiers' or field.key == 'guest_tiers' %}
+    <textarea id="profile-{{ field.key }}" name="{{ field.key }}" class="field-input" required>{{ field.value }}</textarea>
+    {% else %}<input id="profile-{{ field.key }}" name="{{ field.key }}" class="field-input" value="{{ field.value }}" required>{% endif %}
+  </div>
+  {% endfor %}
+  <button type="button" id="preview-profile">Validierung prüfen</button>
+  <button type="submit">Als neue Version speichern</button>
+</form>
+<div id="profile-feedback" role="status" aria-live="polite"></div>
+<pre id="profile-preview"></pre>
+<script>
+(() => {
+  const form = document.getElementById('profile-form');
+  const feedback = document.getElementById('profile-feedback');
+  const preview = document.getElementById('profile-preview');
+  const fields = ['included_hours', 'extra_hour_rate', 'setup_minutes', 'teardown_minutes',
+    'setup_teardown_hour_rate', 'included_km', 'km_rate', 'saturday_percent',
+    'sunday_percent', 'holiday_percent', 'holiday_region', 'seasons',
+    'lead_time_tiers', 'guest_tiers', 'minimum_price', 'rounding_mode', 'rounding_step'];
+  function values() {
+    const data = new FormData(form);
+    const config = {};
+    for (const field of fields) {
+      const value = data.get(field);
+      config[field] = ['seasons', 'lead_time_tiers', 'guest_tiers', 'setup_minutes', 'teardown_minutes'].includes(field)
+        ? JSON.parse(value) : value;
+    }
+    return {name: data.get('name'), config_json: config,
+      expected_profile_id: JSON.parse(data.get('expected_profile_id')),
+      expected_version: JSON.parse(data.get('expected_version'))};
+  }
+  async function send(url, data) {
+    const response = await fetch(url, {method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value},
+      body: JSON.stringify(data)});
+    const result = await response.json();
+    feedback.textContent = response.ok ? 'Erfolgreich.' :
+      (result.error || Object.entries(result.errors || {}).map(([field, message]) => `${field}: ${message}`).join('; '));
+    if (response.ok && url !== '{% url "dj_admin:pricing_v2_validate" %}') location.reload();
+    return result;
+  }
+  function input() {
+    try { feedback.textContent = ''; return values(); }
+    catch (error) { feedback.textContent = 'Ungültiges JSON in Stufen, Saisons oder Minuten.'; return null; }
+  }
+  document.getElementById('preview-profile').addEventListener('click', async () => {
+    const data = input();
+    if (data) {
+      const result = await send('{% url "dj_admin:pricing_v2_validate" %}', data);
+      preview.textContent = result.valid ? JSON.stringify(result.preview, null, 2) : '';
+    }
+  });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const data = input();
+    if (data) await send(form.action, data);
+  });
+  for (const button of document.querySelectorAll('.activate-profile')) {
+    button.addEventListener('click', async () => {
+      await send('{% url "dj_admin:pricing_v2_activate" %}', {
+        profile_id: Number(button.dataset.profileId),
+        expected_profile_id: {% if active %}{{ active.pk }}{% else %}null{% endif %},
+        expected_version: {% if active %}{{ active.version }}{% else %}null{% endif %}
+      });
+    });
+  }
+})();
+</script>
+{% endblock %}
