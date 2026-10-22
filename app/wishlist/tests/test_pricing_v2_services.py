@@ -270,6 +270,28 @@ def test_opted_in_estimate_can_set_total_for_new_event(stock):
     assert event.total_price == Decimal("150.00")
 
 
+@pytest.mark.parametrize("existing_draft", [False, True])
+def test_send_failed_offer_protects_event_total_for_fresh_and_reused_drafts(stock, existing_draft):
+    event = Event.objects.create(name="Party", date=date(2026, 12, 2), location="X",
+                                 total_price=Decimal("777"))
+    result = calculate_payload(payload(stock), public=True)
+    if existing_draft:
+        prior = save_revision(event, result, kind="draft")
+    PriceCalculationRevision.objects.create(
+        event=event, kind="offer", status=PriceCalculationRevision.Status.SEND_FAILED,
+        revision_number=2 if existing_draft else 1, engine_version="2",
+        gross_total=Decimal("888"), input_json={}, result_json={"gross_total": "888.00"})
+
+    revision = save_revision(event, result, kind="draft", update_event_total=True)
+
+    event.refresh_from_db()
+    assert event.total_price == Decimal("777")
+    assert revision.gross_total == Decimal("150.00")
+    assert event.price_revisions.filter(kind="draft").count() == (1 if existing_draft else 1)
+    if existing_draft:
+        assert revision.pk == prior.pk
+
+
 def test_new_snapshot_and_actor_produce_new_draft_or_offer_revision(stock):
     event = Event.objects.create(name="Party", date=date(2026, 12, 2), location="X")
     actor = get_user_model().objects.create_user(username="first", password="x")

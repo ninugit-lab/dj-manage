@@ -438,7 +438,8 @@ def save_revision(event, result, *, kind, actor=None, legacy_total=None, update_
                                                    PriceCalculationRevision.Kind.DRAFT):
                     released = PriceCalculationRevision.objects.filter(
                         event=locked, status__in=(PriceCalculationRevision.Status.RELEASED,
-                                                 PriceCalculationRevision.Status.SENT)).exists()
+                                                 PriceCalculationRevision.Status.SENT,
+                                                 PriceCalculationRevision.Status.SEND_FAILED)).exists()
                     if not released:
                         Event.objects.filter(pk=locked.pk).update(total_price=existing.gross_total)
                         event.total_price = existing.gross_total
@@ -460,7 +461,8 @@ def save_revision(event, result, *, kind, actor=None, legacy_total=None, update_
         if update_event_total and kind in (PriceCalculationRevision.Kind.ESTIMATE, PriceCalculationRevision.Kind.DRAFT):
             released = PriceCalculationRevision.objects.filter(
                 event=locked, status__in=(PriceCalculationRevision.Status.RELEASED,
-                                         PriceCalculationRevision.Status.SENT)).exists()
+                                         PriceCalculationRevision.Status.SENT,
+                                         PriceCalculationRevision.Status.SEND_FAILED)).exists()
             if not released:
                 Event.objects.filter(pk=locked.pk).update(total_price=result.gross_total)
                 event.total_price = result.gross_total
