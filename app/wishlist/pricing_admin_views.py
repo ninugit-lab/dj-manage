@@ -17,6 +17,7 @@ from .models import (AppConfig, PriceCalculationRevision, PriceItem, PricingForm
 from .pricing_v2.config import _FIELDS, resolve_pricing_config, validate_profile_config
 from .pricing_v2.input import PricingValidationError
 from .pricing_v2.workflow import BLOCK_TYPES, validate_workflow
+from .pricing_v2.activation import activate_v2, rollback_to_legacy, validate_activation
 
 
 staff_only = user_passes_test(
@@ -882,3 +883,42 @@ def test_workflow(request):
     output['difference'] = (str(Decimal(output['v2']['gross_total']) - Decimal(output['v1']['gross_total']))
                             if 'gross_total' in output['v1'] and 'gross_total' in output['v2'] else None)
     return JsonResponse(output)
+
+
+@staff_only
+@require_http_methods(['GET', 'POST'])
+def activation_page(request):
+    report = validate_activation()
+    if request.method == 'POST':
+        action = _body(request)
+        if action is None:
+            return _bad_body()
+        try:
+            config = activate_v2(request.user) if action.get('action') == 'activate' else rollback_to_legacy(request.user) if action.get('action') == 'rollback' else None
+            if config is None:
+                return _error('action', 'Unbekannte Aktion.')
+        except Exception as exc:
+            return JsonResponse({'errors': {'activation': str(exc)}, 'report': report.to_dict()}, status=400)
+        return JsonResponse({'mode': config.pricing_engine_mode, 'report': validate_activation().to_dict()})
+    return render(request, 'dj_admin/pricing_v2/workflow.html', {
+        'workflows': PricingWorkflow.objects.order_by('-pk'), 'selected': None, 'blocks': [],
+        'block_types': BLOCK_TYPES, 'packages': PricingPackage.objects.filter(is_active=True),
+        'items': PriceItem.objects.filter(is_active=True), 'rules': PricingRule.objects.filter(is_active=True),
+        'formulas': PricingFormula.objects.filter(is_active=True), 'profile': PricingProfile.objects.filter(status='active').first(),
+        'package': None, 'factors': [], 'activation_report': report.to_dict(),
+    })
+
+
+@staff_only
+@require_POST
+def activation_api(request):
+    data = _body(request)
+    if data is None:
+        return _bad_body()
+    try:
+        config = activate_v2(request.user) if data.get('action') == 'activate' else rollback_to_legacy(request.user) if data.get('action') == 'rollback' else None
+        if config is None:
+            return _error('action', 'Unbekannte Aktion.')
+        return JsonResponse({'mode': config.pricing_engine_mode, 'report': validate_activation().to_dict()})
+    except Exception as exc:
+        return JsonResponse({'errors': {'activation': str(exc)}, 'report': validate_activation().to_dict()}, status=400)

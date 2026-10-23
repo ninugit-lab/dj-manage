@@ -2,6 +2,11 @@
 {% block title %}Workflow V2{% endblock %}
 {% block content %}
 <h2>Workflow-Builder V2</h2>
+{% if activation_report %}<section id="activation-gate"><h3>Aktivierungs-Gate</h3>
+<ul>{% for check in activation_report.checks %}<li class="check-{{ check.ok|yesno:'ok,error' }}">{{ check.name }}: {{ check.message }}</li>{% endfor %}</ul>
+{% for warning in activation_report.warnings %}<p class="warning">Warnung: {{ warning.message }}</p>{% endfor %}
+<button type="button" id="activate-v2" {% if not activation_report.ok %}disabled{% endif %}>V2 aktivieren</button>
+<button type="button" id="rollback-v2">Auf Legacy zurückstellen</button></section>{% endif %}
 <nav><a href="{% url 'dj_admin:pricing_v2_profile' %}">Profile</a> · <a href="{% url 'dj_admin:pricing_v2_packages' %}">Pakete</a> · <a href="{% url 'dj_admin:pricing_v2_components' %}">Komponenten</a> · <a href="{% url 'dj_admin:workflow_builder' %}">Legacy-Workflow</a></nav>
 <form method="get"><label>Workflow <select name="workflow_id"><option value="">Neu</option>{% for w in workflows %}<option value="{{ w.pk }}" {% if selected.pk == w.pk %}selected{% endif %}>{{ w.name }} · V{{ w.version }}{% if w.is_default %} · Standard{% endif %}</option>{% endfor %}</select></label><button>Auswählen</button></form>
 <form id="editor" data-id="{{ selected.pk|default:'' }}" data-version="{{ selected.version|default:0 }}">
@@ -27,6 +32,11 @@ const feedback = document.getElementById('feedback'), comparison = document.getE
 const token = editor.querySelector('[name=csrfmiddlewaretoken]').value;
 const base = '{% url "dj_admin:pricing_v2_workflows" %}';
 const urls = {validate: '{% url "dj_admin:pricing_v2_workflow_validate" %}', test: '{% url "dj_admin:pricing_v2_workflow_test" %}'};
+{% if activation_report %}
+async function switchMode(action) { const response = await fetch('{% url "dj_admin:pricing_v2_activation_api" %}', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':token}, body:JSON.stringify({action})}); const result = await response.json(); feedback.textContent = response.ok ? 'Modus: ' + result.mode : JSON.stringify(result.errors || result); }
+document.getElementById('activate-v2').addEventListener('click', () => switchMode('activate'));
+document.getElementById('rollback-v2').addEventListener('click', () => switchMode('rollback'));
+{% endif %}
 function row(type, config = '{}') {
   const li = document.createElement('li'); li.dataset.type = type;
   const label = document.createElement('span'); label.textContent = type; li.append(label, ' ');
