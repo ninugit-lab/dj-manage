@@ -1,5 +1,11 @@
 # Deployment — dj-redoo.de Stack
 
+> **Pricing V2:** Der Feature-Branch ist nur lokal geprüft, nicht zur Produktion
+> freigegeben. Vergleich, Repricing, Referenzfall-Gate, Aktivierung und reine
+> Modus-Rücknahme stehen im [Pricing-V2-Runbook](docs/handbook/pricing-v2.md).
+> Die folgenden allgemeinen Deploy-Schritte sind **keine** Genehmigung für
+> Push, Merge, Produktions-Apply oder Aktivierung von V2.
+
 ## Voraussetzungen
 - Zielserver: Ubuntu 24.04, Docker + Compose-Plugin installiert
 - Domain `dj-redoo.de` bei Cloudflare (Nameserver auf CF)

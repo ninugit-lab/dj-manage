@@ -87,7 +87,7 @@ def _references(workflow):
             continue
         key, collection = mapping[block["type"]]
         value = config.get(key)
-        values = value if block["type"] in ("items", "rules") else [value]
+        values = (value or []) if block["type"] in ("items", "rules") else [value]
         refs[collection].update(str(v) for v in values if v is not None)
     return refs
 
@@ -195,10 +195,10 @@ def validate_activation(profile=None, workflow=None, reference_cases=None) -> Ac
     if workflow:
         try:
             validate_workflow(_normalized_workflow(workflow), {
-                "packages": {str(p.pk): {"is_active": p.is_active} for p in PricingPackage.objects.all()},
-                "items": {str(i.pk): {"is_active": i.is_active} for i in PriceItem.objects.all()},
-                "rules": {str(r.pk): {"is_active": r.is_active} for r in PricingRule.objects.all()},
-                "formulas": {str(f.pk): {"is_active": f.is_active} for f in PricingFormula.objects.all()},
+                "packages": {key: {"is_active": p.is_active} for p in PricingPackage.objects.all() for key in (p.pk, str(p.pk))},
+                "items": {key: {"is_active": i.is_active} for i in PriceItem.objects.all() for key in (i.pk, str(i.pk))},
+                "rules": {key: {"is_active": r.is_active} for r in PricingRule.objects.all() for key in (r.pk, str(r.pk))},
+                "formulas": {key: {"is_active": f.is_active} for f in PricingFormula.objects.all() for key in (f.pk, str(f.pk))},
             })
             _check(checks, errors, "workflow_valid", True, "Workflow ist gültig.")
         except Exception as exc:
