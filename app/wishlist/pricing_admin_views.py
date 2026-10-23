@@ -642,7 +642,12 @@ def _checked_workflow(value):
 
 
 def _workflow_error(exc):
-    return _error('workflow_json', 'Ungültiger Workflow oder fehlende/inaktive Referenz.')
+    messages = {
+        'reference_error': 'Fehlende oder inaktive Workflow-Referenz.',
+        'invalid_input': 'Workflow enthält ungültige, doppelte oder falsch angeordnete Blöcke.',
+    }
+    return _error('workflow_json', messages.get(getattr(exc, 'code', None),
+                                                'Workflow konnte nicht validiert werden.'))
 
 
 def _workflow_input(request):
@@ -785,6 +790,14 @@ def activate_workflow(request, pk):
         with transaction.atomic():
             target = get_object_or_404(PricingWorkflow.objects.select_for_update(), pk=pk)
             if type(data.get('expected_version')) is not int or data['expected_version'] != target.version:
+                return JsonResponse({'error': WORKFLOW_STALE}, status=409)
+            # Lock the complete family before touching the active default. This
+            # makes an editor holding an older family member stale even when its
+            # row's expected_version still matches.
+            family = list(PricingWorkflow.objects.select_for_update().filter(
+                name=target.name).order_by('version', 'pk'))
+            latest = family[-1] if family else target
+            if latest.pk != target.pk or latest.version != target.version:
                 return JsonResponse({'error': WORKFLOW_STALE}, status=409)
             if target.is_active and not target.is_default:
                 return _error('workflow_id', 'Aktiven Workflow zuerst als neue Version klonen.')

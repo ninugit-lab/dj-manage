@@ -113,9 +113,38 @@ def test_clone_version_stale_edit_and_activation_gate(catalog, staff):
     assert baseline.workflow_json == blocks(catalog) and baseline.is_active
     clone = post(staff, 'pricing_v2_workflow_clone', {'expected_version': 2}, pk=next_row.pk)
     assert clone.status_code == 201 and clone.json()['version'] == 3
-    assert post(staff, 'pricing_v2_workflow_activate', {'expected_version': 2}, pk=next_row.pk).status_code == 200
+    assert post(staff, 'pricing_v2_workflow_activate', {'expected_version': 2}, pk=next_row.pk).status_code == 409
+    assert post(staff, 'pricing_v2_workflow_activate', {'expected_version': 3},
+                pk=clone.json()['id']).status_code == 200
     baseline.refresh_from_db()
     assert not baseline.is_default
+    assert PricingWorkflow.objects.filter(is_active=True, is_default=True).count() == 1
+
+
+@pytest.mark.django_db
+def test_two_editors_old_activation_is_stale_but_latest_can_activate(catalog, staff):
+    """Simulate two editor tabs; SQLite cannot provide a useful row-lock race."""
+    old = PricingWorkflow.objects.create(name='Concurrent', version=1, is_active=True,
+        is_default=True, workflow_json=blocks(catalog))
+    latest = PricingWorkflow.objects.create(name='Concurrent', version=2, is_active=False,
+        is_default=False, workflow_json=blocks(catalog))
+
+    # Editor A opened V1, while editor B created V2 from the same family.
+    stale = post(staff, 'pricing_v2_workflow_activate', {'expected_version': 1}, pk=old.pk)
+    assert stale.status_code == 409
+    assert stale.json()['error'] == 'Die Workflow-Version ist veraltet. Bitte neu laden.'
+    old.refresh_from_db()
+    latest.refresh_from_db()
+    assert old.is_active and old.is_default
+    assert not latest.is_active and not latest.is_default
+
+    # The editor holding the family head can still activate it successfully.
+    activated = post(staff, 'pricing_v2_workflow_activate', {'expected_version': 2}, pk=latest.pk)
+    assert activated.status_code == 200
+    old.refresh_from_db()
+    latest.refresh_from_db()
+    assert old.is_active and not old.is_default
+    assert latest.is_active and latest.is_default
     assert PricingWorkflow.objects.filter(is_active=True, is_default=True).count() == 1
 
 
