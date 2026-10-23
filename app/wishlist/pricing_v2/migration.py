@@ -16,7 +16,7 @@ from wishlist.price_engine import PriceEngine
 
 from .input import PricingValidationError
 from .result import PricingResult
-from .services import calculate_payload, save_revision
+from .services import calculate_payload
 
 
 FROZEN_REQUESTED_AT = datetime(2000, 1, 1, tzinfo=timezone.utc)
@@ -79,9 +79,19 @@ def _payload(event, workflow):
 
 
 def _key(event, v1_input, v2_input, profile, workflow):
+    frozen_inputs = v2_input.get("inputs", {})
+    frozen_config = frozen_inputs.get("resolved_config", {})
+    frozen_catalog = frozen_inputs.get("catalog_snapshot", {})
     frozen = {"event_id": event.pk, "v1": v1_input, "v2": v2_input,
-              "profile": [profile.pk, profile.version], "workflow": [workflow.pk, workflow.version]}
+              "profile": [profile.pk, profile.version], "workflow": [workflow.pk, workflow.version],
+              "frozen_config_hash": _content_hash(frozen_config),
+              "frozen_catalog_hash": _content_hash(frozen_catalog)}
     encoded = json.dumps(frozen, sort_keys=True, default=str, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _content_hash(value):
+    encoded = json.dumps(value, sort_keys=True, default=str, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -97,6 +107,13 @@ def compare_event(event, profile: PricingProfile, workflow: PricingWorkflow, *, 
     v2 = None
     diagnostics: dict[str, Any] = {}
     try:
+        current_profile = PricingProfile.objects.filter(
+            pk=profile.pk, status=PricingProfile.Status.ACTIVE).first()
+        current_workflow = PricingWorkflow.objects.filter(
+            pk=workflow.pk, is_active=True, is_default=True).first()
+        if (current_profile is None or current_profile.version != profile.version or
+                current_workflow is None or current_workflow.version != workflow.version):
+            raise PricingValidationError("stale_reference", "supplied pricing references are not current", "pricing_reference")
         calc = event.price_calculation
         v1_result = PriceEngine.calculate_workflow(
             event, workflow_id=workflow.pk,
@@ -116,13 +133,14 @@ def compare_event(event, profile: PricingProfile, workflow: PricingWorkflow, *, 
         v2 = v2_result.gross_total
         v2_dict = v2_result.to_dict()
         v2_dict["inputs"].pop("requested_at", None)
-        key = _key(event, {"workflow": workflow.pk, "calc": payload}, v2_dict, profile, workflow)
+        key_payload = {name: value for name, value in payload.items() if name != "requested_at"}
+        key = _key(event, {"workflow": workflow.pk, "calc": key_payload}, v2_dict, profile, workflow)
         status = "ok"
     except Exception as exc:
         if isinstance(exc, PricingValidationError):
-            diagnostics = {"code": exc.code, "field": exc.field, "message": exc.message}
+            diagnostics = {"code": exc.code, "field": exc.field}
         else:
-            diagnostics = {"code": "internal_error", "message": str(exc)}
+            diagnostics = {"code": "internal_error"}
         key = hashlib.sha256(f"{event.pk}:{profile.pk}:{profile.version}:{workflow.pk}:{workflow.version}".encode()).hexdigest()
         status = "error"
 
@@ -130,24 +148,43 @@ def compare_event(event, profile: PricingProfile, workflow: PricingWorkflow, *, 
     revision = None
     if persist:
         with transaction.atomic():
+            locked = Event.objects.select_for_update().get(pk=event.pk)
             existing = PriceCalculationRevision.objects.filter(
-                event=event, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
-                input_json__comparison_key=key,
+                event=locked, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
+                comparison_key=key,
             ).first()
             if existing:
                 revision = existing
             elif status == "ok":
-                revision = save_revision(event, v2_result, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
-                                         actor=actor, legacy_total=v1)
-                revision.input_json = {**revision.input_json, "comparison_key": key, "source": "migration"}
-                revision.save(update_fields=["input_json"])
+                serialized = v2_result.to_dict()
+                inputs = {**serialized["inputs"]}
+                inputs.pop("requested_at", None)
+                inputs["comparison_key"] = key
+                serialized["inputs"] = inputs
+                previous = PriceCalculationRevision.objects.filter(event=locked).order_by("-revision_number").first()
+                revision = PriceCalculationRevision.objects.create(
+                    event=locked, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
+                    status=PriceCalculationRevision.Status.DRAFT,
+                    revision_number=previous.revision_number + 1 if previous else 1,
+                    previous_revision=previous, engine_version=str(v2_result.engine_version),
+                    profile_id_snapshot=inputs.get("profile_id"), profile_version=v2_result.profile_version,
+                    package_id_snapshot=None if inputs["package_snapshot_id"] == "individual-items" else int(inputs["package_snapshot_id"]),
+                    package_version=None if inputs["package_snapshot_id"] == "individual-items" else v2_result.package_version,
+                    workflow_id_snapshot=inputs.get("workflow_id"), workflow_version=v2_result.workflow_version,
+                    comparison_key=key, input_json=inputs, result_json=serialized,
+                    gross_total=v2_result.gross_total, legacy_total=v1,
+                    difference=v2_result.gross_total - v1, created_by=actor,
+                )
             else:
                 revision = PriceCalculationRevision.objects.create(
-                    event=event, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
+                    event=locked, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
                     status=PriceCalculationRevision.Status.DRAFT,
-                    revision_number=(PriceCalculationRevision.objects.filter(event=event).order_by("-revision_number").first().revision_number + 1
-                                     if PriceCalculationRevision.objects.filter(event=event).exists() else 1),
-                    engine_version="2", input_json={"comparison_key": key, "source": "migration"},
+                    revision_number=(PriceCalculationRevision.objects.filter(event=locked).order_by("-revision_number").first().revision_number + 1
+                                     if PriceCalculationRevision.objects.filter(event=locked).exists() else 1),
+                    engine_version="2", comparison_key=key,
+                    input_json={"comparison_key": key, "source": "migration",
+                                "profile_id": profile.pk, "profile_version": profile.version,
+                                "workflow_id": workflow.pk, "workflow_version": workflow.version},
                     result_json={"diagnostic": diagnostics}, gross_total=v1 or Decimal("0"),
                     legacy_total=v1, difference=None, created_by=actor,
                 )

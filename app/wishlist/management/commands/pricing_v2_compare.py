@@ -29,8 +29,8 @@ class Command(BaseCommand):
         for event in events:
             try:
                 row = compare_event(event, profile, workflow, persist=options["apply"])
-            except Exception as exc:
-                row = {"event_id": event.pk, "status": "error", "diagnostics": {"code": "internal_error", "message": str(exc)}}
+            except Exception:
+                row = {"event_id": event.pk, "status": "error", "diagnostics": {"code": "internal_error"}}
             rows.append(row.to_dict() if hasattr(row, "to_dict") else row)
         report = {"summary": {"count": len(rows), "applied": bool(options["apply"])}, "rows": rows}
         output = json.dumps(report, sort_keys=True, indent=2)

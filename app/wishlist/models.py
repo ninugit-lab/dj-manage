@@ -528,6 +528,7 @@ class PriceCalculationRevision(models.Model):
     package_version = models.PositiveIntegerField(null=True, blank=True)
     workflow_id_snapshot = models.PositiveBigIntegerField(null=True, blank=True)
     workflow_version = models.PositiveIntegerField(null=True, blank=True)
+    comparison_key = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     input_json = models.JSONField(default=dict)
     result_json = models.JSONField(default=dict)
     email_context = models.JSONField(default=dict, blank=True)
@@ -586,6 +587,11 @@ class PriceCalculationRevision(models.Model):
                 check=(models.Q(workflow_version__isnull=True)
                        | models.Q(workflow_version__gt=0)),
                 name='price_workflow_version_positive',
+            ),
+            models.UniqueConstraint(
+                fields=['event', 'kind', 'comparison_key'],
+                condition=models.Q(comparison_key__isnull=False),
+                name='unique_migration_comparison_key',
             ),
         ]
 
