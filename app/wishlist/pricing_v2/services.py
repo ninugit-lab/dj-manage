@@ -485,3 +485,17 @@ def save_revision(event, result, *, kind, actor=None, legacy_total=None, update_
                 Event.objects.filter(pk=locked.pk).update(total_price=result.gross_total)
                 event.total_price = result.gross_total
         return revision
+
+
+def update_released_event_total(event, total):
+    """Persist the approved total only while a released offer exists."""
+    with transaction.atomic():
+        locked = Event.objects.select_for_update().get(pk=event.pk)
+        if not PriceCalculationRevision.objects.filter(
+                event=locked, status__in=(PriceCalculationRevision.Status.RELEASED,
+                                          PriceCalculationRevision.Status.SENT,
+                                          PriceCalculationRevision.Status.SEND_FAILED)).exists():
+            raise PricingValidationError('invalid_input', 'a released offer is required', 'offer')
+        Event.objects.filter(pk=locked.pk).update(total_price=total)
+        event.total_price = total
+        return event

@@ -124,9 +124,9 @@
     {% if event and pricing_v2 %}
     <details class="card" open>
       <summary class="card-title">Preis &amp; Angebot</summary>
-      <p>Original: {{ event.total_price|default:'—' }} €</p>
+      <p>Original: {{ original_estimate.gross_total|default:'—' }} €</p>
       <p>Aktueller Entwurf: {{ current_draft.gross_total|default:'—' }} €</p>
-      {% if current_draft %}<p>Differenz: {{ current_draft.difference|default:'—' }} €</p>{% endif %}
+      {% if current_draft %}<p>Differenz: {{ current_difference|default:'—' }} €</p>{% endif %}
       <ul>{% for revision in price_revisions %}<li>{{ revision.get_kind_display }} #{{ revision.revision_number }}: {{ revision.gross_total }} €</li>{% empty %}<li>Noch keine Preis-Historie.</li>{% endfor %}</ul>
       <form method="post" action="{% url 'dj_admin:event_price_recalculate' pk=event.pk %}">{% csrf_token %}<button class="btn btn-secondary btn-sm">Neu berechnen</button></form>
       <form method="post" action="{% url 'dj_admin:event_price_release' pk=event.pk %}">{% csrf_token %}<button class="btn btn-primary btn-sm">Angebot freigeben</button></form>

@@ -129,6 +129,8 @@ def event_edit(request, pk):
     offer = getattr(event, 'offer', None)
     calc = getattr(event, 'price_calculation', None)
     from .models import PriceCalculationRevision
+    estimate = event.price_revisions.filter(kind=PriceCalculationRevision.Kind.ESTIMATE).order_by('revision_number').first()
+    current_draft = event.price_revisions.filter(kind=PriceCalculationRevision.Kind.DRAFT, status=PriceCalculationRevision.Status.DRAFT).order_by('-revision_number').first()
     return render(request, 'dj_admin/event_form.html', {
         'event': event, 'config': config, 'price_items': price_items,
         'form_error': form_error,
@@ -144,7 +146,9 @@ def event_edit(request, pk):
         'selected_workflow_id': calc.workflow_id if calc else None,
         'pricing_v2': config.pricing_engine_mode == 'v2',
         'price_revisions': event.price_revisions.order_by('-revision_number'),
-        'current_draft': event.price_revisions.filter(kind='draft', status='draft').order_by('-revision_number').first(),
+        'current_draft': current_draft,
+        'original_estimate': estimate,
+        'current_difference': (None if not estimate or not current_draft else current_draft.gross_total - estimate.gross_total),
         'released_offer': event.price_revisions.filter(kind='offer', status__in=['released', 'sent', 'send_failed']).order_by('-revision_number').first(),
     })
 
