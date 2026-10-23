@@ -1,0 +1,80 @@
+{% extends 'dj_admin/base.html' %}
+{% block title %}Workflow V2{% endblock %}
+{% block content %}
+<h2>Workflow-Builder V2</h2>
+<nav><a href="{% url 'dj_admin:pricing_v2_profile' %}">Profile</a> · <a href="{% url 'dj_admin:pricing_v2_packages' %}">Pakete</a> · <a href="{% url 'dj_admin:pricing_v2_components' %}">Komponenten</a> · <a href="{% url 'dj_admin:workflow_builder' %}">Legacy-Workflow</a></nav>
+<form method="get"><label>Workflow <select name="workflow_id"><option value="">Neu</option>{% for w in workflows %}<option value="{{ w.pk }}" {% if selected.pk == w.pk %}selected{% endif %}>{{ w.name }} · V{{ w.version }}{% if w.is_default %} · Standard{% endif %}</option>{% endfor %}</select></label><button>Auswählen</button></form>
+<form id="editor" data-id="{{ selected.pk|default:'' }}" data-version="{{ selected.version|default:0 }}">
+{% csrf_token %}
+<label>Name <input name="name" value="{{ selected.name|default:'' }}" required></label>
+<label>Block hinzufügen <select id="block-type">{% for type in block_types %}<option value="{{ type }}">{{ type }}</option>{% endfor %}</select></label>
+<button type="button" id="add-block">Hinzufügen</button>
+<ol id="canvas">{% for block in blocks %}<li data-type="{{ block.type }}"><span>{{ block.type }}</span> <label>Konfiguration (JSON) <input class="block-config" value="{{ block.config_json }}" aria-label="{{ block.type }} Konfiguration"></label><button type="button" data-action="up" aria-label="Nach oben">↑</button><button type="button" data-action="down" aria-label="Nach unten">↓</button><button type="button" data-action="remove">Entfernen</button></li>{% endfor %}</ol>
+<button type="submit">Neue Version speichern</button><button type="button" id="validate">Prüfen</button>{% if selected %}<button type="button" id="clone">Klonen</button><button type="button" id="activate">Aktivieren</button>{% endif %}
+</form>
+<h3>Effektive Quellen</h3>{% if profile %}<p>Profil {{ profile.name }} · V{{ profile.version }}{% if package %} · Paket {{ package.name }} · V{{ package.version }}{% endif %}</p>{% endif %}
+<dl>{% for factor in factors %}<dt>{{ factor.key }}</dt><dd>{{ factor.value }} · {{ factor.source }}</dd>{% endfor %}</dl>
+<h3>Testlabor (ohne Speichern)</h3>
+<form id="lab">{% csrf_token %}
+<label>Datum <input name="event_date" type="date" required></label><label>Start <input name="start_time" type="time" required></label><label>Ende <input name="end_time" type="time" required></label>
+<label>Paket <select name="package_id"><option value="">Einzelne Posten</option>{% for p in packages %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}</select></label>
+<fieldset><legend>Posten</legend>{% for i in items %}<label><input type="checkbox" name="selected_item_ids" value="{{ i.pk }}">{{ i.name }}</label>{% endfor %}</fieldset>
+<label>Gäste <input name="guest_count" type="number" min="0" value="0"></label><label>Distanz (km) <input name="distance_km" type="number" min="0" step="0.01" value="0"></label><button type="submit">V1 / V2 vergleichen</button></form>
+<div id="feedback" role="status" aria-live="polite"></div><pre id="comparison"></pre>
+<script>
+const editor = document.getElementById('editor'), canvas = document.getElementById('canvas');
+const feedback = document.getElementById('feedback'), comparison = document.getElementById('comparison');
+const token = editor.querySelector('[name=csrfmiddlewaretoken]').value;
+const base = '{% url "dj_admin:pricing_v2_workflows" %}';
+const urls = {validate: '{% url "dj_admin:pricing_v2_workflow_validate" %}', test: '{% url "dj_admin:pricing_v2_workflow_test" %}'};
+function row(type, config = '{}') {
+  const li = document.createElement('li'); li.dataset.type = type;
+  const label = document.createElement('span'); label.textContent = type; li.append(label, ' ');
+  const input = document.createElement('input'); input.className = 'block-config'; input.setAttribute('aria-label', type + ' Konfiguration'); input.value = config; li.append(input);
+  for (const [action, caption] of [['up', '↑'], ['down', '↓'], ['remove', 'Entfernen']]) {
+    const button = document.createElement('button'); button.type = 'button'; button.dataset.action = action;
+    button.textContent = caption; li.append(button);
+  }
+  return li;
+}
+document.getElementById('add-block').addEventListener('click', () => canvas.append(row(document.getElementById('block-type').value)));
+canvas.addEventListener('click', event => {
+  const button = event.target.closest('button[data-action]'); if (!button) return;
+  const li = button.closest('li');
+  if (button.dataset.action === 'remove') li.remove();
+  if (button.dataset.action === 'up' && li.previousElementSibling) canvas.insertBefore(li, li.previousElementSibling);
+  if (button.dataset.action === 'down' && li.nextElementSibling) canvas.insertBefore(li.nextElementSibling.nextElementSibling);
+});
+function workflow() { return [...canvas.children].map(li => ({type: li.dataset.type, config: JSON.parse(li.querySelector('input').value)})); }
+async function send(url, body) {
+  const response = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': token}, body: JSON.stringify(body)});
+  return {response, result: await response.json()};
+}
+function message(response, result) { feedback.textContent = response.ok ? 'Erfolgreich.' : JSON.stringify(result.errors || result.error || result); }
+function draft() { try { return workflow(); } catch { feedback.textContent = 'Ungültiges JSON in der Blockkonfiguration.'; return null; } }
+document.getElementById('validate').addEventListener('click', async () => {
+  const blocks = draft(); if (!blocks) return;
+  const {response, result} = await send(urls.validate, {workflow_json: blocks}); message(response, result);
+});
+editor.addEventListener('submit', async event => {
+  event.preventDefault(); const blocks = draft(); if (!blocks) return;
+  const id = editor.dataset.id, body = {name: editor.querySelector('[name=name]').value, workflow_json: blocks, expected_version: Number(editor.dataset.version)};
+  const {response, result} = await send(id ? base.replace('pricing-v2/workflows/', 'api/pricing-v2/workflows/') + id + '/' : base, body);
+  message(response, result); if (response.ok) location.href = base + '?workflow_id=' + result.id;
+});
+{% if selected %}
+for (const action of ['clone', 'activate']) document.getElementById(action).addEventListener('click', async () => {
+  const url = base.replace('pricing-v2/workflows/', 'api/pricing-v2/workflows/') + editor.dataset.id + '/' + action + '/';
+  const {response, result} = await send(url, {expected_version: Number(editor.dataset.version)});
+  message(response, result); if (response.ok) location.href = base + '?workflow_id=' + result.id;
+});
+{% endif %}
+document.getElementById('lab').addEventListener('submit', async event => {
+  event.preventDefault(); const data = new FormData(event.currentTarget);
+  const body = Object.fromEntries(data.entries()); body.selected_item_ids = data.getAll('selected_item_ids');
+  if (editor.dataset.id) body.workflow_id = Number(editor.dataset.id);
+  const {response, result} = await send(urls.test, body); message(response, result);
+  comparison.textContent = JSON.stringify(result, null, 2);
+});
+</script>
+{% endblock %}

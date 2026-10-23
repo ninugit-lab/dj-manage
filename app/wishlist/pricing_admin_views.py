@@ -16,6 +16,7 @@ from .models import (PriceCalculationRevision, PriceItem, PricingFormula, Pricin
                      PricingPackageOverride, PricingProfile, PricingRule, PricingWorkflow)
 from .pricing_v2.config import _FIELDS, resolve_pricing_config, validate_profile_config
 from .pricing_v2.input import PricingValidationError
+from .pricing_v2.workflow import BLOCK_TYPES, validate_workflow
 
 
 staff_only = user_passes_test(
@@ -592,3 +593,257 @@ def component_detail(request, pk):
     except (ValidationError, ValueError, TypeError, OverflowError) as exc:
         return JsonResponse({'errors': exc.message_dict if isinstance(exc, ValidationError) and hasattr(exc, 'message_dict') else {'component': 'Ungültige Eingabe.'}}, status=400)
     return JsonResponse({'id': obj.pk, 'references': references})
+
+
+WORKFLOW_STALE = 'Die Workflow-Version ist veraltet. Bitte neu laden.'
+
+
+def _workflow_blocks(value):
+    """Translate the legacy persisted config shape into the core validator's shape."""
+    if not isinstance(value, list):
+        raise PricingValidationError('invalid_input', 'Ungültige Blockliste.', 'workflow_json')
+    result = []
+    for block in value:
+        if not isinstance(block, dict) or set(block) - {'type', 'config', 'id', 'version'}:
+            raise PricingValidationError('invalid_input', 'Ungültiger Block.', 'workflow_json')
+        config = block.get('config', {})
+        if not isinstance(config, dict):
+            raise PricingValidationError('invalid_input', 'Ungültige Blockkonfiguration.', 'workflow_json')
+        allowed = {'package': {'package_id'}, 'items': {'item_ids'}, 'rules': {'rule_ids'},
+                   'formula': {'formula_id'}}.get(block.get('type'), set())
+        if set(config) - allowed:
+            raise PricingValidationError('invalid_input', 'Ungültige Blockkonfiguration.', 'workflow_json')
+        result.append({**{key: val for key, val in block.items() if key != 'config'}, **config})
+    return result
+
+
+def _checked_workflow(value):
+    normalized = _workflow_blocks(value)
+    references = {
+        'packages': {str(obj.pk): {'is_active': obj.is_active} for obj in PricingPackage.objects.all()},
+        'items': {str(obj.pk): {'is_active': obj.is_active} for obj in PriceItem.objects.all()},
+        'rules': {str(obj.pk): {'is_active': obj.is_active} for obj in PricingRule.objects.all()},
+        'formulas': {str(obj.pk): {'is_active': obj.is_active} for obj in PricingFormula.objects.all()},
+    }
+    for block in normalized:
+        name = block.get('type')
+        key, collection = {'package': ('package_id', 'packages'), 'items': ('item_ids', 'items'),
+                           'rules': ('rule_ids', 'rules'), 'formula': ('formula_id', 'formulas')}.get(name, (None, None))
+        if key and key in block:
+            if name in ('items', 'rules') and not isinstance(block[key], list):
+                raise PricingValidationError('invalid_input', 'Ungültige Referenzliste.', 'workflow_json')
+            selected = block[key] if name in ('items', 'rules') else [block[key]]
+            for identity in selected:
+                if type(identity) not in (str, int) or str(identity) not in references[collection] or not references[collection][str(identity)]['is_active']:
+                    raise PricingValidationError('reference_error', 'Fehlende oder inaktive Komponente.', 'workflow_json')
+            block[key] = [str(i) for i in selected] if name in ('items', 'rules') else str(selected[0])
+    validate_workflow(normalized, references)
+    return value
+
+
+def _workflow_error(exc):
+    return _error('workflow_json', 'Ungültiger Workflow oder fehlende/inaktive Referenz.')
+
+
+def _workflow_input(request):
+    data = _body(request)
+    return data if data is not None else None
+
+
+@staff_only
+@require_http_methods(['GET', 'POST'])
+def workflows_page(request):
+    if request.method == 'POST':
+        data = _workflow_input(request)
+        if data is None:
+            return _bad_body()
+        name = data.get('name')
+        if not isinstance(name, str) or not name.strip() or len(name) > 200:
+            return _error('name', 'Name erforderlich.')
+        if PricingWorkflow.objects.filter(name=name.strip()).exists():
+            return _error('name', 'Versionsreihe existiert bereits; bitte klonen.')
+        try:
+            blocks = _checked_workflow(data.get('workflow_json'))
+        except (PricingValidationError, TypeError, ValueError) as exc:
+            return _workflow_error(exc)
+        workflow = PricingWorkflow.objects.create(name=name.strip(), workflow_json=blocks,
+                                                  is_active=False, is_default=False)
+        return JsonResponse({'id': workflow.pk, 'version': workflow.version}, status=201)
+    workflows = PricingWorkflow.objects.order_by('-pk')
+    identity = request.GET.get('workflow_id', '')
+    selected = PricingWorkflow.objects.filter(pk=identity).first() if identity.isdigit() else None
+    profile = PricingProfile.objects.filter(status='active').first()
+    package = PricingPackage.objects.filter(pk=request.GET.get('package_id')).first() if request.GET.get('package_id', '').isdigit() else PricingPackage.objects.filter(is_active=True).first()
+    factors = []
+    if profile and package:
+        override = PricingPackageOverride.objects.filter(profile=profile, package=package).first()
+        try:
+            resolved = resolve_pricing_config(profile, SimpleNamespace(id=package.pk, version=package.version,
+                overrides_json=override.overrides_json if override else {}))
+            factors = [{'key': key, 'value': str(getattr(resolved, key).value),
+                        'source': getattr(resolved, key).source} for key in _FIELDS]
+        except PricingValidationError:
+            pass
+    return render(request, 'dj_admin/pricing_v2/workflow.html', {
+        'workflows': workflows, 'selected': selected,
+        'blocks': [{'type': b.get('type'), 'config_json': json.dumps(b.get('config', {}), ensure_ascii=False)}
+                   for b in selected.workflow_json if isinstance(b, dict)] if selected and isinstance(selected.workflow_json, list) else [],
+        'block_types': BLOCK_TYPES,
+        'packages': PricingPackage.objects.filter(is_active=True), 'items': PriceItem.objects.filter(is_active=True),
+        'rules': PricingRule.objects.filter(is_active=True), 'formulas': PricingFormula.objects.filter(is_active=True),
+        'profile': profile, 'package': package, 'factors': factors,
+    })
+
+
+@staff_only
+@require_POST
+def validate_workflow_page(request):
+    data = _workflow_input(request)
+    if data is None:
+        return _bad_body()
+    try:
+        _checked_workflow(data.get('workflow_json'))
+    except (PricingValidationError, TypeError, ValueError) as exc:
+        return _workflow_error(exc)
+    return JsonResponse({'valid': True})
+
+
+def _locked_workflow(pk, data):
+    workflow = get_object_or_404(PricingWorkflow.objects.select_for_update(), pk=pk)
+    if type(data.get('expected_version')) is not int or data['expected_version'] != workflow.version:
+        return workflow, JsonResponse({'error': WORKFLOW_STALE}, status=409)
+    # A successor in this named version family makes the editor snapshot stale.
+    if PricingWorkflow.objects.filter(name=workflow.name, version__gt=workflow.version).exists():
+        return workflow, JsonResponse({'error': WORKFLOW_STALE}, status=409)
+    return workflow, None
+
+
+def _new_workflow(workflow, *, name, blocks):
+    version = (PricingWorkflow.objects.filter(name=workflow.name).order_by('-version')
+               .values_list('version', flat=True).first() or workflow.version) + 1
+    return PricingWorkflow.objects.create(name=name, version=version, workflow_json=blocks,
+                                          is_active=False, is_default=False)
+
+
+@staff_only
+@require_http_methods(['GET', 'POST'])
+def workflow_detail(request, pk):
+    if request.method == 'GET':
+        workflow = get_object_or_404(PricingWorkflow, pk=pk)
+        return JsonResponse({'id': workflow.pk, 'name': workflow.name, 'version': workflow.version,
+                             'workflow_json': workflow.workflow_json, 'is_active': workflow.is_active,
+                             'is_default': workflow.is_default})
+    data = _workflow_input(request)
+    if data is None:
+        return _bad_body()
+    try:
+        with transaction.atomic():
+            workflow, stale = _locked_workflow(pk, data)
+            if stale:
+                return stale
+            name = data.get('name', workflow.name)
+            if not isinstance(name, str) or not name.strip() or len(name) > 200:
+                return _error('name', 'Name erforderlich.')
+            if name.strip() != workflow.name:
+                return _error('name', 'Name der Versionsreihe darf nicht geändert werden.')
+            blocks = _checked_workflow(data.get('workflow_json'))
+            newer = _new_workflow(workflow, name=workflow.name, blocks=blocks)
+    except (PricingValidationError, TypeError, ValueError) as exc:
+        return _workflow_error(exc)
+    except IntegrityError:
+        return JsonResponse({'error': WORKFLOW_STALE}, status=409)
+    return JsonResponse({'id': newer.pk, 'version': newer.version}, status=201)
+
+
+@staff_only
+@require_POST
+def clone_workflow(request, pk):
+    data = _workflow_input(request)
+    if data is None:
+        return _bad_body()
+    try:
+        with transaction.atomic():
+            workflow, stale = _locked_workflow(pk, data)
+            if stale:
+                return stale
+            _checked_workflow(workflow.workflow_json)
+            newer = _new_workflow(workflow, name=workflow.name, blocks=workflow.workflow_json)
+    except (PricingValidationError, TypeError, ValueError) as exc:
+        return _workflow_error(exc)
+    except IntegrityError:
+        return JsonResponse({'error': WORKFLOW_STALE}, status=409)
+    return JsonResponse({'id': newer.pk, 'version': newer.version}, status=201)
+
+
+@staff_only
+@require_POST
+def activate_workflow(request, pk):
+    data = _workflow_input(request)
+    if data is None:
+        return _bad_body()
+    try:
+        with transaction.atomic():
+            target = get_object_or_404(PricingWorkflow.objects.select_for_update(), pk=pk)
+            if type(data.get('expected_version')) is not int or data['expected_version'] != target.version:
+                return JsonResponse({'error': WORKFLOW_STALE}, status=409)
+            if target.is_active and not target.is_default:
+                return _error('workflow_id', 'Aktiven Workflow zuerst als neue Version klonen.')
+            _checked_workflow(target.workflow_json)
+            PricingWorkflow.objects.select_for_update().filter(is_default=True, is_active=True).exclude(pk=pk).update(is_default=False)
+            target.is_active = True
+            target.is_default = True
+            target.save(update_fields=['is_active', 'is_default'])
+    except (PricingValidationError, TypeError, ValueError) as exc:
+        return _workflow_error(exc)
+    except IntegrityError:
+        return JsonResponse({'error': WORKFLOW_STALE}, status=409)
+    return JsonResponse({'id': target.pk, 'version': target.version, 'is_default': True})
+
+
+@staff_only
+@require_POST
+def test_workflow(request):
+    from .pricing_v2.services import _legacy_calculate, calculate_payload
+    data = _workflow_input(request)
+    if data is None:
+        return _bad_body()
+    data = dict(data)
+    if type(data.get('workflow_id')) not in (str, int) or not str(data['workflow_id']).isdigit():
+        return _error('workflow_id', 'Workflow auswählen.')
+    for field in ('package_id', 'workflow_id'):
+        if type(data.get(field)) is int:
+            data[field] = str(data[field])
+    if isinstance(data.get('selected_item_ids'), list):
+        data['selected_item_ids'] = [str(identity) if type(identity) is int else identity
+                                     for identity in data['selected_item_ids']]
+    workflow_id = data.get('workflow_id')
+    workflow = PricingWorkflow.objects.filter(pk=workflow_id).first() if (
+        isinstance(workflow_id, str) and workflow_id.isdigit()) else None
+    if workflow and data.get('package_id') in ('', None) and isinstance(workflow.workflow_json, list) and any(
+            isinstance(block, dict) and block.get('type') == 'package'
+            and isinstance(block.get('config'), dict) and block['config'].get('package_id') not in ('', None)
+            for block in workflow.workflow_json):
+        # Never allow the individual-items fallback to erase a pinned package.
+        pinned_individual = True
+    else:
+        pinned_individual = False
+    output = {}
+    for name, calculate in (('v1', lambda: _legacy_calculate(data, None)),
+                            ('v2', lambda: calculate_payload(data, public=False, actor=request.user))):
+        try:
+            if name == 'v2' and pinned_individual:
+                raise PricingValidationError('reference_error', 'Paket-Auswahl widerspricht dem Workflow.', 'package_id')
+            result = calculate()
+            output[name] = {'gross_total': str(result.gross_total), 'lines': [
+                {'code': line.code, 'label': line.label, 'amount': str(line.amount)} for line in result.lines]}
+            if name == 'v2':
+                serialized = result.to_dict()
+                output[name]['steps'] = serialized['block_subtotals']
+                output[name]['subtotals'] = serialized['block_subtotals']
+                output[name]['warnings'] = serialized['warnings']
+        except (PricingValidationError, ValueError, TypeError, KeyError) as exc:
+            output[name] = {'diagnostic': 'Berechnung nicht möglich: Eingabe oder Referenz ungültig.',
+                            'code': exc.code if isinstance(exc, PricingValidationError) else 'invalid_input'}
+    output['difference'] = (str(Decimal(output['v2']['gross_total']) - Decimal(output['v1']['gross_total']))
+                            if 'gross_total' in output['v1'] and 'gross_total' in output['v2'] else None)
+    return JsonResponse(output)

@@ -11,6 +11,12 @@ urlpatterns = [
     path('api/pricing-v2/packages/<int:pk>/', pricing_admin_views.package_detail, name='pricing_v2_package_detail'),
     path('pricing-v2/components/', pricing_admin_views.components_page, name='pricing_v2_components'),
     path('api/pricing-v2/components/<int:pk>/', pricing_admin_views.component_detail, name='pricing_v2_component_detail'),
+    path('pricing-v2/workflows/', pricing_admin_views.workflows_page, name='pricing_v2_workflows'),
+    path('api/pricing-v2/workflows/<int:pk>/', pricing_admin_views.workflow_detail, name='pricing_v2_workflow_detail'),
+    path('api/pricing-v2/workflows/<int:pk>/clone/', pricing_admin_views.clone_workflow, name='pricing_v2_workflow_clone'),
+    path('api/pricing-v2/workflows/<int:pk>/activate/', pricing_admin_views.activate_workflow, name='pricing_v2_workflow_activate'),
+    path('api/pricing-v2/workflows/validate/', pricing_admin_views.validate_workflow_page, name='pricing_v2_workflow_validate'),
+    path('api/pricing-v2/workflows/test/', pricing_admin_views.test_workflow, name='pricing_v2_workflow_test'),
     path('', admin_views.admin_dashboard, name='dashboard'),
 
     # Wishlist Live View
