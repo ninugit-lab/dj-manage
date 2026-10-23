@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone as dt_timezone
 from decimal import Decimal
 import hashlib
 import json
@@ -10,19 +10,75 @@ from typing import Any
 from unittest.mock import patch
 
 from django.db import transaction
+from django.utils import timezone
 
 from wishlist.models import (
-    Event, PriceCalculationRevision, PriceItem, PricingFormula, PricingPackage,
+    Event, EventStatus, PriceCalculationRevision, PriceItem, PricingFormula, PricingPackage,
     PricingPackageOverride, PricingProfile, PricingRule, PricingWorkflow,
 )
 from wishlist.price_engine import PriceEngine
 
 from .input import PricingValidationError
 from .result import PricingResult
-from .services import calculate_payload
+from .services import calculate_event, calculate_payload, save_revision
 
 
-FROZEN_REQUESTED_AT = datetime(2000, 1, 1, tzinfo=timezone.utc)
+FROZEN_REQUESTED_AT = datetime(2000, 1, 1, tzinfo=dt_timezone.utc)
+
+
+def eligible_for_reprice(event, today):
+    """Return whether an event may receive a controlled V2 draft repricing."""
+    if event.status in (EventStatus.PAST, EventStatus.CANCELLED, "past", "cancelled"):
+        return False
+    if event.status in (EventStatus.INQUIRY, "inquiry"):
+        return True
+    if event.status in (EventStatus.CONFIRMED, "confirmed"):
+        return event.date >= today
+    return False
+
+
+def reprice_event(event, *, today=None, actor=None, apply=False):
+    """Calculate and optionally append one immutable, unreleased V2 draft."""
+    today = timezone.localdate() if today is None else today
+    if not eligible_for_reprice(event, today):
+        return {
+            "event_id": event.pk, "status": "skipped", "result": "ineligible",
+            "errors": [], "old_gross": _money(event.total_price),
+            "new_gross": None, "difference": None,
+        }
+
+    old = event.total_price
+    try:
+        result = calculate_event(event, actor=actor)
+        new = result.gross_total
+        revision = None
+        if apply:
+            revision = save_revision(event, result, kind=PriceCalculationRevision.Kind.DRAFT,
+                                     actor=actor, legacy_total=old)
+        inputs = result.inputs
+        return {
+            "event_id": event.pk, "status": "applied" if apply else "proposed",
+            "result": "ok", "old_gross": _money(old), "new_gross": _money(new),
+            "difference": _money(new - old) if old is not None else None,
+            "source": {
+                "profile_id": inputs.get("profile_id"),
+                "profile_version": result.profile_version,
+                "workflow_id": inputs.get("workflow_id"),
+                "workflow_version": result.workflow_version,
+                "engine_version": str(result.engine_version),
+            },
+            "revision_id": revision.pk if revision else None, "errors": [],
+        }
+    except Exception as exc:
+        return {
+            "event_id": event.pk, "status": "error", "result": "error",
+            "old_gross": _money(old), "new_gross": None, "difference": None,
+            "errors": [{"code": exc.code if isinstance(exc, PricingValidationError) else "internal_error"}],
+        }
+
+
+def _money(value):
+    return None if value is None else f"{Decimal(str(value)):.2f}"
 
 
 @dataclass(frozen=True)
