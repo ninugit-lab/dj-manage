@@ -438,6 +438,39 @@ def test_shared_package_edit_does_not_drop_other_draft_override(staff):
 
 
 @pytest.mark.django_db
+def test_package_with_foreign_draft_override_requires_explicit_clone(staff):
+    active = profile('active')
+    foreign = PricingProfile.objects.create(name='Global', version=2, status='draft',
+                                            valid_from=timezone.now(), config_json=copy.deepcopy(CONFIG))
+    target = PricingProfile.objects.create(name='Global', version=3, status='draft',
+                                           valid_from=timezone.now(), config_json=copy.deepcopy(CONFIG))
+    pkg = PricingPackage.objects.create(name='Shared', base_price=100)
+    PricingPackageOverride.objects.create(profile=foreign, package=pkg,
+                                          overrides_json={'km_rate': {'mode': 'override', 'value': '2'}})
+    denied = call(staff, 'pricing_v2_package_detail', package_payload(target, pkg, name='Mutate'), pkg.pk, 'put')
+    assert denied.status_code == 409
+    pkg.refresh_from_db()
+    assert pkg.name == 'Shared' and PricingPackage.objects.count() == 1
+
+    cloned = call(staff, 'pricing_v2_package_detail',
+                  package_payload(target, pkg, name='Clone', clone_package=True), pkg.pk, 'put')
+    assert cloned.status_code == 200
+    assert cloned.json()['id'] != pkg.pk
+    pkg.refresh_from_db()
+    assert pkg.name == 'Shared'
+
+
+@pytest.mark.django_db
+def test_new_active_profile_package_requested_public_is_created_private(staff):
+    active = profile('active')
+    response = call(staff, 'pricing_v2_packages', package_payload(active, name='New public', is_public=True))
+    assert response.status_code == 201
+    package = PricingPackage.objects.get(pk=response.json()['id'])
+    assert package.is_public is False
+    assert 'privat' in response.json()['next_step'].lower()
+
+
+@pytest.mark.django_db
 def test_complex_factor_editors_render_json_roundtrip_and_escape_html(staff):
     p = profile()
     pkg = PricingPackage.objects.create(name='Complex', base_price=100)

@@ -1,10 +1,15 @@
+from datetime import timedelta
 from decimal import Decimal
+from threading import Barrier, Thread
 
 import pytest
+from django.db import OperationalError
+from django.utils import timezone
 from wishlist.tests.test_pricing_v2_offers import offer_setup
 
 from wishlist.models import AppConfig, EmailLog, EventStatus, PriceCalculationRevision
-from wishlist.pricing_v2.offers import OfferTemplateError, _render_offer_template, build_draft, release_offer, send_offer
+from wishlist.pricing_v2.offers import (OfferTemplateError, _render_offer_template, build_draft,
+                                        recover_stale_send, release_offer, send_offer)
 
 
 def test_offer_template_contract_has_only_the_six_fields():
@@ -48,11 +53,11 @@ def test_retry_uses_release_snapshot_after_event_and_config_mutation(offer_setup
     config.offer_email_body = "CHANGED"
     config.dj_name = "Changed DJ"
     config.save()
-    second = send_offer(released, retry=True)
-    assert second.error == "", second.error
-    assert calls[0][0][1:3] == calls[1][0][1:3]
-    assert second.revision.offer_number == first.revision.offer_number
-    assert second.revision.gross_total == first.revision.gross_total
+    with pytest.raises(ValueError, match="bereits gesendet"):
+        send_offer(released, retry=True)
+    assert len(calls) == 1
+    assert first.revision.offer_number == released.offer_number
+    assert first.revision.gross_total == released.gross_total
     assert EventStatus.INQUIRY == event.status
 
 
@@ -110,3 +115,73 @@ def test_historic_offer_without_snapshot_is_controlled_and_never_fabricated(offe
     released.refresh_from_db()
     with pytest.raises(OfferTemplateError, match="erneut freigeben"):
         send_offer(released)
+
+
+def test_send_claim_is_committed_before_delivery_and_blocks_second_attempt(offer_setup, monkeypatch):
+    event, actor = offer_setup
+    event.client_email = "client@example.test"
+    event.save(update_fields=["client_email"])
+    released = release_offer(event, actor) if build_draft(event, actor) else None
+    calls = []
+    monkeypatch.setattr("wishlist.google_services.GoogleService.send_email",
+                        lambda *args, **kwargs: (calls.append(args) or (True, "ok")))
+
+    first = send_offer(released)
+    assert first.sent is True
+    with pytest.raises(ValueError, match="bereits gesendet"):
+        send_offer(released)
+    assert len(calls) == 1
+
+
+def test_stale_sending_claim_requires_explicit_recovery_before_retry(offer_setup, monkeypatch):
+    event, actor = offer_setup
+    event.client_email = "client@example.test"
+    event.save(update_fields=["client_email"])
+    released = release_offer(event, actor) if build_draft(event, actor) else None
+    PriceCalculationRevision.objects.filter(
+        pk=released.pk,
+    ).update(status="sending", send_claimed_at=timezone.now() - timedelta(hours=1))
+    released.refresh_from_db()
+    with pytest.raises(ValueError, match="Versand läuft"):
+        send_offer(released, retry=True)
+    recovered = recover_stale_send(released, confirm=True)
+    assert recovered.status == PriceCalculationRevision.Status.SEND_FAILED
+    monkeypatch.setattr("wishlist.google_services.GoogleService.send_email", lambda *args, **kwargs: (True, "ok"))
+    assert send_offer(recovered, retry=True).sent is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_send_requests_claim_one_delivery(offer_setup, monkeypatch):
+    event, actor = offer_setup
+    event.client_email = "client@example.test"
+    event.save(update_fields=["client_email"])
+    released = release_offer(event, actor) if build_draft(event, actor) else None
+    barrier = Barrier(2)
+    calls = []
+
+    def deliver(*args, **kwargs):
+        calls.append(args)
+        return True, "ok"
+
+    monkeypatch.setattr("wishlist.google_services.GoogleService.send_email", deliver)
+    results, errors = [], []
+
+    def request():
+        from django.db import close_old_connections
+        close_old_connections()
+        try:
+            barrier.wait(timeout=5)
+            results.append(send_offer(PriceCalculationRevision.objects.get(pk=released.pk), retry=True))
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            close_old_connections()
+
+    threads = [Thread(target=request) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert len(calls) == 1
+    assert sum(result.sent for result in results) == 1
+    assert len(errors) == 1 and isinstance(errors[0], (ValueError, OperationalError))

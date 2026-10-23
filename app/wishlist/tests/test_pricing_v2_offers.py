@@ -1,7 +1,9 @@
 from datetime import date, time
 from decimal import Decimal
+from threading import Barrier, Thread
 
 import pytest
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import reverse
@@ -140,11 +142,10 @@ def test_newer_draft_still_requires_v2_after_mode_switch(offer_setup):
 def test_aggregate_adjustments_are_checked_before_revision_save(offer_setup):
     event, actor = offer_setup
     add_adjustment(event, 'Large one', '9999999000.00', 'Valid adjustment', actor)
-    add_adjustment(event, 'Large two', '1000.00', 'Valid adjustment', actor)
     with pytest.raises(PricingValidationError) as error:
-        build_draft(event, actor)
+        add_adjustment(event, 'Large two', '1000.00', 'Would overflow', actor)
     assert error.value.code == 'invalid_input' and error.value.field == 'gross_total'
-    assert not PriceCalculationRevision.objects.filter(event=event, kind='draft').exists()
+    assert ManualPriceAdjustment.objects.filter(event=event).count() == 1
 
 
 def test_total_boundary_is_cents_and_decimal_field_safe(offer_setup):
@@ -152,6 +153,44 @@ def test_total_boundary_is_cents_and_decimal_field_safe(offer_setup):
     add_adjustment(event, 'Boundary', '9999999879.99', 'At DecimalField limit', actor)
     draft = build_draft(event, actor)
     assert draft.gross_total == Decimal('9999999999.99')
+
+
+def test_adjustment_rejects_aggregate_overflow_before_insert(offer_setup):
+    event, actor = offer_setup
+    add_adjustment(event, 'First', '9999999800.00', 'Near limit', actor)
+    with pytest.raises(PricingValidationError) as error:
+        add_adjustment(event, 'Second', '200.00', 'Over limit', actor)
+    assert error.value.field == 'gross_total'
+    assert ManualPriceAdjustment.objects.filter(event=event).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_adjustments_lock_event_before_aggregate_validation(offer_setup):
+    if settings.DATABASES['default']['ENGINE'].endswith('sqlite3'):
+        pytest.skip('SQLite cannot exercise concurrent row locks')
+    event, actor = offer_setup
+    event.price_calculation.selected_items.clear()
+    barrier = Barrier(2)
+    outcomes = []
+
+    def request():
+        from django.db import close_old_connections
+        close_old_connections()
+        try:
+            barrier.wait(timeout=5)
+            outcomes.append(add_adjustment(event, 'Concurrent discount', '-60', 'Race', actor))
+        except Exception as exc:
+            outcomes.append(exc)
+        finally:
+            close_old_connections()
+
+    threads = [Thread(target=request) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert sum(isinstance(outcome, ManualPriceAdjustment) for outcome in outcomes) == 1
+    assert ManualPriceAdjustment.objects.filter(event=event).count() == 1
 
 
 def test_event_panel_uses_earliest_estimate_and_current_difference(offer_setup):

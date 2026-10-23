@@ -509,6 +509,7 @@ class PriceCalculationRevision(models.Model):
     class Status(models.TextChoices):
         DRAFT = 'draft', 'Draft'
         RELEASED = 'released', 'Released'
+        SENDING = 'sending', 'Sending'
         SENT = 'sent', 'Sent'
         SEND_FAILED = 'send_failed', 'Send failed'
         SUPERSEDED = 'superseded', 'Superseded'
@@ -548,6 +549,7 @@ class PriceCalculationRevision(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     sent_at = models.DateTimeField(null=True, blank=True)
+    send_claimed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [

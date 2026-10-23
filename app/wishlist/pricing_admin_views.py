@@ -350,7 +350,12 @@ def _save_package(request, pk=None):
                 PricingProfile.objects.filter(status='active').exists()) or
                 PricingPackageOverride.objects.filter(package=pkg, profile__status='active').exists() or
                 bool(references['workflows'] or references['revisions']))
-            clone_package = core_changed and (shared or profile.status == 'active')
+            foreign_override = (pkg is not None and PricingPackageOverride.objects.filter(
+                package=pkg, profile__status=PricingProfile.Status.DRAFT,
+            ).exclude(profile=profile).exists())
+            if foreign_override and not data.get('clone_package'):
+                return JsonResponse({'error': 'Paket gehört zu einem anderen Entwurf; bitte ausdrücklich klonen oder zuweisen.'}, status=409)
+            clone_package = bool(data.get('clone_package')) or (core_changed and (shared or profile.status == 'active'))
             override_changed = overrides != (previous.overrides_json if previous else {})
             if (profile.status == 'active' and (core_changed or override_changed)
                     or profile.status == 'draft' and shared and (core_changed or override_changed)):
@@ -382,7 +387,7 @@ def _save_package(request, pk=None):
             if clone_package:
                 # Until the workflow explicitly selects this ID, never offer it publicly.
                 pkg.is_public = False
-            if pk is None and profile.status != PricingProfile.Status.ACTIVE:
+            if pk is None:
                 pkg.is_public = False
             pkg.full_clean(exclude=['included_items'])
             pkg.save()
@@ -393,7 +398,10 @@ def _save_package(request, pk=None):
         return JsonResponse({'errors': exc.message_dict if hasattr(exc, 'message_dict') else {'package': exc.messages}}, status=400)
     except (IntegrityError, ValueError, TypeError, OverflowError):
         return _error('package')
-    return JsonResponse({'id': pkg.pk, 'version': pkg.version, 'profile_id': profile.pk}, status=200 if pk else 201)
+    response = {'id': pkg.pk, 'version': pkg.version, 'profile_id': profile.pk}
+    if not pk and data.get('is_public') is True:
+        response['next_step'] = 'Paket privat gespeichert; Profil aktivieren und den passenden Workflow konfigurieren, dann veröffentlichen.'
+    return JsonResponse(response, status=200 if pk else 201)
 
 
 @staff_only

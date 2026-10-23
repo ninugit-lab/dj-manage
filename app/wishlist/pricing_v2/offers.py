@@ -6,6 +6,7 @@ from numbers import Real
 from copy import deepcopy
 from dataclasses import dataclass
 from string import Formatter
+from datetime import timedelta
 from django.utils import timezone
 
 from django.db import IntegrityError, transaction
@@ -72,25 +73,42 @@ def _snapshot_offer_email(revision):
 
 def send_offer(revision, *, retry=False):
     """Send exactly the frozen released offer; retries never create a revision."""
-    if revision.kind != PriceCalculationRevision.Kind.OFFER or revision.status not in (
-        PriceCalculationRevision.Status.RELEASED, PriceCalculationRevision.Status.SENT,
-        PriceCalculationRevision.Status.SEND_FAILED):
-        raise ValueError("Angebot muss zuerst freigegeben werden")
-    if revision.status == PriceCalculationRevision.Status.SENT and not retry:
-        raise ValueError("Erneuter Versand erfordert retry=True")
-    event = revision.event
-    if not revision.email_recipient:
-        raise OfferTemplateError("Angebot erneut freigeben: keine eingefrorene Empfängeradresse")
-    context = revision.email_context
-    subject = revision.email_subject
-    body = revision.email_body
-    if not subject or not body or not context:
-        raise OfferTemplateError("Angebot erneut freigeben: historische Angebots-Mail ist nicht versandfähig")
+    caller_revision = revision
+    with transaction.atomic():
+        claimed = PriceCalculationRevision.objects.select_for_update().select_related("event").get(pk=revision.pk)
+        if claimed.kind != PriceCalculationRevision.Kind.OFFER or claimed.status not in (
+            PriceCalculationRevision.Status.RELEASED, PriceCalculationRevision.Status.SENT,
+            PriceCalculationRevision.Status.SEND_FAILED, PriceCalculationRevision.Status.SENDING):
+            raise ValueError("Angebot muss zuerst freigegeben werden")
+        if claimed.status == PriceCalculationRevision.Status.SENDING:
+            raise ValueError("Versand läuft; stale claims müssen explizit recovered werden")
+        if claimed.status == PriceCalculationRevision.Status.SENT:
+            raise ValueError("Angebot wurde bereits gesendet; erneuter Versand ist nicht zulässig")
+        if not claimed.email_recipient:
+            raise OfferTemplateError("Angebot erneut freigeben: keine eingefrorene Empfängeradresse")
+        context = claimed.email_context
+        subject = claimed.email_subject
+        body = claimed.email_body
+        if not subject or not body or not context:
+            raise OfferTemplateError("Angebot erneut freigeben: historische Angebots-Mail ist nicht versandfähig")
+        now = timezone.now()
+        updated = PriceCalculationRevision.objects.filter(
+            pk=claimed.pk,
+            status__in=(PriceCalculationRevision.Status.RELEASED,
+                        PriceCalculationRevision.Status.SENT,
+                        PriceCalculationRevision.Status.SEND_FAILED),
+        ).update(status=PriceCalculationRevision.Status.SENDING, send_claimed_at=now)
+        if updated != 1:
+            raise ValueError("Versand läuft; stale claims müssen explizit recovered werden")
+        claimed.status = PriceCalculationRevision.Status.SENDING
+        claimed.send_claimed_at = now
+    revision = claimed
+    event = claimed.event
     error = ""
     success = False
     try:
         from wishlist.google_services import GoogleService
-        response = GoogleService.send_email(revision.email_recipient, subject, body,
+        response = GoogleService.send_email(claimed.email_recipient, subject, body,
                                             sender_name=context.get("dj_name", "DJ"))
         success, message = response if isinstance(response, tuple) else (bool(response), "Gesendet" if response else "Versand fehlgeschlagen")
         if not success:
@@ -99,16 +117,39 @@ def send_offer(revision, *, retry=False):
         import logging
         logging.getLogger(__name__).warning("offer email delivery failed (details intentionally omitted)")
         error = "EMAIL_DELIVERY_FAILED"
-    log = EmailLog.objects.create(event=event, revision=revision, recipient=revision.email_recipient,
-                                  subject=subject, body=body, success=success, error_message=error)
-    if success:
-        revision.status = PriceCalculationRevision.Status.SENT
-        revision.sent_at = timezone.now()
-        revision.save(update_fields=["status", "sent_at"])
-    else:
-        revision.status = PriceCalculationRevision.Status.SEND_FAILED
-        revision.save(update_fields=["status"])
-    return SendResult(success, revision, error, log)
+    with transaction.atomic():
+        current = PriceCalculationRevision.objects.select_for_update().get(pk=claimed.pk)
+        log = EmailLog.objects.create(event=event, revision=current, recipient=current.email_recipient,
+                                      subject=subject, body=body, success=success, error_message=error)
+        if success:
+            current.status = PriceCalculationRevision.Status.SENT
+            current.sent_at = timezone.now()
+        else:
+            current.status = PriceCalculationRevision.Status.SEND_FAILED
+        current.send_claimed_at = None
+        current.save(update_fields=["status", "sent_at", "send_claimed_at"])
+    # Keep a caller-held model instance coherent with the committed result;
+    # admin callers commonly render the returned revision immediately.
+    caller_revision.status = current.status
+    caller_revision.sent_at = current.sent_at
+    caller_revision.send_claimed_at = current.send_claimed_at
+    return SendResult(success, current, error, log)
+
+
+def recover_stale_send(revision, *, confirm=False, max_age=timedelta(minutes=15)):
+    """Convert an old, manually confirmed claim into a retryable failed attempt."""
+    if not confirm:
+        raise ValueError("Stale-Versandclaim muss explizit bestätigt werden")
+    with transaction.atomic():
+        current = PriceCalculationRevision.objects.select_for_update().get(pk=revision.pk)
+        if current.status != PriceCalculationRevision.Status.SENDING:
+            return current
+        if not current.send_claimed_at or timezone.now() - current.send_claimed_at < max_age:
+            raise ValueError("Versandclaim ist noch nicht stale")
+        current.status = PriceCalculationRevision.Status.SEND_FAILED
+        current.send_claimed_at = None
+        current.save(update_fields=["status", "send_claimed_at"])
+        return current
 
 
 def _money(value, field):
@@ -150,12 +191,15 @@ def add_adjustment(event, label, amount, reason, actor):
     if not reason:
         raise PricingValidationError("invalid_input", "reason is required", "reason")
     amount = _money(amount, "amount")
-    base = _v2_result(event, actor)
-    total = base.gross_total + sum((a.amount for a in event.price_adjustments.all()), Decimal("0")) + amount
-    if total < 0:
-        raise PricingValidationError("invalid_input", "adjustments cannot produce a negative gross total", "amount")
-    return ManualPriceAdjustment.objects.create(event=event, label=label, amount=amount,
-                                                reason=reason, created_by=actor)
+    with transaction.atomic():
+        locked = Event.objects.select_for_update().get(pk=event.pk)
+        base = _v2_result(locked, actor)
+        total = base.gross_total + sum((a.amount for a in ManualPriceAdjustment.objects.filter(event=locked)), Decimal("0")) + amount
+        _gross_total(total)
+        if total < 0:
+            raise PricingValidationError("invalid_input", "adjustments cannot produce a negative gross total", "amount")
+        return ManualPriceAdjustment.objects.create(event=locked, label=label, amount=amount,
+                                                    reason=reason, created_by=actor)
 
 
 def _result_with_adjustments(event, actor):
