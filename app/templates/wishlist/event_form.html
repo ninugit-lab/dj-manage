@@ -207,13 +207,6 @@
 
       {% if pricing_packages %}
       <div class="flex flex-col gap-3 mb-2">
-        <label class="pkg-label">
-          <input type="radio" name="f-package" value="" class="accent-purple-500 w-4 h-4 flex-shrink-0" onchange="updatePrice()">
-          <div>
-            <div class="font-medium text-sm">Kein Paket</div>
-            <div class="text-xs text-subtle">Einzelne Posten wählen</div>
-          </div>
-        </label>
         {% for pkg in pricing_packages %}
         <label class="pkg-label">
           <input type="radio" name="f-package" value="{{ pkg.pk }}" {% if forloop.first %}checked {% endif %}class="accent-purple-500 w-4 h-4 flex-shrink-0" onchange="updatePrice()">
@@ -226,7 +219,7 @@
         {% endfor %}
       </div>
       {% else %}
-      <p class="text-subtle text-sm">Keine Pakete konfiguriert.</p>
+      <p class="text-subtle text-sm">Kein Paket verfügbar – einzelne Posten wählen.</p>
       {% endif %}
 
       <div class="mt-6 flex justify-between">

@@ -18,12 +18,25 @@ def test_booking_defaults_to_first_public_active_package(client):
     html = client.get('/buchen/').content.decode()
     step = html.split('id="step-4"', 1)[1].split('id="step-5"', 1)[0]
     radios = re.findall(r'<input[^>]*name="f-package"[^>]*>', step)
-    assert len(radios) == 3
+    assert len(radios) == 2
     assert [re.search(r'value="([^"]*)"', radio).group(1) for radio in radios] == [
-        '', str(first.pk), str(later.pk),
+        str(first.pk), str(later.pk),
     ]
     assert [re.search(r'value="([^"]*)"', radio).group(1)
             for radio in radios if re.search(r'\bchecked\b', radio)] == [str(first.pk)]
+    assert 'Kein Paket' not in step
+
+
+@pytest.mark.django_db
+def test_booking_without_available_package_shows_individual_items_fallback(client):
+    AppConfig.objects.create(event_form_enabled=True)
+    PricingPackage.objects.create(name='Hidden', is_public=False)
+    PricingPackage.objects.create(name='Inactive', is_active=False)
+    html = client.get('/buchen/').content.decode()
+    step = html.split('id="step-4"', 1)[1].split('id="step-5"', 1)[0]
+    assert 'Kein Paket' in step
+    assert 'einzelne Posten wählen' in step
+    assert not re.findall(r'<input[^>]*name="f-package"[^>]*>', step)
 
 
 SCENARIO = r"""
