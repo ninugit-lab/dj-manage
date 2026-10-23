@@ -128,6 +128,7 @@ def event_edit(request, pk):
     wishes_played = event.wishes.filter(played=True).order_by('-created_at')
     offer = getattr(event, 'offer', None)
     calc = getattr(event, 'price_calculation', None)
+    from .models import PriceCalculationRevision
     return render(request, 'dj_admin/event_form.html', {
         'event': event, 'config': config, 'price_items': price_items,
         'form_error': form_error,
@@ -142,7 +143,46 @@ def event_edit(request, pk):
         'selected_formula_id': calc.formula_id if calc else None,
         'selected_workflow_id': calc.workflow_id if calc else None,
         'pricing_v2': config.pricing_engine_mode == 'v2',
+        'price_revisions': event.price_revisions.order_by('-revision_number'),
+        'current_draft': event.price_revisions.filter(kind='draft', status='draft').order_by('-revision_number').first(),
+        'released_offer': event.price_revisions.filter(kind='offer', status__in=['released', 'sent', 'send_failed']).order_by('-revision_number').first(),
     })
+
+
+def _offer_response(request, operation):
+    event = get_object_or_404(Event, pk=request.resolver_match.kwargs['pk'])
+    from .pricing_v2.offers import add_adjustment, build_draft, release_offer
+    try:
+        if operation == 'adjust':
+            revision = add_adjustment(event, request.POST.get('label'), request.POST.get('amount'), request.POST.get('reason'), request.user)
+            result = build_draft(event, request.user)
+        elif operation == 'recalculate':
+            result = build_draft(event, request.user)
+        else:
+            result = release_offer(event, request.user)
+        return JsonResponse({'id': result.pk, 'gross_total': str(result.gross_total)})
+    except Exception as exc:
+        if hasattr(exc, 'message'):
+            return JsonResponse({'error': exc.message}, status=400)
+        raise
+
+
+@staff_member_required
+@require_POST
+def event_price_recalculate(request, pk):
+    return _offer_response(request, 'recalculate')
+
+
+@staff_member_required
+@require_POST
+def event_price_adjust(request, pk):
+    return _offer_response(request, 'adjust')
+
+
+@staff_member_required
+@require_POST
+def event_price_release(request, pk):
+    return _offer_response(request, 'release')
 
 
 def _save_event_from_post(request, config, event=None):

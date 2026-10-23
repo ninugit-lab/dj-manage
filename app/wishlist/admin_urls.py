@@ -30,6 +30,9 @@ urlpatterns = [
     path('events/<int:pk>/cancel/', admin_views.event_cancel, name='event_cancel'),
     path('events/<int:pk>/restore/', admin_views.event_restore, name='event_restore'),
     path('events/<int:pk>/set-active/', admin_views.event_set_active, name='event_set_active'),
+    path('events/<int:pk>/price/recalculate/', admin_views.event_price_recalculate, name='event_price_recalculate'),
+    path('events/<int:pk>/price/adjust/', admin_views.event_price_adjust, name='event_price_adjust'),
+    path('events/<int:pk>/price/release/', admin_views.event_price_release, name='event_price_release'),
 
     # Wishlist Admin (Turbo Frame)
     path('events/<int:pk>/wishlist/', admin_views.admin_wishlist_frame, name='wishlist_frame'),
