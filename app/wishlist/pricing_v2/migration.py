@@ -20,7 +20,7 @@ from wishlist.price_engine import PriceEngine
 
 from .input import PricingValidationError
 from .result import PricingResult
-from .services import calculate_event, calculate_payload, save_revision
+from .services import _comparison_identity, calculate_event, calculate_payload, save_revision
 
 
 FROZEN_REQUESTED_AT = datetime(2000, 1, 1, tzinfo=dt_timezone.utc)
@@ -37,27 +37,39 @@ def eligible_for_reprice(event, today):
     return False
 
 
-def reprice_event(event, *, today=None, actor=None, apply=False):
+def reprice_event(event, *, today=None, actor=None, apply=False, requested_at=None):
     """Calculate and optionally append one immutable, unreleased V2 draft."""
-    today = timezone.localdate() if today is None else today
-    if not eligible_for_reprice(event, today):
-        return {
-            "event_id": event.pk, "status": "skipped", "result": "ineligible",
-            "errors": [], "old_gross": _money(event.total_price),
-            "new_gross": None, "difference": None,
-        }
-
-    old = event.total_price
     try:
-        result = calculate_event(event, actor=actor)
+        today = timezone.localdate() if today is None else today
+        if not eligible_for_reprice(event, today):
+            return {
+                "event_id": event.pk, "status": "skipped", "result": "ineligible",
+                "errors": [], "old_gross": _money(event.total_price),
+                "new_gross": None, "difference": None,
+            }
+        old = event.total_price
+        requested_at = timezone.now() if requested_at is None else requested_at
+        with patch("wishlist.pricing_v2.services.timezone.now", return_value=requested_at):
+            result = calculate_event(event, actor=actor)
         new = result.gross_total
         revision = None
+        already_applied = False
         if apply:
+            identity = _comparison_identity(result.to_dict())
+            already_applied = any(
+                _comparison_identity(item.result_json) == identity
+                for item in PriceCalculationRevision.objects.filter(
+                    event=event, kind=PriceCalculationRevision.Kind.DRAFT,
+                    status=PriceCalculationRevision.Status.DRAFT,
+                    legacy_total=old,
+                )
+            )
             revision = save_revision(event, result, kind=PriceCalculationRevision.Kind.DRAFT,
                                      actor=actor, legacy_total=old)
         inputs = result.inputs
         return {
-            "event_id": event.pk, "status": "applied" if apply else "proposed",
+            "event_id": event.pk,
+            "status": "already_applied" if already_applied else ("applied" if apply else "proposed"),
             "result": "ok", "old_gross": _money(old), "new_gross": _money(new),
             "difference": _money(new - old) if old is not None else None,
             "source": {
@@ -67,12 +79,14 @@ def reprice_event(event, *, today=None, actor=None, apply=False):
                 "workflow_version": result.workflow_version,
                 "engine_version": str(result.engine_version),
             },
+            "audit": {"old_gross": _money(old), "new_gross": _money(new),
+                      "difference": _money(new - old) if old is not None else None},
             "revision_id": revision.pk if revision else None, "errors": [],
         }
     except Exception as exc:
         return {
             "event_id": event.pk, "status": "error", "result": "error",
-            "old_gross": _money(old), "new_gross": None, "difference": None,
+            "old_gross": _money(locals().get("old")), "new_gross": None, "difference": None,
             "errors": [{"code": exc.code if isinstance(exc, PricingValidationError) else "internal_error"}],
         }
 
