@@ -11,7 +11,10 @@ from unittest.mock import patch
 
 from django.db import transaction
 
-from wishlist.models import Event, PriceCalculationRevision, PricingProfile, PricingWorkflow
+from wishlist.models import (
+    Event, PriceCalculationRevision, PriceItem, PricingFormula, PricingPackage,
+    PricingProfile, PricingRule, PricingWorkflow,
+)
 from wishlist.price_engine import PriceEngine
 
 from .input import PricingValidationError
@@ -95,6 +98,37 @@ def _content_hash(value):
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _frozen_context(event, profile, workflow, payload):
+    calc = event.price_calculation
+    package = PricingPackage.objects.filter(pk=calc.package_id).first() if calc.package_id else None
+    item_ids = set(calc.selected_items.values_list("pk", flat=True))
+    if package:
+        item_ids.update(package.included_items.values_list("pk", flat=True))
+    items = list(PriceItem.objects.filter(pk__in=item_ids).order_by("pk").values(
+        "id", "name", "category", "description", "price", "is_default", "is_required",
+        "sort_order", "is_active", "is_public"))
+    rules = list(PricingRule.objects.filter(is_active=True).order_by("pk").values(
+        "id", "name", "description", "condition_json", "effect_type", "effect_value",
+        "applies_to", "sort_order", "is_active"))
+    formulas = list(PricingFormula.objects.filter(is_active=True).order_by("pk").values(
+        "id", "name", "expression", "mode", "description", "is_active"))
+    package_snapshot = None if package is None else {
+        "id": package.pk, "version": package.version, "name": package.name,
+        "description": package.description, "base_price": package.base_price,
+        "badge_label": package.badge_label, "badge_color": package.badge_color,
+        "is_active": package.is_active, "is_public": package.is_public,
+        "included_item_ids": sorted(item_ids),
+    }
+    context = {
+        "event": {"event_id": event.pk, "payload": payload},
+        "profile_config": profile.config_json,
+        "workflow": workflow.workflow_json,
+        "package": package_snapshot,
+        "items": items, "rules": rules, "formulas": formulas,
+    }
+    return json.loads(json.dumps(context, default=str, sort_keys=True))
+
+
 def compare_event(event, profile: PricingProfile, workflow: PricingWorkflow, *, actor=None,
                   persist=False) -> Comparison:
     """Compare one saved event without mutating it or its released offer.
@@ -106,6 +140,9 @@ def compare_event(event, profile: PricingProfile, workflow: PricingWorkflow, *, 
     v1 = None
     v2 = None
     diagnostics: dict[str, Any] = {}
+    payload = None
+    context = None
+    key = None
     try:
         current_profile = PricingProfile.objects.filter(
             pk=profile.pk, status=PricingProfile.Status.ACTIVE).first()
@@ -115,6 +152,11 @@ def compare_event(event, profile: PricingProfile, workflow: PricingWorkflow, *, 
                 current_workflow is None or current_workflow.version != workflow.version):
             raise PricingValidationError("stale_reference", "supplied pricing references are not current", "pricing_reference")
         calc = event.price_calculation
+        payload = _payload(event, workflow)
+        context = _frozen_context(event, profile, workflow, payload)
+        key_payload = {name: value for name, value in payload.items() if name != "requested_at"}
+        key = _key(event, {"workflow": workflow.pk, "calc": key_payload},
+                   {"inputs": context}, profile, workflow)
         v1_result = PriceEngine.calculate_workflow(
             event, workflow_id=workflow.pk,
             package_id=calc.package_id,
@@ -123,7 +165,6 @@ def compare_event(event, profile: PricingProfile, workflow: PricingWorkflow, *, 
             discount_percent=calc.discount_percent,
         )
         v1 = Decimal(str(v1_result["grand_total"]))
-        payload = _payload(event, workflow)
         # Requested-at is fixed in the payload contract so retries cannot drift.
         payload["requested_at"] = FROZEN_REQUESTED_AT
         # The engine normally stamps request time internally. Freeze that boundary
@@ -133,7 +174,6 @@ def compare_event(event, profile: PricingProfile, workflow: PricingWorkflow, *, 
         v2 = v2_result.gross_total
         v2_dict = v2_result.to_dict()
         v2_dict["inputs"].pop("requested_at", None)
-        key_payload = {name: value for name, value in payload.items() if name != "requested_at"}
         key = _key(event, {"workflow": workflow.pk, "calc": key_payload}, v2_dict, profile, workflow)
         status = "ok"
     except Exception as exc:
@@ -141,7 +181,12 @@ def compare_event(event, profile: PricingProfile, workflow: PricingWorkflow, *, 
             diagnostics = {"code": exc.code, "field": exc.field}
         else:
             diagnostics = {"code": "internal_error"}
-        key = hashlib.sha256(f"{event.pk}:{profile.pk}:{profile.version}:{workflow.pk}:{workflow.version}".encode()).hexdigest()
+        if key is None:
+            payload = payload or _payload(event, workflow)
+            context = context or _frozen_context(event, profile, workflow, payload)
+            key_payload = {name: value for name, value in payload.items() if name != "requested_at"}
+            key = _key(event, {"workflow": workflow.pk, "calc": key_payload},
+                       {"inputs": context}, profile, workflow)
         status = "error"
 
     difference = None if v1 is None or v2 is None else v2 - v1
@@ -176,15 +221,19 @@ def compare_event(event, profile: PricingProfile, workflow: PricingWorkflow, *, 
                     difference=v2_result.gross_total - v1, created_by=actor,
                 )
             else:
+                package = event.price_calculation.package
+                previous = PriceCalculationRevision.objects.filter(event=locked).order_by("-revision_number").first()
                 revision = PriceCalculationRevision.objects.create(
                     event=locked, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
                     status=PriceCalculationRevision.Status.DRAFT,
-                    revision_number=(PriceCalculationRevision.objects.filter(event=locked).order_by("-revision_number").first().revision_number + 1
-                                     if PriceCalculationRevision.objects.filter(event=locked).exists() else 1),
+                    revision_number=previous.revision_number + 1 if previous else 1,
+                    previous_revision=previous,
                     engine_version="2", comparison_key=key,
-                    input_json={"comparison_key": key, "source": "migration",
-                                "profile_id": profile.pk, "profile_version": profile.version,
-                                "workflow_id": workflow.pk, "workflow_version": workflow.version},
+                    profile_id_snapshot=profile.pk, profile_version=profile.version,
+                    package_id_snapshot=package.pk if package else None,
+                    package_version=package.version if package else None,
+                    workflow_id_snapshot=workflow.pk, workflow_version=workflow.version,
+                    input_json={**(context or {}), "comparison_key": key, "source": "migration"},
                     result_json={"diagnostic": diagnostics}, gross_total=v1 or Decimal("0"),
                     legacy_total=v1, difference=None, created_by=actor,
                 )

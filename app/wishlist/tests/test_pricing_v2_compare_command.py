@@ -150,3 +150,43 @@ def test_supplied_references_must_be_current_active_defaults(comparison_data):
     result = compare_event(event, profile, workflow)
     assert result.status == "error"
     assert result.diagnostics["code"] == "stale_reference"
+
+
+def test_failed_comparison_persists_typed_frozen_snapshots(comparison_data, monkeypatch):
+    event, profile, workflow = comparison_data
+    from wishlist.pricing_v2 import migration
+    from wishlist.pricing_v2.input import PricingValidationError
+    monkeypatch.setattr(migration, "calculate_payload",
+                        lambda *args, **kwargs: (_ for _ in ()).throw(
+                            PricingValidationError("invalid_input", "bad catalog", "catalog")))
+    result = migration.compare_event(event, profile, workflow, persist=True)
+    revision = result.revision
+    assert result.status == "error"
+    assert revision.profile_id_snapshot == profile.pk
+    assert revision.profile_version == profile.version
+    assert revision.workflow_id_snapshot == workflow.pk
+    assert revision.workflow_version == workflow.version
+    assert revision.package_id_snapshot == event.price_calculation.package_id
+    assert revision.package_version is not None
+    assert revision.result_json == {"diagnostic": {"code": "invalid_input", "field": "catalog"}}
+    assert revision.input_json["profile_config"] == profile.config_json
+    assert revision.input_json["workflow"] == workflow.workflow_json
+    assert revision.input_json["event"]["event_id"] == event.pk
+    assert "message" not in revision.result_json["diagnostic"]
+
+
+def test_failed_comparison_content_change_creates_distinct_diagnostic(comparison_data, monkeypatch):
+    event, profile, workflow = comparison_data
+    from wishlist.pricing_v2 import migration
+    from wishlist.pricing_v2.input import PricingValidationError
+    monkeypatch.setattr(migration, "calculate_payload",
+                        lambda *args, **kwargs: (_ for _ in ()).throw(
+                            PricingValidationError("invalid_input", "bad catalog", "catalog")))
+    first = migration.compare_event(event, profile, workflow, persist=True)
+    profile.config_json["minimum_price"] = "999"
+    profile.save(update_fields=["config_json"])
+    second = migration.compare_event(event, profile, workflow, persist=True)
+    assert first.diagnostics == second.diagnostics
+    assert first.comparison_key != second.comparison_key
+    assert PriceCalculationRevision.objects.filter(
+        event=event, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE).count() == 2
