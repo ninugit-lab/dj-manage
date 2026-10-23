@@ -55,17 +55,9 @@ def reprice_event(event, *, today=None, actor=None, apply=False, requested_at=No
         revision = None
         already_applied = False
         if apply:
-            identity = _comparison_identity(result.to_dict())
-            already_applied = any(
-                _comparison_identity(item.result_json) == identity
-                for item in PriceCalculationRevision.objects.filter(
-                    event=event, kind=PriceCalculationRevision.Kind.DRAFT,
-                    status=PriceCalculationRevision.Status.DRAFT,
-                    legacy_total=old,
-                )
+            revision, already_applied = _save_reprice_revision(
+                event, result, actor=actor, legacy_total=old,
             )
-            revision = save_revision(event, result, kind=PriceCalculationRevision.Kind.DRAFT,
-                                     actor=actor, legacy_total=old)
         inputs = result.inputs
         return {
             "event_id": event.pk,
@@ -93,6 +85,23 @@ def reprice_event(event, *, today=None, actor=None, apply=False, requested_at=No
 
 def _money(value):
     return None if value is None else f"{Decimal(str(value)):.2f}"
+
+
+def _save_reprice_revision(event, result, *, actor, legacy_total):
+    """Serialize apply/reuse under the event lock so the report is race-safe."""
+    identity = _comparison_identity(result.to_dict())
+    with transaction.atomic():
+        locked = Event.objects.select_for_update().get(pk=event.pk)
+        existing = PriceCalculationRevision.objects.filter(
+            event=locked, kind=PriceCalculationRevision.Kind.DRAFT,
+            status=PriceCalculationRevision.Status.DRAFT,
+            legacy_total=legacy_total,
+        )
+        for candidate in existing:
+            if _comparison_identity(candidate.result_json) == identity:
+                return candidate, True
+        return save_revision(locked, result, kind=PriceCalculationRevision.Kind.DRAFT,
+                             actor=actor, legacy_total=legacy_total), False
 
 
 @dataclass(frozen=True)

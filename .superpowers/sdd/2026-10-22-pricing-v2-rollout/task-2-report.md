@@ -33,3 +33,24 @@ Implemented the reviewer fixes for controlled open-event repricing.
 All verification used local Python 3.12 via `uv` with
 `DJANGO_DISABLE_SCHEDULER=1`, `PYTHONUTF8=1`, and a test-only Django secret.
 No production `--apply`, push, deploy, or `LOCAL-DEV.md` changes were used.
+
+## Fix round 2 — exact database allowlist
+
+- Replaced filename-substring and `PYTEST_CURRENT_TEST` authorization with the
+  required `PRICING_V2_APPLY_DB_NAME` environment variable.
+- The allowlist is canonicalized for file paths and must exactly match the
+  resolved connection database name. It has no default value.
+- Apply additionally verifies a local host, `DEBUG=True`, and that the active
+  SQLite connection resolves to the ephemeral pytest database. Production-like
+  names, arbitrary production paths, spoofed pytest environment variables, and
+  mismatched allowlists are refused before writes.
+- Draft reuse status now comes from the locked save operation, not a prior
+  unlocked existence query. A mocked race test covers the concurrent-reuse
+  reporting path; SQLite cannot prove true concurrent row locks.
+
+### Round 2 verification
+
+- Focused repricing + comparison: `30 passed`
+- Full suite: `709 passed, 1 skipped`
+- Migration drift: `No changes detected`
+- `git diff --check`: clean

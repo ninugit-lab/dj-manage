@@ -54,9 +54,12 @@ def test_dry_run_is_machine_readable_and_does_not_write(reprice_event_data, caps
 
 
 def test_apply_is_idempotent_and_keeps_event_total(reprice_event_data, capsys):
+    from django.db import connection
     with override_settings(DEBUG=True, ALLOWED_HOSTS=["testserver"]):
-        call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
-        call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
+        with pytest.MonkeyPatch.context() as patcher:
+            patcher.setenv("PRICING_V2_APPLY_DB_NAME", str(connection.settings_dict["NAME"]))
+            call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
+            call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
     assert PriceCalculationRevision.objects.filter(event=reprice_event_data, kind="draft").count() == 1
     output = capsys.readouterr().out
     assert json.loads(output[output.rfind("{\n  \"rows\""):])["rows"][0]["status"] == "already_applied"
@@ -71,9 +74,28 @@ def test_apply_requires_explicit_local_confirmation(reprice_event_data):
 
 def test_apply_refuses_unknown_or_production_database(reprice_event_data, monkeypatch):
     from django.db import connection
-    monkeypatch.setitem(connection.settings_dict, "NAME", "production.sqlite3")
+    monkeypatch.setitem(connection.settings_dict, "NAME", "production-test.sqlite3")
     with override_settings(DEBUG=True, ALLOWED_HOSTS=["testserver"]):
+        monkeypatch.setenv("PRICING_V2_APPLY_DB_NAME", "production-test.sqlite3")
         with pytest.raises(CommandError, match="temporary test database"):
+            call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
+
+
+def test_pytest_env_spoof_does_not_authorize_arbitrary_database(reprice_event_data, monkeypatch):
+    from django.db import connection
+    monkeypatch.setitem(connection.settings_dict, "NAME", "C:/production/repricing.sqlite3")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "spoofed")
+    monkeypatch.setenv("PRICING_V2_APPLY_DB_NAME", "C:/production/repricing.sqlite3")
+    with override_settings(DEBUG=True, ALLOWED_HOSTS=["testserver"]):
+        with pytest.raises(CommandError):
+            call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
+
+
+def test_allowlist_must_exactly_match_resolved_database(reprice_event_data, monkeypatch):
+    from django.db import connection
+    monkeypatch.setenv("PRICING_V2_APPLY_DB_NAME", str(connection.settings_dict["NAME"]) + ".other")
+    with override_settings(DEBUG=True, ALLOWED_HOSTS=["testserver"]):
+        with pytest.raises(CommandError, match="exactly match"):
             call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
 
 
@@ -98,7 +120,10 @@ def test_apply_preserves_released_offer_and_audits_old_new_difference(reprice_ev
         event=reprice_event_data, kind="offer", status=offer_status, revision_number=1,
         engine_version="legacy", gross_total=Decimal("777"))
     with override_settings(DEBUG=True, ALLOWED_HOSTS=["testserver"]):
-        call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
+        from django.db import connection
+        with pytest.MonkeyPatch.context() as patcher:
+            patcher.setenv("PRICING_V2_APPLY_DB_NAME", str(connection.settings_dict["NAME"]))
+            call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
     revision = PriceCalculationRevision.objects.get(event=reprice_event_data, kind="draft")
     assert revision.legacy_total == Decimal("777.00")
     assert revision.gross_total == Decimal("130.00")
@@ -115,12 +140,18 @@ def test_output_path_and_changed_config_create_new_draft(reprice_event_data, tmp
     from wishlist.models import PricingProfile
     output = tmp_path / "reprice.json"
     with override_settings(DEBUG=True, ALLOWED_HOSTS=["testserver"]):
-        call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply", "--output", str(output))
+        from django.db import connection
+        with pytest.MonkeyPatch.context() as patcher:
+            patcher.setenv("PRICING_V2_APPLY_DB_NAME", str(connection.settings_dict["NAME"]))
+            call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply", "--output", str(output))
     profile = PricingProfile.objects.get()
     profile.config_json["minimum_price"] = "131"
     profile.save(update_fields=["config_json"])
     with override_settings(DEBUG=True, ALLOWED_HOSTS=["testserver"]):
-        call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
+        from django.db import connection
+        with pytest.MonkeyPatch.context() as patcher:
+            patcher.setenv("PRICING_V2_APPLY_DB_NAME", str(connection.settings_dict["NAME"]))
+            call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
     assert PriceCalculationRevision.objects.filter(event=reprice_event_data, kind="draft").count() == 2
     report = json.loads(output.read_text())
     assert report["rows"][0]["old_gross"] == "777.00"
@@ -149,3 +180,15 @@ def test_clock_shift_does_not_duplicate_same_frozen_economics(reprice_event_data
                            requested_at=datetime(2026, 10, 24, tzinfo=dt_timezone.utc))
     assert first["revision_id"] == second["revision_id"]
     assert second["status"] == "already_applied"
+
+
+def test_apply_status_uses_locked_save_result_for_race(monkeypatch, reprice_event_data):
+    from wishlist.pricing_v2 import migration
+    from wishlist.models import PriceCalculationRevision
+    existing = PriceCalculationRevision.objects.create(
+        event=reprice_event_data, kind="draft", status="draft", revision_number=1,
+        engine_version="2", gross_total=Decimal("130"), legacy_total=Decimal("777"))
+    monkeypatch.setattr(migration, "_save_reprice_revision", lambda *args, **kwargs: (existing, True))
+    row = migration.reprice_event(reprice_event_data, apply=True)
+    assert row["status"] == "already_applied"
+    assert row["revision_id"] == existing.pk
