@@ -1,5 +1,6 @@
 """Staff-only administration of immutable global pricing profile versions."""
 import json
+from dataclasses import asdict
 from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 
@@ -274,8 +275,11 @@ def packages_page(request):
         for field in _FIELDS:
             factor = getattr(resolved, field) if resolved else None
             value = factor.value if factor else None
+            editor_value = json.dumps([asdict(entry) for entry in value], ensure_ascii=False, default=str) if (
+                field in ('seasons', 'lead_time_tiers', 'guest_tiers') and value is not None
+            ) else str(value) if value is not None else None
             factors.append({'key': field, 'mode': values.get(field, {}).get('mode', 'inherit'),
-                            'value': str(value) if value is not None else None,
+                            'value': editor_value,
                             'source': factor.source if factor else 'invalid',
                             'profile_version': factor.profile_version if factor else None,
                             'package_version': factor.package_version if factor else None})
@@ -312,7 +316,15 @@ def _save_package(request, pk=None):
                 any(getattr(pkg, field) != data[field] for field in
                     ('description', 'badge_label', 'badge_color', 'is_active', 'is_public', 'sort_order')
                     if field in data))
-            if profile.status == 'active' and (core_changed or overrides != (previous.overrides_json if previous else {})):
+            references = _references('packages', pkg.pk) if pkg else None
+            shared = pkg is not None and ((pkg.is_public and pkg.is_active and
+                PricingProfile.objects.filter(status='active').exists()) or
+                PricingPackageOverride.objects.filter(package=pkg, profile__status='active').exists() or
+                bool(references['workflows'] or references['revisions']))
+            clone_package = core_changed and (shared or profile.status == 'active')
+            override_changed = overrides != (previous.overrides_json if previous else {})
+            if (profile.status == 'active' and (core_changed or override_changed)
+                    or profile.status == 'draft' and shared and (core_changed or override_changed)):
                 latest = _current(PricingProfile.objects.select_for_update())
                 profile = PricingProfile.objects.create(name=latest.name, version=latest.version + 1,
                     status='draft', valid_from=timezone.now(), config_json=profile.config_json,
@@ -320,18 +332,27 @@ def _save_package(request, pk=None):
                 for existing in PricingPackageOverride.objects.filter(profile_id=data['profile_id']):
                     PricingPackageOverride.objects.create(profile=profile, package=existing.package,
                                                           overrides_json=existing.overrides_json)
-            if core_changed and data.get('profile_id') != profile.pk:
+            if clone_package:
                 pkg.pk = None
                 pkg._state.adding = True
-                pkg.version = 0
             if pkg is None:
                 pkg = PricingPackage()
-            else:
+            elif core_changed or override_changed and not shared:
                 pkg.version += 1
+            if not core_changed and not clone_package and pk is not None:
+                if override_changed and not shared:
+                    pkg.save(update_fields=['version'])
+                PricingPackageOverride.objects.update_or_create(profile=profile, package=pkg,
+                    defaults={'overrides_json': overrides})
+                return JsonResponse({'id': pkg.pk, 'version': pkg.version,
+                                     'profile_id': profile.pk})
             pkg.name, pkg.base_price = name, price
             for field in ('description', 'badge_label', 'badge_color', 'is_active', 'is_public', 'sort_order'):
                 if field in data:
                     setattr(pkg, field, data[field])
+            if clone_package:
+                # Until the workflow explicitly selects this ID, never offer it publicly.
+                pkg.is_public = False
             pkg.full_clean(exclude=['included_items'])
             pkg.save()
             pkg.included_items.set(ids)
@@ -391,12 +412,48 @@ def _references(kind, pk):
             return any(contains(value, field) for value in node)
         return False
 
-    workflows = [w.pk for w in PricingWorkflow.objects.filter(is_active=True)
-                 if contains(w.workflow_json, key[0])]
+    included_packages = {str(identity) for identity in PricingPackage.objects.filter(
+        included_items__pk=pk).values_list('pk', flat=True)} if kind == 'items' else set()
+    required_item = kind == 'items' and PriceItem.objects.filter(pk=pk, is_required=True).exists()
+    workflows = []
+    for workflow in PricingWorkflow.objects.filter(is_active=True):
+        blocks = workflow.workflow_json if isinstance(workflow.workflow_json, list) else []
+        explicit = contains(blocks, key[0])
+        implicit_rules = kind == 'rules' and any(
+            isinstance(block, dict) and block.get('type') == 'rules'
+            and 'rule_ids' not in (block.get('config') or {}) for block in blocks)
+        included_item = kind == 'items' and any(
+            isinstance(block, dict) and block.get('type') == 'package'
+            and isinstance(block.get('config'), dict)
+            and str(block['config'].get('package_id')) in included_packages
+            for block in blocks)
+        required = required_item and any(isinstance(block, dict) and block.get('type') == 'items'
+                                         for block in blocks)
+        if explicit or implicit_rules or included_item or required:
+            workflows.append(workflow.pk)
+    snapshot_section = {'items': 'items', 'rules': 'rules', 'formulas': 'formulas',
+                        'packages': 'packages'}[kind]
+
+    def in_snapshot(data):
+        if not isinstance(data, dict):
+            return False
+        snapshot = data.get('catalog_snapshot', {})
+        if not isinstance(snapshot, dict):
+            return False
+        section = snapshot.get(snapshot_section, {})
+        if isinstance(section, dict) and str(pk) in section:
+            return True
+        if kind == 'items' and isinstance(snapshot.get('packages'), dict):
+            return any(isinstance(package, dict) and (
+                contains(package, 'included_item_ids') or contains(package, 'required_item_ids'))
+                for package in snapshot['packages'].values())
+        return False
+
     revisions = [r.pk for r in PriceCalculationRevision.objects.filter(
         status__in=('released', 'sent', 'send_failed', 'superseded'))
         if (kind == 'packages' and r.package_id_snapshot == pk or
-            contains(r.input_json, key[1]) or contains(r.result_json, key[1]))]
+            contains(r.input_json, key[1]) or contains(r.result_json, key[1])
+            or in_snapshot(r.input_json) or in_snapshot(r.result_json))]
     packages = ([p.pk for p in PricingPackage.objects.filter(included_items__pk=pk)]
                 if kind == 'items' else [])
     return {'workflows': workflows, 'revisions': revisions, 'packages': packages}
@@ -492,10 +549,13 @@ def component_detail(request, pk):
                              'is_active': obj.is_active})
     if request.method == 'DELETE':
         if any(references.values()):
-            return JsonResponse({'error': 'Komponente wird verwendet. Bitte deaktivieren.',
+            return JsonResponse({'error': 'Komponente wird verwendet. Aktiven Workflow zuerst sicher ändern; sonst nur deaktivieren.',
                                  'references': references}, status=409)
         obj.delete()
         return JsonResponse({'success': True})
+    if data.get('is_active') is False and obj.is_active and references['workflows']:
+        return JsonResponse({'error': 'Aktiver Workflow benötigt diese Komponente.',
+                             'references': references}, status=409)
     try:
         obj = _validate_component(kind, data, obj)
         obj.save()

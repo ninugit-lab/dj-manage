@@ -66,7 +66,7 @@ def test_override_modes_display_effective_sources_and_save(staff):
 @pytest.mark.django_db
 def test_two_editors_stale_package_and_profile_conflict(staff):
     p = profile()
-    pkg = PricingPackage.objects.create(name='Paket', base_price=100)
+    pkg = PricingPackage.objects.create(name='Paket', base_price=100, is_public=False)
     data = package_payload(p, pkg, base_price='120')
     assert call(staff, 'pricing_v2_package_detail', data, pkg.pk, 'put').status_code == 200
     assert call(staff, 'pricing_v2_package_detail', data, pkg.pk, 'put').status_code == 409
@@ -176,8 +176,8 @@ def test_references_reported_and_delete_blocked_while_retirement_preserves_revis
     assert detail.status_code == 200
     assert wf.pk in detail.json()['references']['workflows'] and revision.pk in detail.json()['references']['revisions']
     assert call(staff, 'pricing_v2_component_detail', {'kind': 'items'}, item.pk, 'delete').status_code == 409
-    assert call(staff, 'pricing_v2_component_detail', {'kind': 'items', 'is_active': False}, item.pk, 'put').status_code == 200
-    assert PriceItem.objects.get(pk=item.pk).is_active is False
+    assert call(staff, 'pricing_v2_component_detail', {'kind': 'items', 'is_active': False}, item.pk, 'put').status_code == 409
+    assert PriceItem.objects.get(pk=item.pk).is_active is True
     assert PricingWorkflow.objects.get(pk=wf.pk).workflow_json[0]['config']['item_ids'] == [item.pk]
     assert PriceCalculationRevision.objects.get(pk=revision.pk).result_json == {'gross_total': '110.00'}
 
@@ -234,9 +234,9 @@ def test_active_rule_and_formula_references_block_delete_without_rewriting_workf
         response = call(staff, 'pricing_v2_component_detail', {'kind': kind}, obj.pk, 'delete')
         assert response.status_code == 409 and workflow.pk in response.json()['references']['workflows']
         edited = call(staff, 'pricing_v2_component_detail', {'kind': kind, 'is_active': False}, obj.pk, 'put')
-        assert edited.status_code == 200, edited.json()
+        assert edited.status_code == 409, edited.json()
         obj.refresh_from_db()
-        assert obj.is_active is False
+        assert obj.is_active is True
     workflow.refresh_from_db()
     assert workflow.workflow_json[0]['config']['rule_ids'] == [rule.pk]
     assert workflow.workflow_json[1]['config']['formula_id'] == formula.pk
@@ -275,3 +275,225 @@ def test_advanced_rule_form_rejects_malformed_json(staff):
     })
     assert response.status_code == 400
     assert PricingRule.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_draft_edit_of_public_active_package_clones_without_touching_live_catalog(staff):
+    active = profile('active')
+    draft = PricingProfile.objects.create(name='Global', version=2, status='draft',
+                                          valid_from=timezone.now(), config_json=copy.deepcopy(CONFIG))
+    original = PricingPackage.objects.create(name='Live', base_price=100)
+    PricingPackageOverride.objects.create(profile=active, package=original,
+                                          overrides_json={'km_rate': {'mode': 'override', 'value': '1'}})
+    workflow = PricingWorkflow.objects.create(name='Default', is_default=True,
+        workflow_json=[{'type': 'package', 'config': {'package_id': original.pk}}, {'type': 'items'}])
+    payload = package_payload(draft, original, name='Draft price', base_price='180')
+    first = call(staff, 'pricing_v2_package_detail', payload, original.pk, 'put')
+    assert first.status_code == 200, first.content
+    original.refresh_from_db()
+    clone = PricingPackage.objects.get(pk=first.json()['id'])
+    assert clone.pk != original.pk and clone.version == original.version + 1
+    assert (original.name, original.base_price, original.version, original.is_public) == ('Live', 100, 1, True)
+    assert (clone.name, clone.base_price, clone.is_public) == ('Draft price', 180, False)
+    assert PricingPackageOverride.objects.get(profile=active, package=original).overrides_json['km_rate']['value'] == '1'
+    saved_draft = PricingProfile.objects.get(pk=first.json()['profile_id'])
+    assert saved_draft.status == 'draft' and saved_draft.pk != draft.pk and saved_draft.version == draft.version + 1
+    assert PricingPackageOverride.objects.filter(profile=saved_draft, package=clone).exists()
+    assert call(staff, 'pricing_v2_package_detail', payload, original.pk, 'put').status_code == 409
+    assert PricingPackage.objects.count() == 2
+    assert PricingWorkflow.objects.get(pk=workflow.pk).workflow_json[0]['config']['package_id'] == original.pk
+    from wishlist.models import AppConfig
+    AppConfig.objects.create(pricing_engine_mode='v2')
+    public = Client().post('/api/price-estimate/', data=json.dumps({
+        'date': '2026-12-02', 'time_start': '18:00', 'time_end': '21:00',
+        'package_id': clone.pk, 'selected_item_ids': [], 'distance_km': '12',
+    }), content_type='application/json')
+    assert public.status_code == 400 and public.json()['gross_total'] is None
+    live = Client().post('/api/price-estimate/', data=json.dumps({
+        'date': '2026-12-02', 'time_start': '18:00', 'time_end': '21:00',
+        'package_id': original.pk, 'selected_item_ids': [], 'distance_km': '12',
+    }), content_type='application/json')
+    assert live.status_code == 200 and live.json()['package']['price'] == '100.00'
+
+
+@pytest.mark.django_db
+def test_released_catalog_snapshot_included_only_item_blocks_delete_but_allows_safe_retirement(staff):
+    item = PriceItem.objects.create(name='Included', category='extra', price=10)
+    event = Event.objects.create(name='Event', date=timezone.localdate())
+    snapshot = {'packages': {'42': {'included_item_ids': [str(item.pk)]}},
+                'items': {str(item.pk): {'label': 'Included', 'price': '10'}},
+                'rules': {}, 'formulas': {}}
+    revision = PriceCalculationRevision.objects.create(event=event, kind='offer', status='released',
+        revision_number=1, engine_version='2', input_json={'catalog_snapshot': snapshot},
+        result_json={'gross_total': '110.00'}, gross_total=110)
+    detail = staff.get(reverse('dj_admin:pricing_v2_component_detail', kwargs={'pk': item.pk}) + '?kind=items')
+    assert revision.pk in detail.json()['references']['revisions']
+    assert call(staff, 'pricing_v2_component_detail', {'kind': 'items'}, item.pk, 'delete').status_code == 409
+    assert call(staff, 'pricing_v2_component_detail', {'kind': 'items', 'is_active': False}, item.pk, 'put').status_code == 200
+    assert PriceCalculationRevision.objects.get(pk=revision.pk).result_json == {'gross_total': '110.00'}
+
+
+@pytest.mark.django_db
+def test_rule_formula_snapshots_without_selected_ids_block_deletion(staff):
+    rule = PricingRule.objects.create(name='Old', effect_type='flat_add', effect_value=10)
+    formula = PricingFormula.objects.create(name='Old', expression='base')
+    event = Event.objects.create(name='Event', date=timezone.localdate())
+    revision = PriceCalculationRevision.objects.create(event=event, kind='offer', status='released',
+        revision_number=1, engine_version='2', input_json={'catalog_snapshot': {
+            'packages': {}, 'items': {}, 'rules': {str(rule.pk): {'effect_value': '10'}},
+            'formulas': {str(formula.pk): {'expression': 'base'}}}},
+        result_json={'gross_total': '100.00'}, gross_total=100)
+    for kind, obj in [('rules', rule), ('formulas', formula)]:
+        detail = staff.get(reverse('dj_admin:pricing_v2_component_detail', kwargs={'pk': obj.pk}) + '?kind=' + kind)
+        assert revision.pk in detail.json()['references']['revisions']
+        assert call(staff, 'pricing_v2_component_detail', {'kind': kind}, obj.pk, 'delete').status_code == 409
+
+
+@pytest.mark.django_db
+def test_result_catalog_snapshot_included_item_blocks_deletion(staff):
+    item = PriceItem.objects.create(name='Historical', category='extra', price=10)
+    event = Event.objects.create(name='Event', date=timezone.localdate())
+    revision = PriceCalculationRevision.objects.create(event=event, kind='offer', status='sent',
+        revision_number=1, engine_version='2', input_json={}, result_json={
+            'catalog_snapshot': {'packages': {'31': {'included_item_ids': [str(item.pk)]}},
+                                 'items': {}, 'rules': {}, 'formulas': {}}, 'gross_total': '10.00'}, gross_total=10)
+    detail = staff.get(reverse('dj_admin:pricing_v2_component_detail', kwargs={'pk': item.pk}) + '?kind=items')
+    assert revision.pk in detail.json()['references']['revisions']
+    assert call(staff, 'pricing_v2_component_detail', {'kind': 'items'}, item.pk, 'delete').status_code == 409
+
+
+@pytest.mark.django_db
+def test_active_profile_override_only_keeps_shared_package_row_and_visibility(staff):
+    active = profile('active')
+    pkg = PricingPackage.objects.create(name='Live', base_price=100)
+    response = call(staff, 'pricing_v2_package_detail', package_payload(active, pkg,
+        name='Live', overrides_json={'km_rate': {'mode': 'disabled'}}), pkg.pk, 'put')
+    assert response.status_code == 200
+    pkg.refresh_from_db()
+    assert pkg.version == 1 and pkg.is_public is True
+    assert PricingPackage.objects.count() == 1
+    assert PricingPackageOverride.objects.get(profile_id=response.json()['profile_id'], package=pkg).overrides_json['km_rate']['mode'] == 'disabled'
+
+
+@pytest.mark.django_db
+def test_draft_shared_override_is_versioned_without_changing_live_package(staff):
+    active = profile('active')
+    draft = PricingProfile.objects.create(name='Global', version=2, status='draft',
+                                          valid_from=timezone.now(), config_json=copy.deepcopy(CONFIG))
+    pkg = PricingPackage.objects.create(name='Live', base_price=100)
+    payload = package_payload(draft, pkg, name='Live',
+        overrides_json={'km_rate': {'mode': 'override', 'value': '2'}})
+    first = call(staff, 'pricing_v2_package_detail', payload, pkg.pk, 'put')
+    assert first.status_code == 200
+    assert first.json()['profile_id'] != draft.pk
+    pkg.refresh_from_db()
+    assert pkg.version == 1 and pkg.is_public
+    assert not PricingPackageOverride.objects.filter(profile=active, package=pkg).exists()
+    assert call(staff, 'pricing_v2_package_detail', payload, pkg.pk, 'put').status_code == 409
+
+
+@pytest.mark.django_db
+def test_active_package_clone_with_items_does_not_mutate_original_inclusions(staff):
+    active = profile('active')
+    first = PriceItem.objects.create(name='First', category='extra', price=10)
+    second = PriceItem.objects.create(name='Second', category='extra', price=20)
+    pkg = PricingPackage.objects.create(name='Live', base_price=100)
+    pkg.included_items.add(first)
+    response = call(staff, 'pricing_v2_package_detail', package_payload(active, pkg,
+        name='Live', included_item_ids=[second.pk]), pkg.pk, 'put')
+    assert response.status_code == 200
+    pkg.refresh_from_db()
+    clone = PricingPackage.objects.get(pk=response.json()['id'])
+    assert list(pkg.included_items.values_list('pk', flat=True)) == [first.pk]
+    assert list(clone.included_items.values_list('pk', flat=True)) == [second.pk]
+    assert not clone.is_public
+
+
+@pytest.mark.django_db
+def test_private_package_newly_edited_on_active_profile_stays_private(staff):
+    active = profile('active')
+    pkg = PricingPackage.objects.create(name='Internal', base_price=100, is_public=False)
+    response = call(staff, 'pricing_v2_package_detail', package_payload(active, pkg,
+        name='Internal updated', base_price='120', is_public=True), pkg.pk, 'put')
+    assert response.status_code == 200
+    clone = PricingPackage.objects.get(pk=response.json()['id'])
+    pkg.refresh_from_db()
+    assert not pkg.is_public and pkg.base_price == 100
+    assert clone.pk != pkg.pk and not clone.is_public
+
+
+@pytest.mark.django_db
+def test_shared_package_edit_does_not_drop_other_draft_override(staff):
+    active = profile('active')
+    draft = PricingProfile.objects.create(name='Global', version=2, status='draft',
+                                          valid_from=timezone.now(), config_json=copy.deepcopy(CONFIG))
+    pkg = PricingPackage.objects.create(name='Live', base_price=100)
+    PricingPackageOverride.objects.create(profile=draft, package=pkg,
+                                          overrides_json={'km_rate': {'mode': 'override', 'value': '3'}})
+    response = call(staff, 'pricing_v2_package_detail', package_payload(draft, pkg,
+        name='Changed', base_price='200', overrides_json={'km_rate': {'mode': 'override', 'value': '3'}}), pkg.pk, 'put')
+    assert response.status_code == 200
+    new_draft = PricingProfile.objects.get(pk=response.json()['profile_id'])
+    assert PricingPackageOverride.objects.get(profile=new_draft, package=pkg).overrides_json['km_rate']['value'] == '3'
+    assert PricingPackageOverride.objects.get(profile=new_draft, package_id=response.json()['id']).overrides_json['km_rate']['value'] == '3'
+
+
+@pytest.mark.django_db
+def test_complex_factor_editors_render_json_roundtrip_and_escape_html(staff):
+    p = profile()
+    pkg = PricingPackage.objects.create(name='Complex', base_price=100)
+    seasons = [{'identifier': 'winter', 'label': '<Winter>', 'start': '12-01', 'end': '02-28', 'percent': '15'}]
+    tiers = [{'lower_bound': 0, 'upper_bound': 9, 'value': '25'},
+             {'lower_bound': 10, 'upper_bound': None, 'value': '0'}]
+    override = {'seasons': {'mode': 'override', 'value': seasons},
+                'guest_tiers': {'mode': 'override', 'value': tiers}}
+    PricingPackageOverride.objects.create(profile=p, package=pkg, overrides_json=override)
+    page = staff.get(reverse('dj_admin:pricing_v2_packages') + f'?profile_id={p.pk}&package_id={pkg.pk}')
+    from html.parser import HTMLParser
+    class Inputs(HTMLParser):
+        values = {}
+        def handle_starttag(self, tag, attrs):
+            fields = dict(attrs)
+            if tag in ('input', 'textarea') and fields.get('name') in ('seasons_value', 'guest_tiers_value'):
+                self.values[fields['name']] = fields.get('value')
+    parser = Inputs()
+    parser.feed(page.content.decode())
+    assert json.loads(parser.values['seasons_value']) == seasons
+    assert json.loads(parser.values['guest_tiers_value']) == tiers
+    assert '<Winter>' not in page.content.decode()
+
+
+@pytest.mark.django_db
+def test_active_workflow_implicit_rules_cannot_be_deactivated(staff):
+    rule = PricingRule.objects.create(name='Auto rule', effect_type='flat_add', effect_value=10)
+    workflow = PricingWorkflow.objects.create(name='Live', workflow_json=[{'type': 'rules'}])
+    response = call(staff, 'pricing_v2_component_detail', {'kind': 'rules', 'is_active': False}, rule.pk, 'put')
+    assert response.status_code == 409
+    assert workflow.pk in response.json()['references']['workflows']
+    rule.refresh_from_db()
+    assert rule.is_active
+
+
+@pytest.mark.django_db
+def test_active_workflow_package_included_item_cannot_be_deactivated(staff):
+    item = PriceItem.objects.create(name='Included', category='extra', price=10)
+    pkg = PricingPackage.objects.create(name='Live', base_price=100)
+    pkg.included_items.add(item)
+    workflow = PricingWorkflow.objects.create(name='Live', workflow_json=[
+        {'type': 'package', 'config': {'package_id': pkg.pk}}, {'type': 'items'}])
+    response = call(staff, 'pricing_v2_component_detail', {'kind': 'items', 'is_active': False}, item.pk, 'put')
+    assert response.status_code == 409
+    assert workflow.pk in response.json()['references']['workflows']
+    item.refresh_from_db()
+    assert item.is_active
+
+
+@pytest.mark.django_db
+def test_active_workflow_required_item_cannot_be_deactivated(staff):
+    item = PriceItem.objects.create(name='Required', category='extra', price=10, is_required=True)
+    workflow = PricingWorkflow.objects.create(name='Live', workflow_json=[{'type': 'items'}])
+    response = call(staff, 'pricing_v2_component_detail', {'kind': 'items', 'is_active': False}, item.pk, 'put')
+    assert response.status_code == 409
+    assert workflow.pk in response.json()['references']['workflows']
+    item.refresh_from_db()
+    assert item.is_active
