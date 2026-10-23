@@ -3,7 +3,9 @@ import json
 import pytest
 from django.urls import reverse
 
-from wishlist.models import PricingWorkflow
+from decimal import Decimal
+
+from wishlist.models import PriceItem, PricingFormula, PricingPackage, PricingWorkflow, PricingRule
 
 
 @pytest.fixture
@@ -57,3 +59,26 @@ def test_month_select_uses_german_month_names_not_placeholders(staff_client):
         "Juli", "August", "September", "Oktober", "November", "Dezember",
     ]:
         assert name in snippet
+
+
+def test_editing_components_uses_creation_forms_with_existing_values(staff_client):
+    """Editing must expose all fields, notably a rule's condition, not only effect."""
+    PriceItem.objects.create(name='Lights', price=Decimal('25.50'))
+    PricingPackage.objects.create(name='Basic', base_price=Decimal('100.75'))
+    PricingFormula.objects.create(name='Guest fee', expression='guests * 5')
+    PricingRule.objects.create(name='Weekend', condition_json=[{
+        'field': 'date_weekday', 'op': 'gte', 'value': 5,
+    }], effect_type='flat_add', effect_value=50)
+    content = staff_client.get(reverse('dj_admin:workflow_builder')).content.decode()
+    for kind in ('item', 'pkg', 'rule', 'formula'):
+        assert f"openEdit('{kind}'," in content
+        assert f"id=\"{kind}-add\"" in content
+        assert f"id=\"{kind}-cancel\"" in content
+    assert 'id="rule-cond-field"' in content
+    assert 'id="rule-cond-op"' in content
+    assert 'id="rule-cond-val"' in content
+    assert 'data-price="25.50"' in content
+    assert 'data-base-price="100.75"' in content
+    assert 'data-effect-value="50.00"' in content
+    assert '&quot;date_weekday&quot;' not in content  # JSON is safely embedded in a script element
+    assert '"date_weekday"' in content

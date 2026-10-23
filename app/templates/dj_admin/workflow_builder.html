@@ -1,4 +1,5 @@
 {% extends "dj_admin/base.html" %}
+{% load l10n %}
 {% block title %}Preiskalkulation — DJ Admin{% endblock %}
 {% block nav_workflow %}active{% endblock %}
 {% block content %}
@@ -194,7 +195,9 @@
             <div class="form-group"><label class="form-label">Name</label><input type="text" id="item-name" class="form-input" placeholder="z.B. Lichtanlage"></div>
             <div class="form-group"><label class="form-label">Kategorie</label>
               <select id="item-category" class="form-input appearance-auto">
+                <option value="base">Grundpreis</option>
                 <option value="tech">Technik</option>
+                <option value="equipment">Ausrüstung</option>
                 <option value="service">Service</option>
                 <option value="extra" selected>Extra</option>
                 <option value="travel">Anfahrt</option>
@@ -212,8 +215,8 @@
             <div class="form-group m-0"><label class="form-label m-0">Sortierung</label><input type="number" id="item-sort" class="form-input w-[60px]" value="0"></div>
           </div>
           <div class="flex gap-2 mt-3">
-            <button type="button" class="btn btn-primary btn-sm" onclick="saveItem()">Speichern</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleForm('item-add')">Abbrechen</button>
+            <button type="button" id="item-save" class="btn btn-primary btn-sm" onclick="saveItem()">Speichern</button>
+            <button type="button" id="item-cancel" class="btn btn-ghost btn-sm" onclick="closeComponentForm('item')">Abbrechen</button>
           </div>
         </div>
         {% if price_items %}
@@ -221,7 +224,7 @@
           <thead><tr><th>Name</th><th>Kategorie</th><th>Preis</th><th>Standard</th><th>Pflicht</th><th>Öffentl.</th><th></th></tr></thead>
           <tbody>
           {% for item in price_items %}
-          <tr id="item-row-{{ item.pk }}">
+          <tr id="item-row-{{ item.pk }}" data-sort-order="{{ item.sort_order }}" data-price="{{ item.price|unlocalize }}">
             <td>
               <span class="item-display">{{ item.name }}{% if item.description %}<br><span class="text-[.68rem] text-muted">{{ item.description }}</span>{% endif %}</span>
               <span class="item-edit" style="display:none"><input type="text" data-field="name" class="form-input mb-0.5" value="{{ item.name }}"><input type="text" data-field="description" class="form-input text-sm" value="{{ item.description }}"></span>
@@ -247,7 +250,7 @@
               <span class="item-edit" style="display:none"><input type="checkbox" data-field="is_public" {% if item.is_public %}checked{% endif %}></span>
             </td>
             <td class="whitespace-nowrap">
-              <button type="button" class="btn btn-ghost btn-sm item-edit-btn" onclick="toggleEditRow('item',{{ item.pk }})">&#9998;</button>
+              <button type="button" class="btn btn-ghost btn-sm item-edit-btn" aria-label="{{ item.name }} bearbeiten" onclick="openEdit('item',{{ item.pk }})">&#9998;</button>
               <button type="button" class="btn btn-primary btn-sm item-save-btn" style="display:none" onclick="saveEditItem({{ item.pk }})">&#10003;</button>
               <button type="button" class="btn btn-ghost btn-sm item-cancel-btn" style="display:none" onclick="cancelEditRow('item',{{ item.pk }})">&#10005;</button>
               <button type="button" class="btn btn-danger btn-sm" onclick="deleteItem({{ item.pk }})">&#128465;</button>
@@ -283,13 +286,13 @@
             </div>
           </div>
           <div class="flex gap-2">
-            <button type="button" class="btn btn-primary btn-sm" onclick="savePkg()">Speichern</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleForm('pkg-add')">Abbrechen</button>
+            <button type="button" id="pkg-save" class="btn btn-primary btn-sm" onclick="savePkg()">Speichern</button>
+            <button type="button" id="pkg-cancel" class="btn btn-ghost btn-sm" onclick="closeComponentForm('pkg')">Abbrechen</button>
           </div>
         </div>
         <div id="pkg-list">
           {% for pkg in pricing_packages %}
-          <div class="wb-comp-row" id="pkg-row-{{ pkg.pk }}">
+          <div class="wb-comp-row" id="pkg-row-{{ pkg.pk }}" data-base-price="{{ pkg.base_price|unlocalize }}">
             <div class="flex-1">
               <span class="pkg-display">
                 <strong>{{ pkg.name }}</strong>{% if pkg.badge_label %} <span class="badge badge-inquiry">{{ pkg.badge_label }}</span>{% endif %}
@@ -309,7 +312,7 @@
             </div>
             <span class="pkg-display font-mono text-[.85rem] text-accent">{{ pkg.base_price }} €</span>
             <span class="text-[.68rem] text-muted">{% if pkg.is_active %}aktiv{% else %}inaktiv{% endif %}</span>
-            <button type="button" class="btn btn-ghost btn-sm pkg-edit-btn" onclick="toggleEditComp('pkg',{{ pkg.pk }})">&#9998;</button>
+            <button type="button" class="btn btn-ghost btn-sm pkg-edit-btn" aria-label="{{ pkg.name }} bearbeiten" onclick="openEdit('pkg',{{ pkg.pk }})">&#9998;</button>
             <button type="button" class="btn btn-primary btn-sm pkg-save-btn" style="display:none" onclick="saveEditPkg({{ pkg.pk }})">&#10003;</button>
             <button type="button" class="btn btn-ghost btn-sm pkg-cancel-btn" style="display:none" onclick="cancelEditComp('pkg',{{ pkg.pk }})">&#10005;</button>
             <button type="button" class="btn btn-danger btn-sm" onclick="deletePkg({{ pkg.pk }})">&#128465;</button>
@@ -372,13 +375,14 @@
             <div class="form-group"><label class="form-label">Sortierung</label><input type="number" id="rule-sort" class="form-input" value="0" title="Niedrigere Werte werden zuerst ausgewertet"></div>
           </div>
           <div class="flex gap-2">
-            <button type="button" class="btn btn-primary btn-sm" onclick="saveRule()">Speichern</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleForm('rule-add')">Abbrechen</button>
+            <button type="button" id="rule-save" class="btn btn-primary btn-sm" onclick="saveRule()">Speichern</button>
+            <button type="button" id="rule-cancel" class="btn btn-ghost btn-sm" onclick="closeComponentForm('rule')">Abbrechen</button>
           </div>
         </div>
         <div id="rule-list">
           {% for rule in pricing_rules %}
-          <div class="wb-comp-row" id="rule-row-{{ rule.pk }}">
+          <div class="wb-comp-row" id="rule-row-{{ rule.pk }}" data-effect-value="{{ rule.effect_value|unlocalize }}">
+            {{ rule.condition_json|json_script:rule.pk }}
             <div class="flex-1">
               <span class="rule-display">
                 <strong>{{ rule.name }}</strong>
@@ -402,7 +406,7 @@
               </div>
             </div>
             <span class="rule-display text-[.68rem] text-muted">{% if rule.is_active %}aktiv{% else %}inaktiv{% endif %}</span>
-            <button type="button" class="btn btn-ghost btn-sm rule-edit-btn" onclick="toggleEditComp('rule',{{ rule.pk }})">&#9998;</button>
+            <button type="button" class="btn btn-ghost btn-sm rule-edit-btn" aria-label="{{ rule.name }} bearbeiten" onclick="openEdit('rule',{{ rule.pk }})">&#9998;</button>
             <button type="button" class="btn btn-primary btn-sm rule-save-btn" style="display:none" onclick="saveEditRule({{ rule.pk }})">&#10003;</button>
             <button type="button" class="btn btn-ghost btn-sm rule-cancel-btn" style="display:none" onclick="cancelEditComp('rule',{{ rule.pk }})">&#10005;</button>
             <button type="button" class="btn btn-danger btn-sm" onclick="deleteRule({{ rule.pk }})">&#128465;</button>
@@ -442,8 +446,8 @@
             </div>
           </div>
           <div class="flex gap-2">
-            <button type="button" class="btn btn-primary btn-sm" onclick="saveFormula()">Speichern</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleForm('formula-add')">Abbrechen</button>
+            <button type="button" id="formula-save" class="btn btn-primary btn-sm" onclick="saveFormula()">Speichern</button>
+            <button type="button" id="formula-cancel" class="btn btn-ghost btn-sm" onclick="closeComponentForm('formula')">Abbrechen</button>
           </div>
         </div>
         <div id="formula-list">
@@ -461,7 +465,7 @@
                 <input type="text" data-field="description" class="form-input" value="{{ f.description }}" placeholder="Beschreibung">
               </div>
             </div>
-            <button type="button" class="btn btn-ghost btn-sm formula-edit-btn" onclick="toggleEditComp('formula',{{ f.pk }})">&#9998;</button>
+            <button type="button" class="btn btn-ghost btn-sm formula-edit-btn" aria-label="{{ f.name }} bearbeiten" onclick="openEdit('formula',{{ f.pk }})">&#9998;</button>
             <button type="button" class="btn btn-primary btn-sm formula-save-btn" style="display:none" onclick="saveEditFormula({{ f.pk }})">&#10003;</button>
             <button type="button" class="btn btn-ghost btn-sm formula-cancel-btn" style="display:none" onclick="cancelEditComp('formula',{{ f.pk }})">&#10005;</button>
             <button type="button" class="btn btn-danger btn-sm" onclick="deleteFormula({{ f.pk }})">&#128465;</button>
@@ -484,7 +488,64 @@ var currentWfId=null;
 var steps=[];
 var wfContext=null;
 
-function toggleForm(id){var el=document.getElementById(id);el.style.display=el.style.display==='block'?'none':'block'}
+var editingComponent={};
+function closeComponentForm(type){
+  document.getElementById(type+'-add').style.display='none';
+  document.getElementById(type+'-save').textContent='Speichern';
+  delete editingComponent[type];
+  document.getElementById(type+'-add').querySelectorAll('input').forEach(function(el){
+    if(el.type==='checkbox')el.checked=el.id==='item-public';
+    else if(el.type==='number')el.value='0';
+    else el.value='';
+  });
+  document.getElementById(type+'-add').querySelectorAll('select').forEach(function(el){el.selectedIndex=0});
+  if(type==='item')document.getElementById('item-category').value='extra';
+  if(type==='pkg')document.querySelectorAll('.pkg-item-cb').forEach(function(el){el.checked=false});
+}
+function toggleForm(id){
+  var type=id.split('-')[0];
+  if(document.getElementById(id).style.display==='block')closeComponentForm(type);
+  else {closeComponentForm(type);document.getElementById(id).style.display='block'}
+}
+function openEdit(type,pk){
+  closeComponentForm(type);
+  var row=document.getElementById(type+'-row-'+pk);
+  function field(name){return row.querySelector('[data-field="'+name+'"]')}
+  function value(id,name){document.getElementById(id).value=field(name).value}
+  if(type==='item'){
+    value('item-name','name');value('item-category','category');value('item-desc','description');
+    document.getElementById('item-price').value=row.dataset.price;
+    ['default','required','public'].forEach(function(key){document.getElementById('item-'+key).checked=field('is_'+key).checked});
+    document.getElementById('item-sort').value=row.dataset.sortOrder;
+  }else if(type==='pkg'){
+    value('pkg-name','name');value('pkg-desc','description');value('pkg-badge','badge_label');
+    document.getElementById('pkg-price').value=row.dataset.basePrice;
+    var ids=new Set(Array.from(row.querySelectorAll('.pkg-edit-item-'+pk+':checked'),function(el){return el.value}));
+    document.querySelectorAll('.pkg-item-cb').forEach(function(el){el.checked=ids.has(el.value)});
+  }else if(type==='rule'){
+    value('rule-name','name');value('rule-desc','description');value('rule-effect-type','effect_type');
+    document.getElementById('rule-effect-val').value=row.dataset.effectValue;
+    value('rule-sort','sort_order');
+    var conditions=JSON.parse(row.querySelector('script[type="application/json"]').textContent);
+    var condition=conditions[0];
+    function hasOption(id,v){return Array.from(document.getElementById(id).options).some(function(o){return o.value===v})}
+    if(conditions.length!==1 || !condition || !hasOption('rule-cond-field',condition.field) ||
+       !hasOption('rule-cond-op',condition.op) ||
+       (condition.op==='in' && !Array.isArray(condition.value)) ||
+       (condition.op!=='in' && (Array.isArray(condition.value) || condition.value==null))){
+      showToast('Diese Regel hat mehrere oder unbekannte Bedingungen und kann hier nicht bearbeitet werden',true);return;
+    }
+    document.getElementById('rule-cond-field').value=condition.field;
+    document.getElementById('rule-cond-op').value=condition.op;
+    document.getElementById('rule-cond-val').value=Array.isArray(condition.value)?condition.value.join(','):String(condition.value??'');
+  }else if(type==='formula'){
+    value('formula-name','name');value('formula-desc','description');value('formula-expr','expression');
+  }
+  editingComponent[type]=pk;
+  document.getElementById(type+'-save').textContent='Änderungen speichern';
+  document.getElementById(type+'-add').style.display='block';
+  document.getElementById(type+'-add').scrollIntoView({block:'nearest'});
+}
 function switchCompTab(btn,id){
   document.querySelectorAll('.wb-comp-tab').forEach(function(t){t.classList.remove('active')});
   document.querySelectorAll('.wb-comp-panel').forEach(function(p){p.classList.remove('active')});
@@ -791,7 +852,8 @@ function pFetch(url,method,body){
 
 // Preis-Posten
 function saveItem(){
-  pFetch('api/price/items/','POST',{
+  var pk=editingComponent.item;
+  pFetch('api/price/items/'+(pk?pk+'/':''),pk?'PUT':'POST',{
     name:document.getElementById('item-name').value,
     category:document.getElementById('item-category').value,
     description:document.getElementById('item-desc').value,
@@ -800,49 +862,52 @@ function saveItem(){
     is_required:document.getElementById('item-required').checked,
     is_public:document.getElementById('item-public').checked,
     sort_order:parseInt(document.getElementById('item-sort').value)||0,
-  }).then(function(d){if(d.success){showToast('Posten erstellt');location.reload()}else showToast(d.error||'Fehler',true)});
+  }).then(function(d){if(d.success){showToast('Posten gespeichert');location.reload()}else showToast(d.error||'Fehler',true)}).catch(function(){showToast('Fehler beim Speichern',true)});
 }
 function deleteItem(pk){if(!confirm('Posten löschen?'))return;pFetch('api/price/items/'+pk+'/','DELETE').then(function(){showToast('Gelöscht');location.reload()})}
 
 // Pakete
 function savePkg(){
+  var pk=editingComponent.pkg;
   var items=[];
   document.querySelectorAll('.pkg-item-cb:checked').forEach(function(c){items.push(parseInt(c.value))});
-  pFetch('api/price/packages/','POST',{
+  pFetch('api/price/packages/'+(pk?pk+'/':''),pk?'PUT':'POST',{
     name:document.getElementById('pkg-name').value,
     description:document.getElementById('pkg-desc').value,
     base_price:parseFloat(document.getElementById('pkg-price').value)||0,
     badge_label:document.getElementById('pkg-badge').value,
     included_item_ids:items,
-  }).then(function(d){if(d.success){showToast('Paket erstellt');location.reload()}else showToast(d.error||'Fehler',true)});
+  }).then(function(d){if(d.success){showToast('Paket gespeichert');location.reload()}else showToast(d.error||'Fehler',true)}).catch(function(){showToast('Fehler beim Speichern',true)});
 }
 function deletePkg(pk){if(!confirm('Paket löschen?'))return;pFetch('api/price/packages/'+pk+'/','DELETE').then(function(){showToast('Gelöscht');location.reload()})}
 
 // Regeln
 function saveRule(){
+  var pk=editingComponent.rule;
   var val=document.getElementById('rule-cond-val').value.trim();
   var op=document.getElementById('rule-cond-op').value;
   var parsedVal=val;
   if(op==='in') parsedVal=val.split(',').map(function(v){return isNaN(v.trim())?v.trim():parseFloat(v.trim())});
   else if(op!=='is_weekend') parsedVal=isNaN(val)?val:parseFloat(val);
-  pFetch('api/price/rules/','POST',{
+  pFetch('api/price/rules/'+(pk?pk+'/':''),pk?'PUT':'POST',{
     name:document.getElementById('rule-name').value,
     description:document.getElementById('rule-desc').value,
     condition_json:[{field:document.getElementById('rule-cond-field').value,op:op,value:parsedVal}],
     effect_type:document.getElementById('rule-effect-type').value,
     effect_value:parseFloat(document.getElementById('rule-effect-val').value)||0,
     sort_order:parseInt(document.getElementById('rule-sort').value)||0,
-  }).then(function(d){if(d.success){showToast('Regel erstellt');location.reload()}else showToast(d.error||'Fehler',true)});
+  }).then(function(d){if(d.success){showToast('Regel gespeichert');location.reload()}else showToast(d.error||'Fehler',true)}).catch(function(){showToast('Fehler beim Speichern',true)});
 }
 function deleteRule(pk){if(!confirm('Regel löschen?'))return;pFetch('api/price/rules/'+pk+'/','DELETE').then(function(){showToast('Gelöscht');location.reload()})}
 
 // Formeln
 function saveFormula(){
-  pFetch('api/price/formulas/','POST',{
+  var pk=editingComponent.formula;
+  pFetch('api/price/formulas/'+(pk?pk+'/':''),pk?'PUT':'POST',{
     name:document.getElementById('formula-name').value,
     expression:document.getElementById('formula-expr').value,
     description:document.getElementById('formula-desc').value,
-  }).then(function(d){if(d.success){showToast('Formel erstellt');location.reload()}else showToast(d.error||'Fehler',true)});
+  }).then(function(d){if(d.success){showToast('Formel gespeichert');location.reload()}else showToast(d.error||'Fehler',true)}).catch(function(){showToast('Fehler beim Speichern',true)});
 }
 function deleteFormula(pk){if(!confirm('Formel löschen?'))return;pFetch('api/price/formulas/'+pk+'/','DELETE').then(function(){showToast('Gelöscht');location.reload()})}
 

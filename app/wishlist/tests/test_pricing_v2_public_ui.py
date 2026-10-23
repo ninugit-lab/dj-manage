@@ -1,10 +1,29 @@
 """Execute the rendered vanilla-JS form against a small DOM, not source regexes."""
+import re
 import subprocess
 
 import pytest
 from django.test import override_settings
 
-from wishlist.models import AppConfig
+from wishlist.models import AppConfig, PricingPackage
+
+
+@pytest.mark.django_db
+def test_booking_defaults_to_first_public_active_package(client):
+    AppConfig.objects.create(event_form_enabled=True)
+    PricingPackage.objects.create(name='Hidden', sort_order=0, is_public=False)
+    PricingPackage.objects.create(name='Inactive', sort_order=0, is_active=False)
+    later = PricingPackage.objects.create(name='Later', sort_order=20)
+    first = PricingPackage.objects.create(name='First', sort_order=10)
+    html = client.get('/buchen/').content.decode()
+    step = html.split('id="step-4"', 1)[1].split('id="step-5"', 1)[0]
+    radios = re.findall(r'<input[^>]*name="f-package"[^>]*>', step)
+    assert len(radios) == 3
+    assert [re.search(r'value="([^"]*)"', radio).group(1) for radio in radios] == [
+        '', str(first.pk), str(later.pk),
+    ]
+    assert [re.search(r'value="([^"]*)"', radio).group(1)
+            for radio in radios if re.search(r'\bchecked\b', radio)] == [str(first.pk)]
 
 
 SCENARIO = r"""

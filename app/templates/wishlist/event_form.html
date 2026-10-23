@@ -208,7 +208,7 @@
       {% if pricing_packages %}
       <div class="flex flex-col gap-3 mb-2">
         <label class="pkg-label">
-          <input type="radio" name="f-package" value="" checked class="accent-purple-500 w-4 h-4 flex-shrink-0" onchange="updatePrice()">
+          <input type="radio" name="f-package" value="" class="accent-purple-500 w-4 h-4 flex-shrink-0" onchange="updatePrice()">
           <div>
             <div class="font-medium text-sm">Kein Paket</div>
             <div class="text-xs text-subtle">Einzelne Posten wählen</div>
@@ -216,7 +216,7 @@
         </label>
         {% for pkg in pricing_packages %}
         <label class="pkg-label">
-          <input type="radio" name="f-package" value="{{ pkg.pk }}" class="accent-purple-500 w-4 h-4 flex-shrink-0" onchange="updatePrice()">
+          <input type="radio" name="f-package" value="{{ pkg.pk }}" {% if forloop.first %}checked {% endif %}class="accent-purple-500 w-4 h-4 flex-shrink-0" onchange="updatePrice()">
           <div class="flex-1">
             <div class="font-medium text-sm">{{ pkg.name }}{% if pkg.badge_label %} <span class="ml-1 text-[0.6rem] bg-purple-500/15 text-purple-300 px-2 py-0.5 rounded-full">{{ pkg.badge_label }}</span>{% endif %}</div>
             {% if pkg.description %}<div class="text-xs text-subtle mt-0.5">{{ pkg.description|truncatewords:15 }}</div>{% endif %}
