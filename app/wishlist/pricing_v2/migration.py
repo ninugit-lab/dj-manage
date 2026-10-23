@@ -13,7 +13,7 @@ from django.db import transaction
 
 from wishlist.models import (
     Event, PriceCalculationRevision, PriceItem, PricingFormula, PricingPackage,
-    PricingProfile, PricingRule, PricingWorkflow,
+    PricingPackageOverride, PricingProfile, PricingRule, PricingWorkflow,
 )
 from wishlist.price_engine import PriceEngine
 
@@ -101,9 +101,13 @@ def _content_hash(value):
 def _frozen_context(event, profile, workflow, payload):
     calc = event.price_calculation
     package = PricingPackage.objects.filter(pk=calc.package_id).first() if calc.package_id else None
-    item_ids = set(calc.selected_items.values_list("pk", flat=True))
+    selected_item_ids = set(calc.selected_items.values_list("pk", flat=True))
+    included_item_ids = set()
     if package:
-        item_ids.update(package.included_items.values_list("pk", flat=True))
+        included_item_ids = set(package.included_items.values_list("pk", flat=True))
+    required_item_ids = set(PriceItem.objects.filter(
+        is_active=True, is_required=True).values_list("pk", flat=True))
+    item_ids = selected_item_ids | included_item_ids | required_item_ids
     items = list(PriceItem.objects.filter(pk__in=item_ids).order_by("pk").values(
         "id", "name", "category", "description", "price", "is_default", "is_required",
         "sort_order", "is_active", "is_public"))
@@ -117,13 +121,18 @@ def _frozen_context(event, profile, workflow, payload):
         "description": package.description, "base_price": package.base_price,
         "badge_label": package.badge_label, "badge_color": package.badge_color,
         "is_active": package.is_active, "is_public": package.is_public,
-        "included_item_ids": sorted(item_ids),
+        "included_item_ids": sorted(included_item_ids),
+        "selected_item_ids": sorted(selected_item_ids),
+        "required_item_ids": sorted(required_item_ids),
     }
+    override = PricingPackageOverride.objects.filter(
+        profile=profile, package=package).values_list("overrides_json", flat=True).first() if package else None
     context = {
         "event": {"event_id": event.pk, "payload": payload},
         "profile_config": profile.config_json,
         "workflow": workflow.workflow_json,
         "package": package_snapshot,
+        "package_override": override,
         "items": items, "rules": rules, "formulas": formulas,
     }
     return json.loads(json.dumps(context, default=str, sort_keys=True))

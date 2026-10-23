@@ -10,6 +10,7 @@ from django.utils import timezone
 from wishlist.models import (
     AppConfig, Event, EventPriceCalculation, EventOffer, PriceCalculationRevision,
     PriceItem, PricingPackage, PricingProfile, PricingWorkflow,
+    PricingPackageOverride,
 )
 
 
@@ -190,3 +191,50 @@ def test_failed_comparison_content_change_creates_distinct_diagnostic(comparison
     assert first.comparison_key != second.comparison_key
     assert PriceCalculationRevision.objects.filter(
         event=event, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE).count() == 2
+
+
+def _force_v2_failure(monkeypatch):
+    from wishlist.pricing_v2 import migration
+    from wishlist.pricing_v2.input import PricingValidationError
+    monkeypatch.setattr(migration, "calculate_payload",
+                        lambda *args, **kwargs: (_ for _ in ()).throw(
+                            PricingValidationError("invalid_input", "bad catalog", "catalog")))
+    return migration
+
+
+def test_failed_key_changes_when_required_active_item_changes(comparison_data, monkeypatch):
+    event, profile, workflow = comparison_data
+    migration = _force_v2_failure(monkeypatch)
+    required = PriceItem.objects.create(name="Required", price=Decimal("5"), is_required=True)
+    first = migration.compare_event(event, profile, workflow, persist=True)
+    required.price = Decimal("6")
+    required.save(update_fields=["price"])
+    second = migration.compare_event(event, profile, workflow, persist=True)
+    assert first.comparison_key != second.comparison_key
+    assert first.revision.pk != second.revision.pk
+
+
+def test_failed_key_changes_when_package_override_changes(comparison_data, monkeypatch):
+    event, profile, workflow = comparison_data
+    migration = _force_v2_failure(monkeypatch)
+    override = PricingPackageOverride.objects.create(
+        profile=profile, package=event.price_calculation.package, overrides_json={"minimum_price": "1"},
+    )
+    first = migration.compare_event(event, profile, workflow, persist=True)
+    override.overrides_json = {"minimum_price": "2"}
+    override.save(update_fields=["overrides_json"])
+    second = migration.compare_event(event, profile, workflow, persist=True)
+    assert first.comparison_key != second.comparison_key
+    assert first.revision.pk != second.revision.pk
+
+
+def test_failed_key_changes_when_package_membership_changes(comparison_data, monkeypatch):
+    event, profile, workflow = comparison_data
+    migration = _force_v2_failure(monkeypatch)
+    extra = PriceItem.objects.create(name="Included later", price=Decimal("30"))
+    package = event.price_calculation.package
+    first = migration.compare_event(event, profile, workflow, persist=True)
+    package.included_items.add(extra)
+    second = migration.compare_event(event, profile, workflow, persist=True)
+    assert first.comparison_key != second.comparison_key
+    assert first.revision.pk != second.revision.pk
