@@ -4,15 +4,99 @@ from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from numbers import Real
 from copy import deepcopy
+from dataclasses import dataclass
+from string import Formatter
+from django.utils import timezone
 
 from django.db import IntegrityError, transaction
 
-from wishlist.models import Event, ManualPriceAdjustment, PriceCalculationRevision
+from wishlist.models import AppConfig, EmailLog, Event, ManualPriceAdjustment, PriceCalculationRevision
 from .input import PricingValidationError
 from .result import PricingLine
 from .services import calculate_with_mode, save_revision, update_released_event_total
 
 _MAX_GROSS = Decimal("9999999999.99")
+_OFFER_FIELDS = frozenset(("client_name", "event_name", "event_date", "price_breakdown", "gross_total", "dj_name"))
+
+
+@dataclass(frozen=True)
+class SendResult:
+    sent: bool
+    revision: PriceCalculationRevision
+    error: str = ""
+    email_log: EmailLog | None = None
+
+
+class OfferTemplateError(ValueError):
+    """A configured offer template cannot be safely rendered."""
+
+
+def _render_offer_template(template, context):
+    try:
+        fields = []
+        for _, field, format_spec, conversion in Formatter().parse(template):
+            if field is not None:
+                if conversion or format_spec or field not in _OFFER_FIELDS:
+                    raise OfferTemplateError("Ungültiger Angebots-Platzhalter")
+                fields.append(field)
+        return template.format_map(context)
+    except (ValueError, KeyError, IndexError, AttributeError) as exc:
+        raise OfferTemplateError("Ungültiger Angebots-Platzhalter") from exc
+
+
+def _offer_context(revision, config):
+    event = revision.event
+    lines = revision.result_json.get("lines", []) if isinstance(revision.result_json, dict) else []
+    breakdown = []
+    for line in lines:
+        label = str(line.get("label", ""))
+        amount = line.get("amount", "0")
+        breakdown.append(f"{label}: {amount} €")
+    return {
+        "client_name": event.client_name or "Kunde",
+        "event_name": event.name,
+        "event_date": event.date.strftime("%d.%m.%Y"),
+        "price_breakdown": "\n".join(breakdown),
+        "gross_total": str(revision.gross_total),
+        "dj_name": config.dj_name,
+    }
+
+
+def send_offer(revision, *, retry=False):
+    """Send exactly the frozen released offer; retries never create a revision."""
+    if revision.kind != PriceCalculationRevision.Kind.OFFER or revision.status not in (
+        PriceCalculationRevision.Status.RELEASED, PriceCalculationRevision.Status.SENT,
+        PriceCalculationRevision.Status.SEND_FAILED):
+        raise ValueError("Angebot muss zuerst freigegeben werden")
+    if revision.status == PriceCalculationRevision.Status.SENT and not retry:
+        raise ValueError("Erneuter Versand erfordert retry=True")
+    event = revision.event
+    if not event.client_email:
+        raise ValueError("Kunden-E-Mail fehlt")
+    config = AppConfig.load()
+    context = _offer_context(revision, config)
+    subject = _render_offer_template(config.offer_email_subject, context)
+    body = _render_offer_template(config.offer_email_body, context)
+    error = ""
+    success = False
+    try:
+        from wishlist.google_services import GoogleService
+        response = GoogleService.send_email(event.client_email, subject, body, sender_name=config.dj_name)
+        success, message = response if isinstance(response, tuple) else (bool(response), "Gesendet" if response else "Versand fehlgeschlagen")
+        if not success:
+            error = str(message or "Versand fehlgeschlagen")
+    except Exception as exc:  # Gmail/network errors are delivery failures, not 500s.
+        error = str(exc).replace("\n", " ")[:500]
+    log = EmailLog.objects.create(event=event, revision=revision, recipient=event.client_email,
+                                  subject=subject, body=body, success=success, error_message=error)
+    if success:
+        revision.status = PriceCalculationRevision.Status.SENT
+        revision.sent_at = timezone.now()
+        revision.save(update_fields=["status", "sent_at"])
+    else:
+        revision.status = PriceCalculationRevision.Status.SEND_FAILED
+        revision.save(update_fields=["status"])
+    return SendResult(success, revision, error, log)
 
 
 def _money(value, field):

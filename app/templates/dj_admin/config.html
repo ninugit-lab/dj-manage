@@ -115,6 +115,14 @@
 <!-- E-Mail Templates -->
 <div id="panel-config-email" role="tabpanel" aria-labelledby="tab-config-email" hidden>
   <div class="glass p-4 md:p-6 mb-4">
+    <div class="font-display text-lg text-bright mb-4">Angebot senden</div>
+    {% include "components/form_field.html" with id="cfg-offer-subject" name="offer_email_subject" label="Betreff" value=config.offer_email_subject %}
+    <div class="mb-4"><label for="cfg-offer-body" class="field-label">Text</label>
+      <textarea id="cfg-offer-body" name="offer_email_body" class="field-input min-h-[150px]">{{ config.offer_email_body }}</textarea>
+      <div class="text-xs text-muted mt-1">Platzhalter: {client_name}, {event_name}, {event_date}, {price_breakdown}, {gross_total}, {dj_name}</div>
+    </div>
+  </div>
+  <div class="glass p-4 md:p-6 mb-4">
     <div class="font-display text-lg text-bright mb-4">Bestätigungs-E-Mail an Kunden</div>
     {% include "components/form_field.html" with id="cfg-conf-subject" name="confirmation_email_subject" label="Betreff" value=config.confirmation_email_subject %}
     <div class="mb-4">

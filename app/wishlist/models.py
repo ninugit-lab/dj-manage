@@ -242,6 +242,12 @@ class AppConfig(models.Model):
     default_playlist_id = models.CharField(max_length=100, blank=True, verbose_name="Standard Spotify Playlist ID",
         help_text="ID oder URL — wird für neue Events als Default genutzt")
     # Email templates
+    offer_email_subject = models.CharField(max_length=200, default="Dein Angebot für {event_name}",
+        verbose_name="Angebots-Mail Betreff")
+    offer_email_body = models.TextField(blank=True,
+        verbose_name="Angebots-Mail Text",
+        help_text="Platzhalter: {client_name}, {event_name}, {event_date}, {price_breakdown}, {gross_total}, {dj_name}",
+        default="Hallo {client_name},\n\nanbei dein Angebot für {event_name} am {event_date}.\n\n{price_breakdown}\n\nBrutto-Endpreis: {gross_total} €\n\nBeste Grüße,\n{dj_name}")
     confirmation_email_subject = models.CharField(max_length=200, default="Deine Buchung wurde bestätigt! 🎶",
         verbose_name="Bestätigungs-Mail Betreff")
     confirmation_email_body = models.TextField(blank=True, verbose_name="Bestätigungs-Mail Text",
@@ -693,6 +699,8 @@ class EventOffer(models.Model):
 
 class EmailLog(models.Model):
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, blank=True, related_name='email_logs')
+    revision = models.ForeignKey('PriceCalculationRevision', on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='email_logs')
     recipient = models.EmailField(verbose_name="Empfänger")
     subject = models.CharField(max_length=300)
     body = models.TextField()

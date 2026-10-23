@@ -33,6 +33,7 @@ urlpatterns = [
     path('events/<int:pk>/price/recalculate/', admin_views.event_price_recalculate, name='event_price_recalculate'),
     path('events/<int:pk>/price/adjust/', admin_views.event_price_adjust, name='event_price_adjust'),
     path('events/<int:pk>/price/release/', admin_views.event_price_release, name='event_price_release'),
+    path('events/<int:pk>/price/send/', admin_views.event_price_send, name='event_price_send'),
 
     # Wishlist Admin (Turbo Frame)
     path('events/<int:pk>/wishlist/', admin_views.admin_wishlist_frame, name='wishlist_frame'),

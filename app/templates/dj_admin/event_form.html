@@ -127,9 +127,10 @@
       <p>Original: {{ original_estimate.gross_total|default:'—' }} €</p>
       <p>Aktueller Entwurf: {{ current_draft.gross_total|default:'—' }} €</p>
       {% if current_draft %}<p>Differenz: {{ current_difference|default:'—' }} €</p>{% endif %}
-      <ul>{% for revision in price_revisions %}<li>{{ revision.get_kind_display }} #{{ revision.revision_number }}: {{ revision.gross_total }} €</li>{% empty %}<li>Noch keine Preis-Historie.</li>{% endfor %}</ul>
+       <ul>{% for revision in price_revisions %}<li>{{ revision.get_kind_display }} #{{ revision.revision_number }}: {{ revision.gross_total }} €{% if revision.email_logs.count %} — {{ revision.email_logs.count }} E-Mail-Versuch(e){% endif %}</li>{% empty %}<li>Noch keine Preis-Historie.</li>{% endfor %}</ul>
       <form method="post" action="{% url 'dj_admin:event_price_recalculate' pk=event.pk %}">{% csrf_token %}<button class="btn btn-secondary btn-sm">Neu berechnen</button></form>
-      <form method="post" action="{% url 'dj_admin:event_price_release' pk=event.pk %}">{% csrf_token %}<button class="btn btn-primary btn-sm">Angebot freigeben</button></form>
+       <form method="post" action="{% url 'dj_admin:event_price_release' pk=event.pk %}">{% csrf_token %}<button class="btn btn-primary btn-sm">Angebot freigeben</button></form>
+       {% if released_offer %}<form method="post" action="{% url 'dj_admin:event_price_send' pk=event.pk %}">{% csrf_token %}<button class="btn btn-primary btn-sm">Angebot senden</button></form>{% endif %}
       <form method="post" action="{% url 'dj_admin:event_price_adjust' pk=event.pk %}">{% csrf_token %}<input name="label" required placeholder="Bezeichnung"><input name="amount" required type="number" step="0.01" placeholder="+/- Betrag"><textarea name="reason" required placeholder="Begründung"></textarea><button class="btn btn-secondary btn-sm">Anpassung speichern</button></form>
     </details>
     {% endif %}

@@ -189,6 +189,23 @@ def event_price_release(request, pk):
     return _offer_response(request, 'release')
 
 
+@staff_member_required
+@require_POST
+def event_price_send(request, pk):
+    from .pricing_v2.offers import OfferTemplateError, send_offer
+    from .models import PriceCalculationRevision
+    event = get_object_or_404(Event, pk=pk)
+    revision = event.price_revisions.filter(kind=PriceCalculationRevision.Kind.OFFER).order_by('-offer_number').first()
+    if not revision:
+        return JsonResponse({'error': 'Angebot muss zuerst freigegeben werden'}, status=400)
+    try:
+        result = send_offer(revision, retry=request.POST.get('retry') == '1')
+    except (ValueError, OfferTemplateError) as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+    return JsonResponse({'success': result.sent, 'status': result.revision.status, 'error': result.error},
+                        status=200 if result.sent else 502)
+
+
 def _save_event_from_post(request, config, event=None):
     is_new = event is None
     if is_new:
@@ -652,6 +669,14 @@ def config_page(request):
     if request.method == 'POST':
         action = request.POST.get('action', '')
         if action == 'save_config':
+            from .pricing_v2.offers import OfferTemplateError, _render_offer_template
+            offer_template_context = {name: name for name in (
+                'client_name', 'event_name', 'event_date', 'price_breakdown', 'gross_total', 'dj_name')}
+            for template_field in ('offer_email_subject', 'offer_email_body'):
+                try:
+                    _render_offer_template(request.POST.get(template_field, ''), offer_template_context)
+                except OfferTemplateError as exc:
+                    return JsonResponse({'error': str(exc), 'field': template_field}, status=400)
             for field in [
                 'spotify_client_id', 'spotify_client_secret', 'spotify_redirect_uri',
                 'google_client_id', 'google_client_secret', 'google_redirect_uri',
@@ -661,6 +686,7 @@ def config_page(request):
                 'inquiry_email_subject', 'inquiry_email_body',
                 'cancellation_email_subject', 'cancellation_email_body',
                 'review_request_email_subject', 'review_request_email_body',
+                'offer_email_subject', 'offer_email_body',
                 'google_review_url',
                 'event_form_intro', 'event_form_date_prompt', 'event_form_unavailable_msg',
                 'default_playlist_id', 'wishlist_limit_message',
