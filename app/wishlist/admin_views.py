@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from django.contrib.auth.decorators import user_passes_test
 from django.views.decorators.http import require_POST, require_GET
 from django.utils import timezone
+from django.db import transaction
 
 staff_member_required = user_passes_test(
     lambda user: user.is_active and user.is_staff,
@@ -691,7 +692,9 @@ def config_page(request):
                     _render_offer_template(request.POST.get(template_field, ''), offer_template_context)
                 except OfferTemplateError as exc:
                     return JsonResponse({'error': str(exc), 'field': template_field}, status=400)
-            for field in [
+            with transaction.atomic():
+                config = AppConfig.objects.select_for_update().get(pk=config.pk)
+                for field in [
                 'spotify_client_id', 'spotify_client_secret', 'spotify_redirect_uri',
                 'google_client_id', 'google_client_secret', 'google_redirect_uri',
                 'google_sheets_id',
@@ -706,28 +709,28 @@ def config_page(request):
                 'default_playlist_id', 'wishlist_limit_message',
                 'default_block_reason', 'default_block_message',
                 'no_event_message',
-            ]:
-                setattr(config, field, request.POST.get(field, ''))
-            config.default_max_wishes = int(request.POST.get('default_max_wishes', 3))
-            config.default_show_cover = request.POST.get('default_show_cover') == 'on'
-            config.default_show_artist = request.POST.get('default_show_artist') == 'on'
-            config.default_show_preview = request.POST.get('default_show_preview') == 'on'
-            config.default_show_duration = request.POST.get('default_show_duration') == 'on'
-            config.default_require_name = request.POST.get('default_require_name') == 'on'
-            config.event_form_enabled = request.POST.get('event_form_enabled') == 'on'
-            config.review_request_enabled = request.POST.get('review_request_enabled') == 'on'
-            try:
-                config.review_request_delay_days = max(0, int(request.POST.get('review_request_delay_days', 2)))
-            except (TypeError, ValueError):
-                config.review_request_delay_days = 2
-            from decimal import Decimal, InvalidOperation
-            for coord_field in ['dj_home_lat', 'dj_home_lon']:
-                raw = request.POST.get(coord_field, '').strip().replace(',', '.')
+                ]:
+                    setattr(config, field, request.POST.get(field, ''))
+                config.default_max_wishes = int(request.POST.get('default_max_wishes', 3))
+                config.default_show_cover = request.POST.get('default_show_cover') == 'on'
+                config.default_show_artist = request.POST.get('default_show_artist') == 'on'
+                config.default_show_preview = request.POST.get('default_show_preview') == 'on'
+                config.default_show_duration = request.POST.get('default_show_duration') == 'on'
+                config.default_require_name = request.POST.get('default_require_name') == 'on'
+                config.event_form_enabled = request.POST.get('event_form_enabled') == 'on'
+                config.review_request_enabled = request.POST.get('review_request_enabled') == 'on'
                 try:
-                    setattr(config, coord_field, Decimal(raw) if raw else None)
-                except InvalidOperation:
-                    setattr(config, coord_field, None)
-            config.save()
+                    config.review_request_delay_days = max(0, int(request.POST.get('review_request_delay_days', 2)))
+                except (TypeError, ValueError):
+                    config.review_request_delay_days = 2
+                from decimal import Decimal, InvalidOperation
+                for coord_field in ['dj_home_lat', 'dj_home_lon']:
+                    raw = request.POST.get(coord_field, '').strip().replace(',', '.')
+                    try:
+                        setattr(config, coord_field, Decimal(raw) if raw else None)
+                    except InvalidOperation:
+                        setattr(config, coord_field, None)
+                config.save()
             return redirect('dj_admin:config')
 
     return render(request, 'dj_admin/config.html', {

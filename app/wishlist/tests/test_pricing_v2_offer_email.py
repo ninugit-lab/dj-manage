@@ -85,3 +85,28 @@ def test_send_endpoint_is_revision_scoped_post_staff_csrf_and_blocks_unreleased(
     client.get(reverse("dj_admin:event_edit", kwargs={"pk": event.pk}))
     token = client.cookies["csrftoken"].value
     assert client.post(url, HTTP_X_CSRFTOKEN=token).status_code == 400
+
+
+def test_recipient_is_frozen_and_event_email_change_cannot_leak(offer_setup, monkeypatch):
+    event, actor = offer_setup
+    event.client_email = "original@example.test"
+    event.save(update_fields=["client_email"])
+    released = release_offer(event, actor) if build_draft(event, actor) else None
+    event.client_email = "attacker@example.test"
+    event.save(update_fields=["client_email"])
+    recipients = []
+    monkeypatch.setattr("wishlist.google_services.GoogleService.send_email",
+                        lambda to, *args, **kwargs: (recipients.append(to) or (True, "ok")))
+    send_offer(released)
+    assert recipients == ["original@example.test"]
+    assert EmailLog.objects.get(revision=released).recipient == "original@example.test"
+
+
+def test_historic_offer_without_snapshot_is_controlled_and_never_fabricated(offer_setup):
+    event, actor = offer_setup
+    released = release_offer(event, actor) if build_draft(event, actor) else None
+    PriceCalculationRevision.objects.filter(pk=released.pk).update(
+        email_context={}, email_subject="", email_body="", email_recipient="")
+    released.refresh_from_db()
+    with pytest.raises(OfferTemplateError, match="erneut freigeben"):
+        send_offer(released)

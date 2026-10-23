@@ -532,6 +532,7 @@ class PriceCalculationRevision(models.Model):
     email_context = models.JSONField(default=dict, blank=True)
     email_subject = models.TextField(blank=True)
     email_body = models.TextField(blank=True)
+    email_recipient = models.EmailField(blank=True)
     gross_total = models.DecimalField(max_digits=12, decimal_places=2)
     previous_revision = models.ForeignKey(
         'self', on_delete=models.SET_NULL, null=True, blank=True,

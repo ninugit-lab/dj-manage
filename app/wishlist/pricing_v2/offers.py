@@ -79,18 +79,18 @@ def send_offer(revision, *, retry=False):
     if revision.status == PriceCalculationRevision.Status.SENT and not retry:
         raise ValueError("Erneuter Versand erfordert retry=True")
     event = revision.event
-    if not event.client_email:
-        raise ValueError("Kunden-E-Mail fehlt")
+    if not revision.email_recipient:
+        raise OfferTemplateError("Angebot erneut freigeben: keine eingefrorene Empfängeradresse")
     context = revision.email_context
     subject = revision.email_subject
     body = revision.email_body
     if not subject or not body or not context:
-        raise ValueError("Angebots-Mail ist für diese Revision nicht eingefroren")
+        raise OfferTemplateError("Angebot erneut freigeben: historische Angebots-Mail ist nicht versandfähig")
     error = ""
     success = False
     try:
         from wishlist.google_services import GoogleService
-        response = GoogleService.send_email(event.client_email, subject, body,
+        response = GoogleService.send_email(revision.email_recipient, subject, body,
                                             sender_name=context.get("dj_name", "DJ"))
         success, message = response if isinstance(response, tuple) else (bool(response), "Gesendet" if response else "Versand fehlgeschlagen")
         if not success:
@@ -99,7 +99,7 @@ def send_offer(revision, *, retry=False):
         import logging
         logging.getLogger(__name__).warning("offer email delivery failed (details intentionally omitted)")
         error = "EMAIL_DELIVERY_FAILED"
-    log = EmailLog.objects.create(event=event, revision=revision, recipient=event.client_email,
+    log = EmailLog.objects.create(event=event, revision=revision, recipient=revision.email_recipient,
                                   subject=subject, body=body, success=success, error_message=error)
     if success:
         revision.status = PriceCalculationRevision.Status.SENT
@@ -189,6 +189,7 @@ def build_draft(event, actor):
 
 def release_offer(event, actor):
     with transaction.atomic():
+        config = AppConfig.objects.select_for_update().get(pk=1)
         locked = Event.objects.select_for_update().get(pk=event.pk)
         current = PriceCalculationRevision.objects.filter(event=locked, kind=PriceCalculationRevision.Kind.DRAFT,
                                                            status=PriceCalculationRevision.Status.DRAFT).order_by("-revision_number").first()
@@ -230,16 +231,19 @@ def release_offer(event, actor):
         offer_number = (PriceCalculationRevision.objects.filter(event=locked, offer_number__isnull=False)
                          .order_by("-offer_number").values_list("offer_number", flat=True).first() or 0) + 1
         try:
-            email_context, email_subject, email_body = _snapshot_offer_email(current)
+            email_context = _offer_context(current, config)
+            email_subject = _render_offer_template(config.offer_email_subject, email_context)
+            email_body = _render_offer_template(config.offer_email_body, email_context)
             current.email_context = email_context
             current.email_subject = email_subject
             current.email_body = email_body
+            current.email_recipient = locked.client_email
             current.status = PriceCalculationRevision.Status.RELEASED
             current.kind = PriceCalculationRevision.Kind.OFFER
             current.offer_number = offer_number
             current.created_by = actor
             current.save(update_fields=["status", "kind", "offer_number", "created_by",
-                                       "email_context", "email_subject", "email_body"])
+                                       "email_context", "email_subject", "email_body", "email_recipient"])
             update_released_event_total(locked, current.gross_total)
         except IntegrityError:
             return PriceCalculationRevision.objects.get(event=locked, offer_number=offer_number)
