@@ -28,6 +28,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if options["apply"]:
+            if connection.vendor != "sqlite":
+                raise CommandError("--apply requires the active database backend to be SQLite")
             name = connection.settings_dict.get("NAME")
             hosts = set(getattr(settings, "ALLOWED_HOSTS", ()))
             local_hosts = hosts.intersection({"localhost", "127.0.0.1", "testserver", "[::1]"})
@@ -41,16 +43,17 @@ class Command(BaseCommand):
                     "PRICING_V2_APPLY_DB_NAME must exactly match the resolved database name"
                 )
             try:
+                connection.ensure_connection()
                 db_path = Path(str(name)).resolve()
                 temp_path = Path(tempfile.gettempdir()).resolve()
                 is_ephemeral = db_path.is_relative_to(temp_path)
-                if connection.vendor == "sqlite" and connection.connection is not None:
-                    actual = connection.connection.execute("PRAGMA database_list").fetchone()[2]
-                    if actual:
-                        actual_path = Path(actual).resolve()
-                        is_ephemeral = actual_path.is_relative_to(temp_path) and actual_path == db_path
-                    else:
-                        is_ephemeral = str(name) in {":memory:", "file:memorydb_default?mode=memory&cache=shared"}
+                actual = connection.connection.execute("PRAGMA database_list").fetchone()[2]
+                if actual:
+                    actual_path = Path(actual).resolve()
+                    is_ephemeral = actual_path.is_relative_to(temp_path) and actual_path == db_path
+                else:
+                    expected_test_name = connection.creation._get_test_db_name()
+                    is_ephemeral = str(name) == str(expected_test_name)
             except (OSError, ValueError):
                 is_ephemeral = False
             if not is_ephemeral:

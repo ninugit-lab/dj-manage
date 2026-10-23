@@ -30,6 +30,30 @@ Implemented the reviewer fixes for controlled open-event repricing.
 - Migration drift: `No changes detected`
 - `git diff --check`: clean
 
+## Fix round 3 — verify active repricing database target
+
+- Apply now fails closed unless the active backend is explicitly SQLite.
+- The connection is opened with `ensure_connection()` before inspecting the
+  active database target.
+- For file-backed SQLite, `PRAGMA database_list` is canonicalized and must
+  match both the configured connection name and the exact
+  `PRICING_V2_APPLY_DB_NAME` allowlist, under the temporary directory.
+- In-memory SQLite is accepted only when its configured name exactly matches
+  Django's independently derived test database name; `PYTEST_CURRENT_TEST`,
+  filename substrings, and local flags are not authorization.
+- Added tests for non-SQLite backends, unopened connections, actual-path
+  mismatch, spoofed temp production names, and sequential real-save reuse.
+- The temporary-path/configuration checks reduce accidental targeting but do
+  not claim to detect production solely from naming; operators remain
+  responsible for the explicitly configured local/test target.
+
+### Round 3 verification
+
+- Focused repricing + comparison: `35 passed`
+- Full suite: `714 passed, 1 skipped`
+- Migration drift: `No changes detected`
+- `git diff --check`: clean
+
 All verification used local Python 3.12 via `uv` with
 `DJANGO_DISABLE_SCHEDULER=1`, `PYTHONUTF8=1`, and a test-only Django secret.
 No production `--apply`, push, deploy, or `LOCAL-DEV.md` changes were used.

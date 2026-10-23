@@ -81,6 +81,60 @@ def test_apply_refuses_unknown_or_production_database(reprice_event_data, monkey
             call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
 
 
+def test_non_sqlite_temp_named_database_is_refused(reprice_event_data, monkeypatch, tmp_path):
+    from django.db import connection
+    name = tmp_path / "test.sqlite3"
+    monkeypatch.setattr(connection, "vendor", "postgresql")
+    monkeypatch.setitem(connection.settings_dict, "NAME", str(name))
+    monkeypatch.setenv("PRICING_V2_APPLY_DB_NAME", str(name))
+    with override_settings(DEBUG=True, ALLOWED_HOSTS=["testserver"]):
+        with pytest.raises(CommandError):
+            call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
+
+
+def test_apply_opens_connection_and_verifies_actual_sqlite_path(reprice_event_data, monkeypatch):
+    from django.db import connection
+    connection.close()
+    called = False
+    original = connection.ensure_connection
+    def ensure():
+        nonlocal called
+        called = True
+        return original()
+    monkeypatch.setattr(connection, "ensure_connection", ensure)
+    actual = connection.settings_dict["NAME"]
+    monkeypatch.setenv("PRICING_V2_APPLY_DB_NAME", str(actual))
+    with override_settings(DEBUG=True, ALLOWED_HOSTS=["testserver"]):
+        with pytest.MonkeyPatch.context() as patcher:
+            patcher.setenv("PRICING_V2_APPLY_DB_NAME", str(actual))
+            call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
+    assert called
+
+
+def test_actual_sqlite_path_mismatch_is_refused(reprice_event_data, monkeypatch, tmp_path):
+    from django.db import connection
+    connection.ensure_connection()
+    actual = connection.connection.execute("PRAGMA database_list").fetchone()[2]
+    mismatch = tmp_path / "other.sqlite3"
+    monkeypatch.setenv("PRICING_V2_APPLY_DB_NAME", str(mismatch))
+    monkeypatch.setitem(connection.settings_dict, "NAME", str(mismatch))
+    with override_settings(DEBUG=True, ALLOWED_HOSTS=["testserver"]):
+        with pytest.raises(CommandError):
+            call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
+    assert actual != str(mismatch)
+
+
+def test_temp_production_filename_with_spoofed_flags_is_refused(reprice_event_data, monkeypatch, tmp_path):
+    from django.db import connection
+    production = tmp_path / "production.sqlite3"
+    monkeypatch.setitem(connection.settings_dict, "NAME", str(production))
+    monkeypatch.setenv("PRICING_V2_APPLY_DB_NAME", str(production))
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "spoofed")
+    with override_settings(DEBUG=True, ALLOWED_HOSTS=["testserver"]):
+        with pytest.raises(CommandError):
+            call_command("pricing_v2_reprice", "--apply", "--confirm-local-apply")
+
+
 def test_pytest_env_spoof_does_not_authorize_arbitrary_database(reprice_event_data, monkeypatch):
     from django.db import connection
     monkeypatch.setitem(connection.settings_dict, "NAME", "C:/production/repricing.sqlite3")
@@ -180,6 +234,17 @@ def test_clock_shift_does_not_duplicate_same_frozen_economics(reprice_event_data
                            requested_at=datetime(2026, 10, 24, tzinfo=dt_timezone.utc))
     assert first["revision_id"] == second["revision_id"]
     assert second["status"] == "already_applied"
+
+
+def test_sequential_real_save_reports_already_applied(reprice_event_data):
+    from datetime import datetime, timezone as dt_timezone
+    from wishlist.pricing_v2.migration import reprice_event
+    when = datetime(2026, 10, 23, tzinfo=dt_timezone.utc)
+    first = reprice_event(reprice_event_data, apply=True, requested_at=when)
+    second = reprice_event(reprice_event_data, apply=True, requested_at=when)
+    assert first["status"] == "applied"
+    assert second["status"] == "already_applied"
+    assert first["revision_id"] == second["revision_id"]
 
 
 def test_apply_status_uses_locked_save_result_for_race(monkeypatch, reprice_event_data):
