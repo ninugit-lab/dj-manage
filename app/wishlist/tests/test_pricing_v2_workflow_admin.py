@@ -149,6 +149,21 @@ def test_two_editors_old_activation_is_stale_but_latest_can_activate(catalog, st
 
 
 @pytest.mark.django_db
+def test_workflow_versioning_uses_appconfig_lock_without_changing_engine_mode(catalog, staff):
+    config = AppConfig.objects.create(pk=1, pricing_engine_mode=AppConfig.PricingEngineMode.SHADOW)
+    created = post(staff, 'pricing_v2_workflows', {'name': 'Locked', 'workflow_json': blocks(catalog)})
+    assert created.status_code == 201
+    config.refresh_from_db()
+    assert config.pricing_engine_mode == AppConfig.PricingEngineMode.SHADOW
+
+    workflow = PricingWorkflow.objects.get(pk=created.json()['id'])
+    activated = post(staff, 'pricing_v2_workflow_activate', {'expected_version': workflow.version}, pk=workflow.pk)
+    assert activated.status_code == 200
+    config.refresh_from_db()
+    assert config.pricing_engine_mode == AppConfig.PricingEngineMode.SHADOW
+
+
+@pytest.mark.django_db
 def test_test_lab_comparison_is_read_only_and_pinned_package_is_not_substituted(catalog, staff):
     package, item, _, _ = catalog
     other = PricingPackage.objects.create(name='Other', base_price=200)

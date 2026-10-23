@@ -12,7 +12,7 @@ from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
-from .models import (PriceCalculationRevision, PriceItem, PricingFormula, PricingPackage,
+from .models import (AppConfig, PriceCalculationRevision, PriceItem, PricingFormula, PricingPackage,
                      PricingPackageOverride, PricingProfile, PricingRule, PricingWorkflow)
 from .pricing_v2.config import _FIELDS, resolve_pricing_config, validate_profile_config
 from .pricing_v2.input import PricingValidationError
@@ -655,6 +655,15 @@ def _workflow_input(request):
     return data if data is not None else None
 
 
+def _lock_workflow_versions():
+    """Serialize workflow family writes without changing application settings."""
+    # get_or_create is deliberately inside the caller's atomic block. It makes
+    # the singleton exist before locking it and handles a concurrent first
+    # creation through the model's primary-key uniqueness constraint.
+    AppConfig.objects.get_or_create(pk=1)
+    return AppConfig.objects.select_for_update().get(pk=1)
+
+
 @staff_only
 @require_http_methods(['GET', 'POST'])
 def workflows_page(request):
@@ -665,14 +674,16 @@ def workflows_page(request):
         name = data.get('name')
         if not isinstance(name, str) or not name.strip() or len(name) > 200:
             return _error('name', 'Name erforderlich.')
-        if PricingWorkflow.objects.filter(name=name.strip()).exists():
-            return _error('name', 'Versionsreihe existiert bereits; bitte klonen.')
         try:
-            blocks = _checked_workflow(data.get('workflow_json'))
+            with transaction.atomic():
+                _lock_workflow_versions()
+                if PricingWorkflow.objects.filter(name=name.strip()).exists():
+                    return _error('name', 'Versionsreihe existiert bereits; bitte klonen.')
+                blocks = _checked_workflow(data.get('workflow_json'))
+                workflow = PricingWorkflow.objects.create(name=name.strip(), workflow_json=blocks,
+                                                          is_active=False, is_default=False)
         except (PricingValidationError, TypeError, ValueError) as exc:
             return _workflow_error(exc)
-        workflow = PricingWorkflow.objects.create(name=name.strip(), workflow_json=blocks,
-                                                  is_active=False, is_default=False)
         return JsonResponse({'id': workflow.pk, 'version': workflow.version}, status=201)
     workflows = PricingWorkflow.objects.order_by('-pk')
     identity = request.GET.get('workflow_id', '')
@@ -743,6 +754,7 @@ def workflow_detail(request, pk):
         return _bad_body()
     try:
         with transaction.atomic():
+            _lock_workflow_versions()
             workflow, stale = _locked_workflow(pk, data)
             if stale:
                 return stale
@@ -768,6 +780,7 @@ def clone_workflow(request, pk):
         return _bad_body()
     try:
         with transaction.atomic():
+            _lock_workflow_versions()
             workflow, stale = _locked_workflow(pk, data)
             if stale:
                 return stale
@@ -788,6 +801,7 @@ def activate_workflow(request, pk):
         return _bad_body()
     try:
         with transaction.atomic():
+            _lock_workflow_versions()
             target = get_object_or_404(PricingWorkflow.objects.select_for_update(), pk=pk)
             if type(data.get('expected_version')) is not int or data['expected_version'] != target.version:
                 return JsonResponse({'error': WORKFLOW_STALE}, status=409)
