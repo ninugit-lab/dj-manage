@@ -939,9 +939,11 @@ def reference_case_api(request):
         tolerance = None if data.get('tolerance_threshold') in (None, '') else Decimal(str(data['tolerance_threshold']))
         if any(value.is_nan() or value.is_infinite() for value in (*values.values(), *([tolerance] if tolerance is not None else []))):
             raise ValueError
-        case = PricingReferenceCase.objects.create(name=data['name'].strip(), result_json=data['result'],
-            expected_v1_total=values['expected_v1_total'], expected_v2_total=values['expected_v2_total'],
-            expected_difference=values['expected_difference'], tolerance_threshold=tolerance, approved=True)
+        with transaction.atomic():
+            AppConfig.objects.select_for_update().get_or_create(pk=1)
+            case = PricingReferenceCase.objects.create(name=data['name'].strip(), result_json=data['result'],
+                expected_v1_total=values['expected_v1_total'], expected_v2_total=values['expected_v2_total'],
+                expected_difference=values['expected_difference'], tolerance_threshold=tolerance, approved=True)
     except (ValueError, TypeError, InvalidOperation, IntegrityError):
         return JsonResponse({'errors': {'reference_case': 'Ungültige oder doppelte Referenzfalldaten.'}}, status=400)
     return JsonResponse({'case': {'id': case.pk, 'name': case.name,

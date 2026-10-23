@@ -78,6 +78,38 @@ def test_staff_can_save_reference_case_and_activation_uses_stored_case():
 
 
 @pytest.mark.django_db
+def test_reference_case_edit_serializes_on_appconfig_lock_and_stale_stamp_cannot_activate(monkeypatch):
+    user = get_user_model().objects.create_user("case-lock-staff", password="secret", is_staff=True)
+    AppConfig.objects.create(pk=1, pricing_engine_mode="legacy")
+    case = PricingReferenceCase.objects.create(
+        name="baseline", result_json={"v1_gross": "100", "v2_gross": "100", "difference": "0"},
+        expected_v1_total=100, expected_v2_total=100, expected_difference=0,
+    )
+    client = Client(enforce_csrf_checks=True)
+    client.force_login(user)
+    client.get(reverse("dj_admin:pricing_v2_activation"))
+    token = client.cookies["csrftoken"].value
+    old_stamp = validate_activation().reference_case_stamp
+    lock_calls = []
+    original = AppConfig.objects.select_for_update
+    monkeypatch.setattr(AppConfig.objects, "select_for_update", lambda *args, **kwargs: (lock_calls.append(True) or original(*args, **kwargs)))
+
+    response = client.post(
+        reverse("dj_admin:pricing_v2_reference_cases"),
+        data=json.dumps({"name": "baseline-2", "result": {"v1_gross": "100", "v2_gross": "101", "difference": "1"},
+                         "expected_v1_total": "100", "expected_v2_total": "101", "expected_difference": "1"}),
+        content_type="application/json", HTTP_X_CSRFTOKEN=token,
+    )
+    assert response.status_code == 201
+    assert lock_calls
+    stale = client.post(reverse("dj_admin:pricing_v2_activation_api"),
+        data=json.dumps({"action": "activate", "reference_case_stamp": old_stamp}),
+        content_type="application/json", HTTP_X_CSRFTOKEN=token)
+    assert stale.status_code == 409
+    assert AppConfig.objects.get(pk=1).pricing_engine_mode == "legacy"
+
+
+@pytest.mark.django_db
 def test_atomic_mode_switch_and_rollback_preserve_pricing_data(monkeypatch):
     config = AppConfig.objects.create(pk=1, pricing_engine_mode="legacy")
     profile = PricingProfile.objects.create(name="Global", version=1, status="active", valid_from=timezone.now(), config_json={})
