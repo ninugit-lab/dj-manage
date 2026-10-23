@@ -115,7 +115,7 @@
   <!-- Rechte Spalte: Workflow Canvas + Komponenten-Verwaltung -->
   <div class="wb-canvas-wrap">
     <div class="wb-wf-select">
-      <select id="wf-select" class="form-control" onchange="loadWorkflow()">
+      <select id="wf-select" class="form-input appearance-auto" onchange="loadWorkflow()">
         <option value="">— Neuer Workflow —</option>
         {% for wf in workflows %}
         <option value="{{ wf.pk }}" data-default="{{ wf.is_default|yesno:'1,0' }}"{% if selected_wf_id == wf.pk %} selected{% endif %}>{{ wf.name }}{% if wf.is_default %} (Standard){% endif %}</option>
@@ -132,7 +132,7 @@
     </div>
 
     <div class="wb-actions">
-      <input type="text" id="wf-name" class="form-control max-w-[280px]" placeholder="Workflow-Name (z.B. Standard-Preis)">
+      <input type="text" id="wf-name" class="form-input max-w-[280px]" placeholder="Workflow-Name (z.B. Standard-Preis)">
       <label class="flex items-center gap-1.5 text-sm whitespace-nowrap">
         <input type="checkbox" id="wf-default"> Standard
       </label>
@@ -157,7 +157,9 @@
         </div>
         <div class="form-group"><label class="form-label">Monat</label>
           <select id="tp-month" class="form-input appearance-auto">
-            {% for m in "123456789" %}<option value="{{ m }}">Monat {{ m }}</option>{% endfor %}
+            <option value="1">Januar</option><option value="2">Februar</option><option value="3">März</option>
+            <option value="4">April</option><option value="5">Mai</option><option value="6">Juni</option>
+            <option value="7">Juli</option><option value="8">August</option><option value="9">September</option>
             <option value="10">Oktober</option><option value="11">November</option><option value="12">Dezember</option>
           </select>
         </div>

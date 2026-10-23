@@ -34,3 +34,26 @@ def test_empty_workflow_list_renders(staff_client):
     resp = staff_client.get(reverse("dj_admin:workflow_builder"))
     assert resp.status_code == 200
     assert 'id="wf-blocks-data"' in resp.content.decode()
+
+
+def test_dj_admin_declares_dark_color_scheme_for_native_form_controls(staff_client):
+    # Without an explicit dark color-scheme, browsers render native <select>
+    # dropdown popups (and other form controls) with their light UA theme,
+    # so the page's light text color becomes nearly invisible against it.
+    resp = staff_client.get(reverse("dj_admin:workflow_builder"))
+    assert "color-scheme:dark" in resp.content.decode().replace(" ", "")
+
+
+def test_month_select_uses_german_month_names_not_placeholders(staff_client):
+    resp = staff_client.get(reverse("dj_admin:workflow_builder"))
+    content = resp.content.decode()
+    start = content.index('id="tp-month"')
+    end = content.index('</select>', start)
+    snippet = content[start:end]
+    assert "Monat 1" not in snippet
+    assert "Monat 9" not in snippet
+    for name in [
+        "Januar", "Februar", "März", "April", "Mai", "Juni",
+        "Juli", "August", "September", "Oktober", "November", "Dezember",
+    ]:
+        assert name in snippet
