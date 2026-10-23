@@ -46,6 +46,13 @@ def test_dj_admin_declares_dark_color_scheme_for_native_form_controls(staff_clie
     assert "color-scheme:dark" in resp.content.decode().replace(" ", "")
 
 
+def test_dj_admin_has_explicit_light_field_palette(staff_client):
+    content = staff_client.get(reverse('dj_admin:workflow_builder')).content.decode()
+    assert '--field-bg:#fff' in content
+    assert '--field-text:#181828' in content
+    assert '.field-input' in content
+
+
 def test_month_select_uses_german_month_names_not_placeholders(staff_client):
     resp = staff_client.get(reverse("dj_admin:workflow_builder"))
     content = resp.content.decode()

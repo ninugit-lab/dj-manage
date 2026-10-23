@@ -27,6 +27,9 @@
       --red:#ef4444;
       --yellow:#eab308;
       --text:#e4e4ef;
+      --field-bg:#fff;
+      --field-text:#181828;
+      --field-border:#8585a2;
       --text-bright:#f4f4ff;
       --muted:rgba(176,176,214,.92);
       --subtle:rgba(148,148,190,.7);
@@ -91,6 +94,17 @@
     .form-label{display:block;margin-bottom:.35rem;font-size:.76rem;font-weight:500;color:var(--muted);letter-spacing:.01em}
     .form-input,.form-select,.form-textarea{width:100%;background:rgba(8,8,20,.6);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.6rem .85rem;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.87rem;outline:none;transition:border-color .25s var(--transition),box-shadow .25s var(--transition)}
     .form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+    /* Inputs are light in every DJ Admin view, including V2's unclassed forms. */
+    .main :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]),select,textarea):not(.btn),
+    .main .field-input,.main .form-input,.main .form-select,.main .form-textarea{
+      background:var(--field-bg);color:var(--field-text);border:1px solid var(--field-border);
+      border-radius:var(--radius-sm);color-scheme:light;
+    }
+    .main :is(input,select,textarea)::placeholder{color:#55556e;opacity:1}
+    .main select option{background:var(--field-bg);color:var(--field-text)}
+    .main :is(input:not([type="checkbox"]):not([type="radio"]),select,textarea):focus-visible{
+      outline:2px solid var(--accent);outline-offset:2px;
+    }
     .form-textarea{min-height:80px;resize:vertical}
     .form-check{display:flex;align-items:center;gap:.55rem;margin-bottom:.55rem}
     .form-check input[type="checkbox"]{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}

@@ -523,6 +523,23 @@
 </div>
 </form>
 
+{% if event and event.status != 'cancelled' %}
+<dialog id="cancel-dialog" aria-labelledby="cancel-title" aria-describedby="cancel-details"
+  class="rounded-lg border border-border bg-card-solid text-text p-0 w-[min(32rem,calc(100%-2rem))] max-h-[90vh] shadow-2xl backdrop:bg-black/70">
+  <form id="cancel-form" class="p-6">
+    <h2 id="cancel-title" class="font-display text-2xl mb-3">Event stornieren</h2>
+    <p id="cancel-details" class="text-sm text-muted mb-4">Der Kalendertermin wird entfernt. Falls eine Kundenadresse hinterlegt ist, wird eine Storno-E-Mail versendet. Dieser Schritt kann nicht durch Abbrechen rückgängig gemacht werden.</p>
+    <label for="cancel-reason" class="form-label">Stornogrund (optional, wird dem Kunden mitgeteilt)</label>
+    <textarea id="cancel-reason" name="reason" class="form-textarea mb-5" rows="3"></textarea>
+    <div id="cancel-error" class="text-sm text-red-400 mb-3 hidden" role="alert"></div>
+    <div class="flex justify-end gap-2 flex-wrap">
+      <button type="button" class="btn btn-ghost" onclick="closeCancelDialog()">Abbrechen</button>
+      <button type="submit" id="cancel-submit" class="btn btn-danger">Event verbindlich stornieren</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+
 <style>
 /* details/summary chevron rotation */
 details[open] > summary .details-chevron { transform: rotate(180deg); }
@@ -585,19 +602,34 @@ async function confirmEvent(pk) {
   } catch (e) { showToast('Fehler', true); }
 }
 
-async function cancelEvent(pk) {
-  var reason = prompt('Stornogrund (optional, wird dem Kunden mitgeteilt):', '');
-  if (reason === null || !confirm('Event wirklich stornieren? Kalendertermin und Kundenmail werden verarbeitet.')) return;
-  var form = new URLSearchParams(); form.set('reason', reason);
+function cancelEvent(pk) {
+  document.getElementById('cancel-dialog').showModal();
+  document.getElementById('cancel-reason').focus();
+}
+function closeCancelDialog() {
+  document.getElementById('cancel-dialog').close();
+  document.getElementById('cancel-form').reset();
+  document.getElementById('cancel-error').classList.add('hidden');
+}
+{% if event and event.status != 'cancelled' %}
+document.getElementById('cancel-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var button = document.getElementById('cancel-submit');
+  var error = document.getElementById('cancel-error');
+  var form = new URLSearchParams(); form.set('reason', document.getElementById('cancel-reason').value);
+  button.disabled = true;
+  error.classList.add('hidden');
   try {
-    var res = await fetch('/dj-admin/events/' + pk + '/cancel/', {
+    var res = await fetch('{% url "dj_admin:event_cancel" pk=event.pk %}', {
       method: 'POST', headers: {'X-CSRFToken': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded'}, body: form
     });
     var data = await res.json();
-    if (data.success) { showToast(data.warnings ? 'Storniert – mit Warnungen' : 'Event storniert'); setTimeout(function(){ location.reload() }, 900); }
-    else showToast(data.error || 'Storno fehlgeschlagen', true);
-  } catch (e) { showToast('Storno fehlgeschlagen', true); }
-}
+    if (data.success) { closeCancelDialog(); showToast(data.warnings ? 'Storniert – mit Warnungen' : 'Event storniert'); setTimeout(function(){ location.reload() }, 900); }
+    else { error.textContent = data.error || 'Storno fehlgeschlagen'; error.classList.remove('hidden'); }
+  } catch (e) { error.textContent = 'Storno fehlgeschlagen'; error.classList.remove('hidden'); }
+  finally { button.disabled = false; }
+});
+{% endif %}
 
 async function restoreEvent(pk) {
   if (!confirm('Event auf den vorherigen Status wiederherstellen?')) return;

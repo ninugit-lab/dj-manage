@@ -189,6 +189,16 @@ def test_event_form_does_not_offer_direct_cancelled_status(staff_client, confirm
     assert b"Wiederherstellen" in result.content
 
 
+def test_event_cancellation_uses_an_explicit_form_instead_of_browser_prompt(staff_client, confirmed_event):
+    result = staff_client.get(reverse("dj_admin:event_edit", kwargs={"pk": confirmed_event.pk}))
+    content = result.content.decode()
+    assert result.status_code == 200
+    assert '<dialog id="cancel-dialog"' in content
+    assert 'id="cancel-reason"' in content
+    assert 'id="cancel-submit"' in content
+    assert "prompt('Stornogrund" not in content
+
+
 def test_calendar_id_is_retained_when_deletion_fails(staff_client, confirmed_event):
     with (
         patch("wishlist.admin_views.GoogleService.delete_calendar_event",
