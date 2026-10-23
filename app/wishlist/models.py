@@ -452,6 +452,21 @@ class PricingWorkflow(models.Model):
         return self.name
 
 
+class PricingReferenceCase(models.Model):
+    """Durable, staff-approved V1/V2 activation evidence."""
+    name = models.CharField(max_length=200, unique=True)
+    result_json = models.JSONField(default=dict)
+    expected_v1_total = models.DecimalField(max_digits=12, decimal_places=2)
+    expected_v2_total = models.DecimalField(max_digits=12, decimal_places=2)
+    expected_difference = models.DecimalField(max_digits=12, decimal_places=2)
+    tolerance_threshold = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    approved = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+
 class PricingProfile(models.Model):
     class Status(models.TextChoices):
         DRAFT = 'draft', 'Draft'

@@ -7,6 +7,9 @@
 {% for warning in activation_report.warnings %}<p class="warning">Warnung: {{ warning.message }}</p>{% endfor %}
 <button type="button" id="activate-v2" {% if not activation_report.ok %}disabled{% endif %}>V2 aktivieren</button>
 <button type="button" id="rollback-v2">Auf Legacy zurückstellen</button></section>{% endif %}
+{% if activation_report %}<section id="reference-cases"><h3>Gespeicherte Referenzfälle</h3>
+<ul>{% for case in reference_cases %}<li>{{ case.name }}: V1 {{ case.expected_v1_total }} / V2 {{ case.expected_v2_total }} / Δ {{ case.expected_difference }}{% if case.tolerance_threshold %} (Toleranz {{ case.tolerance_threshold }}){% endif %}</li>{% empty %}<li>Keine gespeicherten Referenzfälle.</li>{% endfor %}</ul>
+<form id="reference-case-form"><label>Name <input name="name" required></label><label>V1 <input name="expected_v1_total" required></label><label>V2 <input name="expected_v2_total" required></label><label>Differenz <input name="expected_difference" required></label><label>Toleranz <input name="tolerance_threshold"></label><label>Ergebnis JSON <textarea name="result" required>{"v1_gross":"0","v2_gross":"0","difference":"0"}</textarea></label><button type="submit">Referenzfall speichern</button></form></section>{% endif %}
 <nav><a href="{% url 'dj_admin:pricing_v2_profile' %}">Profile</a> · <a href="{% url 'dj_admin:pricing_v2_packages' %}">Pakete</a> · <a href="{% url 'dj_admin:pricing_v2_components' %}">Komponenten</a> · <a href="{% url 'dj_admin:workflow_builder' %}">Legacy-Workflow</a></nav>
 <form method="get"><label>Workflow <select name="workflow_id"><option value="">Neu</option>{% for w in workflows %}<option value="{{ w.pk }}" {% if selected.pk == w.pk %}selected{% endif %}>{{ w.name }} · V{{ w.version }}{% if w.is_default %} · Standard{% endif %}</option>{% endfor %}</select></label><button>Auswählen</button></form>
 <form id="editor" data-id="{{ selected.pk|default:'' }}" data-version="{{ selected.version|default:0 }}">
@@ -33,9 +36,10 @@ const token = editor.querySelector('[name=csrfmiddlewaretoken]').value;
 const base = '{% url "dj_admin:pricing_v2_workflows" %}';
 const urls = {validate: '{% url "dj_admin:pricing_v2_workflow_validate" %}', test: '{% url "dj_admin:pricing_v2_workflow_test" %}'};
 {% if activation_report %}
-async function switchMode(action) { const response = await fetch('{% url "dj_admin:pricing_v2_activation_api" %}', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':token}, body:JSON.stringify({action})}); const result = await response.json(); feedback.textContent = response.ok ? 'Modus: ' + result.mode : JSON.stringify(result.errors || result); }
+async function switchMode(action) { const response = await fetch('{% url "dj_admin:pricing_v2_activation_api" %}', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':token}, body:JSON.stringify({action, reference_case_stamp: '{{ activation_report.reference_case_stamp }}'})}); const result = await response.json(); feedback.textContent = response.ok ? 'Modus: ' + result.mode : JSON.stringify(result.errors || result); }
 document.getElementById('activate-v2').addEventListener('click', () => switchMode('activate'));
 document.getElementById('rollback-v2').addEventListener('click', () => switchMode('rollback'));
+document.getElementById('reference-case-form').addEventListener('submit', async event => { event.preventDefault(); const data = Object.fromEntries(new FormData(event.currentTarget)); try { data.result = JSON.parse(data.result); } catch { feedback.textContent = 'Ungültiges Ergebnis-JSON.'; return; } const response = await fetch('{% url "dj_admin:pricing_v2_reference_cases" %}', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken:token'}, body:JSON.stringify(data)}); const result = await response.json(); feedback.textContent = response.ok ? 'Referenzfall gespeichert.' : JSON.stringify(result.errors || result); if (response.ok) location.reload(); });
 {% endif %}
 function row(type, config = '{}') {
   const li = document.createElement('li'); li.dataset.type = type;

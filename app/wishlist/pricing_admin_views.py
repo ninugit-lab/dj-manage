@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
 from .models import (AppConfig, PriceCalculationRevision, PriceItem, PricingFormula, PricingPackage,
-                     PricingPackageOverride, PricingProfile, PricingRule, PricingWorkflow)
+                      PricingPackageOverride, PricingProfile, PricingReferenceCase, PricingRule, PricingWorkflow)
 from .pricing_v2.config import _FIELDS, resolve_pricing_config, validate_profile_config
 from .pricing_v2.input import PricingValidationError
 from .pricing_v2.workflow import BLOCK_TYPES, validate_workflow
@@ -894,7 +894,7 @@ def activation_page(request):
         if action is None:
             return _bad_body()
         try:
-            config = activate_v2(request.user) if action.get('action') == 'activate' else rollback_to_legacy(request.user) if action.get('action') == 'rollback' else None
+            config = activate_v2(request.user, expected_reference_case_stamp=action.get('reference_case_stamp')) if action.get('action') == 'activate' else rollback_to_legacy(request.user) if action.get('action') == 'rollback' else None
             if config is None:
                 return _error('action', 'Unbekannte Aktion.')
         except Exception as exc:
@@ -906,6 +906,7 @@ def activation_page(request):
         'items': PriceItem.objects.filter(is_active=True), 'rules': PricingRule.objects.filter(is_active=True),
         'formulas': PricingFormula.objects.filter(is_active=True), 'profile': PricingProfile.objects.filter(status='active').first(),
         'package': None, 'factors': [], 'activation_report': report.to_dict(),
+        'reference_cases': PricingReferenceCase.objects.order_by('name'),
     })
 
 
@@ -916,9 +917,34 @@ def activation_api(request):
     if data is None:
         return _bad_body()
     try:
-        config = activate_v2(request.user) if data.get('action') == 'activate' else rollback_to_legacy(request.user) if data.get('action') == 'rollback' else None
+        config = activate_v2(request.user, expected_reference_case_stamp=data.get('reference_case_stamp')) if data.get('action') == 'activate' else rollback_to_legacy(request.user) if data.get('action') == 'rollback' else None
         if config is None:
             return _error('action', 'Unbekannte Aktion.')
         return JsonResponse({'mode': config.pricing_engine_mode, 'report': validate_activation().to_dict()})
     except Exception as exc:
-        return JsonResponse({'errors': {'activation': str(exc)}, 'report': validate_activation().to_dict()}, status=400)
+        return JsonResponse({'errors': {'activation': str(exc)}, 'report': validate_activation().to_dict()}, status=409 if getattr(exc, 'code', None) == 'stale_activation' else 400)
+
+
+@staff_only
+@require_POST
+def reference_case_api(request):
+    data = _body(request)
+    if data is None:
+        return _bad_body()
+    required = ('name', 'result', 'expected_v1_total', 'expected_v2_total', 'expected_difference')
+    if any(key not in data for key in required) or not isinstance(data.get('result'), dict):
+        return JsonResponse({'errors': {'reference_case': 'Alle Referenzfallfelder sind erforderlich.'}}, status=400)
+    try:
+        values = {key: Decimal(str(data[key])) for key in required[2:]}
+        tolerance = None if data.get('tolerance_threshold') in (None, '') else Decimal(str(data['tolerance_threshold']))
+        if any(value.is_nan() or value.is_infinite() for value in (*values.values(), *([tolerance] if tolerance is not None else []))):
+            raise ValueError
+        case = PricingReferenceCase.objects.create(name=data['name'].strip(), result_json=data['result'],
+            expected_v1_total=values['expected_v1_total'], expected_v2_total=values['expected_v2_total'],
+            expected_difference=values['expected_difference'], tolerance_threshold=tolerance, approved=True)
+    except (ValueError, TypeError, InvalidOperation, IntegrityError):
+        return JsonResponse({'errors': {'reference_case': 'Ungültige oder doppelte Referenzfalldaten.'}}, status=400)
+    return JsonResponse({'case': {'id': case.pk, 'name': case.name,
+        'expected_v1_total': str(case.expected_v1_total), 'expected_v2_total': str(case.expected_v2_total),
+        'expected_difference': f'{case.expected_difference:.2f}',
+        'tolerance_threshold': str(case.tolerance_threshold) if case.tolerance_threshold is not None else None}}, status=201)

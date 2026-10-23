@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 import logging
+import hashlib
+import json
 from typing import Any, Iterable
 
 from django.db import transaction
@@ -11,7 +13,7 @@ from django.utils import timezone
 
 from wishlist.models import (
     AppConfig, PriceCalculationRevision, PriceItem, PricingFormula, PricingPackage,
-    PricingProfile, PricingRule, PricingWorkflow,
+    PricingProfile, PricingReferenceCase, PricingRule, PricingWorkflow,
 )
 from .config import validate_profile_config
 from .input import PricingValidationError
@@ -28,6 +30,7 @@ class ActivationReport:
     checks: tuple[dict[str, Any], ...] = ()
     errors: tuple[dict[str, Any], ...] = ()
     warnings: tuple[dict[str, Any], ...] = ()
+    reference_case_stamp: str = ""
 
     @property
     def ok(self) -> bool:
@@ -39,7 +42,15 @@ class ActivationReport:
 
     def to_dict(self) -> dict[str, Any]:
         return {"ok": self.ok, "valid": self.valid, "checks": list(self.checks),
-                "errors": list(self.errors), "warnings": list(self.warnings)}
+                "errors": list(self.errors), "warnings": list(self.warnings),
+                "reference_case_stamp": self.reference_case_stamp}
+
+
+def _reference_case_stamp():
+    rows = list(PricingReferenceCase.objects.filter(approved=True).order_by("pk").values(
+        "pk", "updated_at", "expected_v1_total", "expected_v2_total", "expected_difference",
+        "tolerance_threshold", "result_json"))
+    return hashlib.sha256(json.dumps(rows, default=str, sort_keys=True).encode()).hexdigest()
 
 
 def _check(checks, errors, name, passed, message, **details):
@@ -104,6 +115,13 @@ def _reference_check(model, identities, *, public=False):
 
 
 def _validate_reference_cases(profile, workflow, reference_cases, checks, errors, warnings):
+    if reference_cases is None:
+        reference_cases = list(PricingReferenceCase.objects.filter(approved=True).values(
+            "name", "result_json", "expected_v1_total", "expected_v2_total", "expected_difference",
+            "tolerance_threshold"))
+        for case in reference_cases:
+            case["result"] = case.pop("result_json")
+            case["difference_threshold"] = case.pop("tolerance_threshold")
     cases = list(reference_cases or [])
     _check(checks, errors, "reference_cases", bool(cases),
            "Mindestens ein Referenzfall ist erforderlich.", count=len(cases))
@@ -129,11 +147,13 @@ def _validate_reference_cases(profile, workflow, reference_cases, checks, errors
             expected_v1 = case.get("expected_v1_total") if isinstance(case, dict) else None
             expected_v2 = case.get("expected_v2_total") if isinstance(case, dict) else None
             expected_difference = case.get("expected_difference") if isinstance(case, dict) else None
-            if expected_v1 is not None and v1 != Decimal(str(expected_v1)):
+            if expected_v1 is None or expected_v2 is None or expected_difference is None:
+                raise ValueError("Alle erwarteten V1-, V2- und Differenzsummen sind erforderlich.")
+            if v1 != Decimal(str(expected_v1)):
                 raise ValueError("V1-Summe entspricht nicht dem erwarteten Wert.")
-            if expected_v2 is not None and v2 != Decimal(str(expected_v2)):
+            if v2 != Decimal(str(expected_v2)):
                 raise ValueError("V2-Summe entspricht nicht dem erwarteten Wert.")
-            if expected_difference is not None and difference != Decimal(str(expected_difference)):
+            if difference != Decimal(str(expected_difference)):
                 raise ValueError("Differenz entspricht nicht dem erwarteten Wert.")
             allowed = case.get("difference_threshold") if isinstance(case, dict) else None
             allowed = threshold if allowed is None else Decimal(str(allowed))
@@ -202,13 +222,16 @@ def validate_activation(profile=None, workflow=None, reference_cases=None) -> Ac
     _check(checks, errors, "migration_differences_reviewed", not unresolved,
            "Alle Migration-Differenzen müssen geprüft oder gelöst sein.", unresolved=unresolved)
     _validate_reference_cases(profile, workflow, reference_cases, checks, errors, warnings)
-    return ActivationReport(tuple(checks), tuple(errors), tuple(warnings))
+    return ActivationReport(tuple(checks), tuple(errors), tuple(warnings), _reference_case_stamp())
 
 
-def activate_v2(actor):
+def activate_v2(actor, *, expected_reference_case_stamp=None):
     """Atomically switch the singleton mode after re-running the gate under lock."""
     with transaction.atomic():
         config = AppConfig.objects.select_for_update().get_or_create(pk=1)[0]
+        if (expected_reference_case_stamp is not None and
+                expected_reference_case_stamp != _reference_case_stamp()):
+            raise PricingValidationError("stale_activation", "Referenzfälle wurden seit der Checkliste geändert.", "reference_cases")
         report = validate_activation()
         if not report.ok:
             raise PricingValidationError("activation_blocked", "Aktivierung nicht möglich.", "activation")

@@ -19,6 +19,7 @@ urlpatterns = [
     path('api/pricing-v2/workflows/test/', pricing_admin_views.test_workflow, name='pricing_v2_workflow_test'),
     path('pricing-v2/activation/', pricing_admin_views.activation_page, name='pricing_v2_activation'),
     path('api/pricing-v2/activation/', pricing_admin_views.activation_api, name='pricing_v2_activation_api'),
+    path('api/pricing-v2/reference-cases/', pricing_admin_views.reference_case_api, name='pricing_v2_reference_cases'),
     path('', admin_views.admin_dashboard, name='dashboard'),
 
     # Wishlist Live View
