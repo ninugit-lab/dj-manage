@@ -62,6 +62,14 @@ def _offer_context(revision, config):
     }
 
 
+def _snapshot_offer_email(revision):
+    config = AppConfig.load()
+    context = _offer_context(revision, config)
+    subject = _render_offer_template(config.offer_email_subject, context)
+    body = _render_offer_template(config.offer_email_body, context)
+    return context, subject, body
+
+
 def send_offer(revision, *, retry=False):
     """Send exactly the frozen released offer; retries never create a revision."""
     if revision.kind != PriceCalculationRevision.Kind.OFFER or revision.status not in (
@@ -73,20 +81,24 @@ def send_offer(revision, *, retry=False):
     event = revision.event
     if not event.client_email:
         raise ValueError("Kunden-E-Mail fehlt")
-    config = AppConfig.load()
-    context = _offer_context(revision, config)
-    subject = _render_offer_template(config.offer_email_subject, context)
-    body = _render_offer_template(config.offer_email_body, context)
+    context = revision.email_context
+    subject = revision.email_subject
+    body = revision.email_body
+    if not subject or not body or not context:
+        raise ValueError("Angebots-Mail ist für diese Revision nicht eingefroren")
     error = ""
     success = False
     try:
         from wishlist.google_services import GoogleService
-        response = GoogleService.send_email(event.client_email, subject, body, sender_name=config.dj_name)
+        response = GoogleService.send_email(event.client_email, subject, body,
+                                            sender_name=context.get("dj_name", "DJ"))
         success, message = response if isinstance(response, tuple) else (bool(response), "Gesendet" if response else "Versand fehlgeschlagen")
         if not success:
-            error = str(message or "Versand fehlgeschlagen")
+            error = "EMAIL_DELIVERY_FAILED"
     except Exception as exc:  # Gmail/network errors are delivery failures, not 500s.
-        error = str(exc).replace("\n", " ")[:500]
+        import logging
+        logging.getLogger(__name__).warning("offer email delivery failed (details intentionally omitted)")
+        error = "EMAIL_DELIVERY_FAILED"
     log = EmailLog.objects.create(event=event, revision=revision, recipient=event.client_email,
                                   subject=subject, body=body, success=success, error_message=error)
     if success:
@@ -218,11 +230,16 @@ def release_offer(event, actor):
         offer_number = (PriceCalculationRevision.objects.filter(event=locked, offer_number__isnull=False)
                          .order_by("-offer_number").values_list("offer_number", flat=True).first() or 0) + 1
         try:
+            email_context, email_subject, email_body = _snapshot_offer_email(current)
+            current.email_context = email_context
+            current.email_subject = email_subject
+            current.email_body = email_body
             current.status = PriceCalculationRevision.Status.RELEASED
             current.kind = PriceCalculationRevision.Kind.OFFER
             current.offer_number = offer_number
             current.created_by = actor
-            current.save(update_fields=["status", "kind", "offer_number", "created_by"])
+            current.save(update_fields=["status", "kind", "offer_number", "created_by",
+                                       "email_context", "email_subject", "email_body"])
             update_released_event_total(locked, current.gross_total)
         except IntegrityError:
             return PriceCalculationRevision.objects.get(event=locked, offer_number=offer_number)

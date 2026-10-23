@@ -206,6 +206,20 @@ def event_price_send(request, pk):
                         status=200 if result.sent else 502)
 
 
+@staff_member_required
+@require_POST
+def price_revision_send(request, pk):
+    from .pricing_v2.offers import OfferTemplateError, send_offer
+    from .models import PriceCalculationRevision
+    revision = get_object_or_404(PriceCalculationRevision, pk=pk)
+    try:
+        result = send_offer(revision, retry=request.POST.get('retry') == '1')
+    except (ValueError, OfferTemplateError) as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+    return JsonResponse({'success': result.sent, 'status': result.revision.status, 'error': result.error},
+                        status=200 if result.sent else 502)
+
+
 def _save_event_from_post(request, config, event=None):
     is_new = event is None
     if is_new:

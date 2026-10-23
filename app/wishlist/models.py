@@ -529,6 +529,9 @@ class PriceCalculationRevision(models.Model):
     workflow_version = models.PositiveIntegerField(null=True, blank=True)
     input_json = models.JSONField(default=dict)
     result_json = models.JSONField(default=dict)
+    email_context = models.JSONField(default=dict, blank=True)
+    email_subject = models.TextField(blank=True)
+    email_body = models.TextField(blank=True)
     gross_total = models.DecimalField(max_digits=12, decimal_places=2)
     previous_revision = models.ForeignKey(
         'self', on_delete=models.SET_NULL, null=True, blank=True,
