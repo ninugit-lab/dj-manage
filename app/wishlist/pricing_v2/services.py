@@ -456,6 +456,7 @@ def save_revision(event, result, *, kind, actor=None, legacy_total=None, update_
                                                    PriceCalculationRevision.Kind.DRAFT):
                     released = PriceCalculationRevision.objects.filter(
                         event=locked, status__in=(PriceCalculationRevision.Status.RELEASED,
+                                                 PriceCalculationRevision.Status.SENDING,
                                                  PriceCalculationRevision.Status.SENT,
                                                  PriceCalculationRevision.Status.SEND_FAILED)).exists()
                     if not released:
@@ -479,6 +480,7 @@ def save_revision(event, result, *, kind, actor=None, legacy_total=None, update_
         if update_event_total and kind in (PriceCalculationRevision.Kind.ESTIMATE, PriceCalculationRevision.Kind.DRAFT):
             released = PriceCalculationRevision.objects.filter(
                 event=locked, status__in=(PriceCalculationRevision.Status.RELEASED,
+                                         PriceCalculationRevision.Status.SENDING,
                                          PriceCalculationRevision.Status.SENT,
                                          PriceCalculationRevision.Status.SEND_FAILED)).exists()
             if not released:
@@ -493,7 +495,8 @@ def update_released_event_total(event, total):
         locked = Event.objects.select_for_update().get(pk=event.pk)
         if not PriceCalculationRevision.objects.filter(
                 event=locked, status__in=(PriceCalculationRevision.Status.RELEASED,
-                                          PriceCalculationRevision.Status.SENT,
+                                         PriceCalculationRevision.Status.SENDING,
+                                         PriceCalculationRevision.Status.SENT,
                                           PriceCalculationRevision.Status.SEND_FAILED)).exists():
             raise PricingValidationError('invalid_input', 'a released offer is required', 'offer')
         Event.objects.filter(pk=locked.pk).update(total_price=total)

@@ -1,7 +1,7 @@
 """Customer-to-offer and cutover boundaries against a single persisted fixture."""
 
 import json
-from datetime import timedelta
+from datetime import timedelta, time
 from decimal import Decimal
 
 import pytest
@@ -37,6 +37,24 @@ def test_activation_reference_scan_keeps_optional_ids_optional(stock):
     assert refs['items'] == set()
     workflow.workflow_json.append({'type': 'rules', 'config': {'rule_ids': [123]}})
     assert _references(workflow)['rules'] == {'123'}
+
+
+def test_sending_offer_keeps_event_total_during_admin_recalculation(staff, stock):
+    config, package, _, extra, _, _, _, _ = stock
+    config.pricing_engine_mode = 'v2'
+    config.save(update_fields=['pricing_engine_mode'])
+    event = Event.objects.create(name='Gig', date=timezone.localdate() + timedelta(days=40),
+                                 location='X', time_start=time(18), time_end=time(21),
+                                 status=EventStatus.INQUIRY)
+    from wishlist.tests.test_pricing_v2_parity import save
+    assert save(staff, event, package, [str(extra.pk)]).status_code == 302
+    actor = get_user_model().objects.get(username='admin')
+    assert build_draft(event, actor)
+    offer = release_offer(event, actor)
+    original = Event.objects.get(pk=event.pk).total_price
+    PriceCalculationRevision.objects.filter(pk=offer.pk).update(status='sending')
+    assert save(staff, event, package, [str(extra.pk)], distance_km='').status_code == 302
+    assert Event.objects.get(pk=event.pk).total_price == original
 
 
 def test_public_inquiry_admin_adjustment_offer_failed_send_and_retry(
@@ -114,7 +132,7 @@ def test_shadow_activation_and_rollback_keep_offers_and_switch_public_and_admin(
     assert comparison.difference == Decimal('0.00')
 
     PricingReferenceCase.objects.create(
-        name='same-economics', result_json={'v1_gross': '150.00', 'v2_gross': '150.00', 'difference': '0.00'},
+        name='same-economics', result_json={'event_id': shadow.pk, 'v1_gross': '150.00', 'v2_gross': '150.00', 'difference': '0.00'},
         expected_v1_total=Decimal('150'), expected_v2_total=Decimal('150'), expected_difference=Decimal('0'),
     )
     report = validate_activation()
@@ -133,6 +151,39 @@ def test_shadow_activation_and_rollback_keep_offers_and_switch_public_and_admin(
     assert comparison.pk == shadow.price_revisions.get(kind='migration_compare').pk
     assert v2_event.price_revisions.filter(pk=offer.pk, kind='offer').exists()
     assert AppConfig.load().pricing_engine_mode == 'legacy'
+
+
+def test_activation_recalculates_linked_reference_after_catalog_change(stock):
+    config, _, _, extra, _, _, _, _ = stock
+    config.pricing_engine_mode = 'shadow'
+    config.save(update_fields=['pricing_engine_mode'])
+    from datetime import time
+    from wishlist.models import EventPriceCalculation
+    event = Event.objects.create(name='Case', date=timezone.localdate() + timedelta(days=40),
+                                 location='X', time_start=time(18), time_end=time(21), distance_km=12)
+    calc = EventPriceCalculation.objects.create(event=event, package=stock[1])
+    calc.selected_items.add(extra)
+    from wishlist.pricing_v2.migration import compare_event
+    expected = compare_event(event, stock[7], stock[6])
+    assert expected.status == 'ok', expected.diagnostics
+    PricingReferenceCase.objects.create(name='baseline', result_json={
+        'event_id': event.pk, 'v1_gross': str(expected.v1_gross),
+        'v2_gross': str(expected.v2_gross), 'difference': str(expected.difference),
+    }, expected_v1_total=expected.v1_gross, expected_v2_total=expected.v2_gross,
+       expected_difference=expected.difference, tolerance_threshold=Decimal('100'))
+    assert validate_activation().ok
+    extra.price = Decimal('40')
+    extra.save(update_fields=['price'])
+    report = validate_activation()
+    assert any(e['check'] == 'reference_case_0' for e in report.errors)
+
+
+def test_stored_unlinked_reference_cannot_activate(stock):
+    PricingReferenceCase.objects.create(name='invented', result_json={
+        'v1_gross': '150.00', 'v2_gross': '150.00', 'difference': '0.00',
+    }, expected_v1_total=Decimal('150'), expected_v2_total=Decimal('150'),
+       expected_difference=Decimal('0'))
+    assert any(e['check'] == 'reference_case_0' for e in validate_activation().errors)
 
 
 def test_rollout_commands_dry_run_and_allowlisted_apply_preserve_event_and_offer(

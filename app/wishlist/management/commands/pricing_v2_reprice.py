@@ -18,6 +18,38 @@ def _canonical_db_name(name):
     return str(Path(str(name)).resolve())
 
 
+def require_local_apply_database(*, confirmed):
+    """Fail closed before migration commands write to their active connection."""
+    if connection.vendor != "sqlite":
+        raise CommandError("--apply requires the active database backend to be SQLite")
+    name = connection.settings_dict.get("NAME")
+    hosts = set(getattr(settings, "ALLOWED_HOSTS", ()))
+    local_hosts = hosts.intersection({"localhost", "127.0.0.1", "testserver", "[::1]"})
+    if not confirmed or not settings.DEBUG or not local_hosts:
+        raise CommandError(
+            "--apply requires --confirm-local-apply, DEBUG=True, and an explicit local test host"
+        )
+    allowlisted = os.environ.get("PRICING_V2_APPLY_DB_NAME")
+    if not allowlisted or _canonical_db_name(allowlisted) != _canonical_db_name(name):
+        raise CommandError("PRICING_V2_APPLY_DB_NAME must exactly match the resolved database name")
+    try:
+        connection.ensure_connection()
+        db_path = Path(str(name)).resolve()
+        temp_path = Path(tempfile.gettempdir()).resolve()
+        is_ephemeral = db_path.is_relative_to(temp_path)
+        actual = connection.connection.execute("PRAGMA database_list").fetchone()[2]
+        if actual:
+            actual_path = Path(actual).resolve()
+            is_ephemeral = actual_path.is_relative_to(temp_path) and actual_path == db_path
+        else:
+            expected_test_name = connection.creation._get_test_db_name()
+            is_ephemeral = str(name) == str(expected_test_name)
+    except (OSError, ValueError):
+        is_ephemeral = False
+    if not is_ephemeral:
+        raise CommandError("--apply requires an explicitly named temporary test database")
+
+
 class Command(BaseCommand):
     help = "Propose or append controlled V2 repricing drafts (dry-run by default)."
 
@@ -28,36 +60,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if options["apply"]:
-            if connection.vendor != "sqlite":
-                raise CommandError("--apply requires the active database backend to be SQLite")
-            name = connection.settings_dict.get("NAME")
-            hosts = set(getattr(settings, "ALLOWED_HOSTS", ()))
-            local_hosts = hosts.intersection({"localhost", "127.0.0.1", "testserver", "[::1]"})
-            if not options["confirm_local_apply"] or not settings.DEBUG or not local_hosts:
-                raise CommandError(
-                    "--apply requires --confirm-local-apply, DEBUG=True, and an explicit local test host"
-                )
-            allowlisted = os.environ.get("PRICING_V2_APPLY_DB_NAME")
-            if not allowlisted or _canonical_db_name(allowlisted) != _canonical_db_name(name):
-                raise CommandError(
-                    "PRICING_V2_APPLY_DB_NAME must exactly match the resolved database name"
-                )
-            try:
-                connection.ensure_connection()
-                db_path = Path(str(name)).resolve()
-                temp_path = Path(tempfile.gettempdir()).resolve()
-                is_ephemeral = db_path.is_relative_to(temp_path)
-                actual = connection.connection.execute("PRAGMA database_list").fetchone()[2]
-                if actual:
-                    actual_path = Path(actual).resolve()
-                    is_ephemeral = actual_path.is_relative_to(temp_path) and actual_path == db_path
-                else:
-                    expected_test_name = connection.creation._get_test_db_name()
-                    is_ephemeral = str(name) == str(expected_test_name)
-            except (OSError, ValueError):
-                is_ephemeral = False
-            if not is_ephemeral:
-                raise CommandError("--apply requires an explicitly named temporary test database")
+            require_local_apply_database(confirmed=options["confirm_local_apply"])
         rows = []
         today = timezone.localdate()
         requested_at = timezone.now()

@@ -4,6 +4,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from wishlist.models import Event, EventStatus, PricingProfile, PricingWorkflow
 from wishlist.pricing_v2.migration import compare_event
+from .pricing_v2_reprice import require_local_apply_database
 
 
 class Command(BaseCommand):
@@ -14,8 +15,11 @@ class Command(BaseCommand):
         parser.add_argument("--status", choices=[value for value, _ in EventStatus.choices])
         parser.add_argument("--output")
         parser.add_argument("--apply", action="store_true")
+        parser.add_argument("--confirm-local-apply", action="store_true")
 
     def handle(self, *args, **options):
+        if options["apply"]:
+            require_local_apply_database(confirmed=options["confirm_local_apply"])
         profile = PricingProfile.objects.filter(status=PricingProfile.Status.ACTIVE).first()
         workflow = PricingWorkflow.objects.filter(is_active=True, is_default=True).first()
         if not profile or not workflow:

@@ -428,6 +428,7 @@ def _save_event_from_post(request, config, event=None):
         # A failed quote is a review, never a posted or stale definite price.
         released_offer = PriceCalculationRevision.objects.filter(
             event=event, status__in=(PriceCalculationRevision.Status.RELEASED,
+                                    PriceCalculationRevision.Status.SENDING,
                                     PriceCalculationRevision.Status.SENT,
                                     PriceCalculationRevision.Status.SEND_FAILED)).exists()
         if event.distance_km is None or invalid_selection:

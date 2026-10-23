@@ -12,7 +12,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from wishlist.models import (
-    AppConfig, PriceCalculationRevision, PriceItem, PricingFormula, PricingPackage,
+    AppConfig, Event, PriceCalculationRevision, PriceItem, PricingFormula, PricingPackage,
     PricingProfile, PricingReferenceCase, PricingRule, PricingWorkflow,
 )
 from .config import validate_profile_config
@@ -122,6 +122,7 @@ def _validate_reference_cases(profile, workflow, reference_cases, checks, errors
         for case in reference_cases:
             case["result"] = case.pop("result_json")
             case["difference_threshold"] = case.pop("tolerance_threshold")
+            case["stored"] = True
     cases = list(reference_cases or [])
     _check(checks, errors, "reference_cases", bool(cases),
            "Mindestens ein Referenzfall ist erforderlich.", count=len(cases))
@@ -129,10 +130,17 @@ def _validate_reference_cases(profile, workflow, reference_cases, checks, errors
     for index, case in enumerate(cases):
         try:
             result = case() if callable(case) else None
+            if (result is None and isinstance(case, dict) and isinstance(case.get("result"), dict)
+                    and case["result"].get("event_id") is not None):
+                event = Event.objects.get(pk=case["result"]["event_id"])
+                result = compare_event(event, profile, workflow).to_dict()
             if result is None and isinstance(case, dict) and case.get("event") is not None:
                 result = compare_event(case["event"], profile, workflow, actor=case.get("actor"))
             if result is None and isinstance(case, dict):
                 result = case.get("result")
+            if (isinstance(case, dict) and case.get("stored")
+                    and (not isinstance(case.get("result"), dict) or not case["result"].get("event_id"))):
+                raise ValueError("Gespeicherter Referenzfall benötigt einen prüfbaren Event-Bezug.")
             if hasattr(result, "to_dict"):
                 result = result.to_dict()
             if not isinstance(result, dict):
@@ -214,7 +222,8 @@ def validate_activation(profile=None, workflow=None, reference_cases=None) -> Ac
     for revision in PriceCalculationRevision.objects.filter(kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE):
         if not isinstance(revision.input_json, dict) or not isinstance(revision.result_json, dict):
             unresolved.append(revision.pk)
-        elif revision.result_json.get("malformed_snapshot") or revision.input_json.get("malformed_snapshot"):
+        elif (revision.result_json.get("malformed_snapshot") or revision.input_json.get("malformed_snapshot")
+              or revision.result_json.get("diagnostic")):
             unresolved.append(revision.pk)
         elif revision.result_json.get("reviewed") is not True and revision.input_json.get("reviewed") is not True:
             if revision.difference not in (None, 0, Decimal("0")):

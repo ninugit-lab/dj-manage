@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal
 import json
 
@@ -52,11 +52,63 @@ def test_command_dry_run_reports_decimal_values_without_writes(comparison_data, 
     assert event.total_price == Decimal("777.00")
 
 
-def test_apply_is_idempotent_and_does_not_change_offer(comparison_data):
+def test_compare_apply_requires_exact_local_database_allowlist(comparison_data, monkeypatch):
+    from django.db import connection
+    from django.test import override_settings
+    event, _, _ = comparison_data
+    with pytest.raises(CommandError):
+        call_command('pricing_v2_compare', '--apply', '--event-id', str(event.pk))
+    assert not event.price_revisions.exists()
+    with override_settings(DEBUG=True, ALLOWED_HOSTS=['testserver']):
+        monkeypatch.setenv('PRICING_V2_APPLY_DB_NAME', 'production.sqlite3')
+        with pytest.raises(CommandError):
+            call_command('pricing_v2_compare', '--apply', '--confirm-local-apply')
+        monkeypatch.setenv('PRICING_V2_APPLY_DB_NAME', str(connection.settings_dict['NAME']))
+        call_command('pricing_v2_compare', '--apply', '--confirm-local-apply', '--event-id', str(event.pk))
+    assert event.price_revisions.filter(kind='migration_compare').count() == 1
+
+
+def test_comparison_uses_saved_inquiry_booking_date_for_lead_time(comparison_data):
+    from wishlist.pricing_v2.migration import compare_event
+    from datetime import timedelta
+    event, profile, workflow = comparison_data
+    event.date = timezone.localdate() + timedelta(days=4)
+    event.save(update_fields=['date'])
+    event.created_at = timezone.now() - timedelta(days=1)
+    Event.objects.filter(pk=event.pk).update(created_at=event.created_at)
+    # Distinguish the historical year-2000 clock from a real booking date:
+    # the former falls in the unrestricted tier and must NOT be chosen.
+    profile.config_json['lead_time_tiers'] = [
+        {'lower_bound': 0, 'upper_bound': 7, 'value': '10'},
+        {'lower_bound': 8, 'upper_bound': None, 'value': '0'},
+    ]
+    workflow.workflow_json.insert(2, {'type': 'calendar_factors'})
+    workflow.save(update_fields=['workflow_json'])
+    profile.save(update_fields=['config_json'])
+    result = compare_event(event, profile, workflow)
+    assert result.status == 'ok', result.diagnostics
+    assert result.v2_gross > Decimal('130.00'), result
+
+
+def test_comparison_booking_time_change_creates_distinct_audit_key(comparison_data):
+    from wishlist.pricing_v2.migration import compare_event
+    event, profile, workflow = comparison_data
+    first = compare_event(event, profile, workflow, persist=True)
+    Event.objects.filter(pk=event.pk).update(created_at=event.created_at - timedelta(days=1))
+    second = compare_event(event, profile, workflow, persist=True)
+    assert first.comparison_key != second.comparison_key
+    assert event.price_revisions.filter(kind='migration_compare').count() == 2
+
+
+def test_apply_is_idempotent_and_does_not_change_offer(comparison_data, monkeypatch):
     event, _, _ = comparison_data
     offer = EventOffer.objects.create(event=event, guest_count=10, rate_1=Decimal("2"))
-    call_command("pricing_v2_compare", "--event-id", str(event.pk), "--apply")
-    call_command("pricing_v2_compare", "--event-id", str(event.pk), "--apply")
+    from django.db import connection
+    from django.test import override_settings
+    monkeypatch.setenv('PRICING_V2_APPLY_DB_NAME', str(connection.settings_dict['NAME']))
+    with override_settings(DEBUG=True, ALLOWED_HOSTS=['testserver']):
+        call_command("pricing_v2_compare", "--event-id", str(event.pk), "--apply", "--confirm-local-apply")
+        call_command("pricing_v2_compare", "--event-id", str(event.pk), "--apply", "--confirm-local-apply")
     assert PriceCalculationRevision.objects.filter(
         event=event, kind=PriceCalculationRevision.Kind.MIGRATION_COMPARE,
     ).count() == 1
@@ -116,7 +168,8 @@ def test_same_frozen_inputs_are_idempotent_despite_result_request_timestamp(comp
     event, profile, workflow = comparison_data
     from wishlist.pricing_v2 import migration
     first = migration.compare_event(event, profile, workflow)
-    monkeypatch.setattr(migration, "FROZEN_REQUESTED_AT", timezone.now())
+    clock = timezone.now()
+    monkeypatch.setattr(migration.timezone, 'now', lambda: clock + timedelta(days=2))
     second = migration.compare_event(event, profile, workflow)
     assert second.comparison_key == first.comparison_key
 

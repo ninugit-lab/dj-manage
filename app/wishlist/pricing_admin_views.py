@@ -12,7 +12,7 @@ from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
-from .models import (AppConfig, PriceCalculationRevision, PriceItem, PricingFormula, PricingPackage,
+from .models import (AppConfig, Event, PriceCalculationRevision, PriceItem, PricingFormula, PricingPackage,
                       PricingPackageOverride, PricingProfile, PricingReferenceCase, PricingRule, PricingWorkflow)
 from .pricing_v2.config import _FIELDS, resolve_pricing_config, validate_profile_config
 from .pricing_v2.input import PricingValidationError
@@ -934,6 +934,8 @@ def reference_case_api(request):
     required = ('name', 'result', 'expected_v1_total', 'expected_v2_total', 'expected_difference')
     if any(key not in data for key in required) or not isinstance(data.get('result'), dict):
         return JsonResponse({'errors': {'reference_case': 'Alle Referenzfallfelder sind erforderlich.'}}, status=400)
+    if not isinstance(data['result'].get('event_id'), int) or not Event.objects.filter(pk=data['result']['event_id']).exists():
+        return JsonResponse({'errors': {'reference_case': 'Ein bestehender Referenz-Event ist erforderlich.'}}, status=400)
     try:
         values = {key: Decimal(str(data[key])) for key in required[2:]}
         tolerance = None if data.get('tolerance_threshold') in (None, '') else Decimal(str(data['tolerance_threshold']))

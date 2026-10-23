@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone as dt_timezone
 from decimal import Decimal
 import hashlib
 import json
@@ -21,9 +20,6 @@ from wishlist.price_engine import PriceEngine
 from .input import PricingValidationError
 from .result import PricingResult
 from .services import _comparison_identity, calculate_event, calculate_payload, save_revision
-
-
-FROZEN_REQUESTED_AT = datetime(2000, 1, 1, tzinfo=dt_timezone.utc)
 
 
 def eligible_for_reprice(event, today):
@@ -241,8 +237,12 @@ def compare_event(event, profile: PricingProfile, workflow: PricingWorkflow, *, 
             raise PricingValidationError("stale_reference", "supplied pricing references are not current", "pricing_reference")
         calc = event.price_calculation
         payload = _payload(event, workflow)
+        # The original booking time is stable across retries and determines
+        # lead-time tiers; year 2000 would silently suppress short-notice fees.
+        requested_at = event.created_at
+        payload["requested_at"] = requested_at
         context = _frozen_context(event, profile, workflow, payload)
-        key_payload = {name: value for name, value in payload.items() if name != "requested_at"}
+        key_payload = dict(payload)
         key = _key(event, {"workflow": workflow.pk, "calc": key_payload},
                    {"inputs": context}, profile, workflow)
         v1_result = PriceEngine.calculate_workflow(
@@ -253,11 +253,9 @@ def compare_event(event, profile: PricingProfile, workflow: PricingWorkflow, *, 
             discount_percent=calc.discount_percent,
         )
         v1 = Decimal(str(v1_result["grand_total"]))
-        # Requested-at is fixed in the payload contract so retries cannot drift.
-        payload["requested_at"] = FROZEN_REQUESTED_AT
-        # The engine normally stamps request time internally. Freeze that boundary
-        # as well as the payload field so calendar/lead-time pricing is retry-stable.
-        with patch("wishlist.pricing_v2.services.timezone.now", return_value=FROZEN_REQUESTED_AT):
+        # Freeze the engine's clock at the original booking date, not the
+        # comparison run date, so repeat reports have the same economics.
+        with patch("wishlist.pricing_v2.services.timezone.now", return_value=requested_at):
             v2_result: PricingResult = calculate_payload(payload, public=False, actor=actor)
         v2 = v2_result.gross_total
         v2_dict = v2_result.to_dict()
@@ -272,7 +270,7 @@ def compare_event(event, profile: PricingProfile, workflow: PricingWorkflow, *, 
         if key is None:
             payload = payload or _payload(event, workflow)
             context = context or _frozen_context(event, profile, workflow, payload)
-            key_payload = {name: value for name, value in payload.items() if name != "requested_at"}
+            key_payload = dict(payload)
             key = _key(event, {"workflow": workflow.pk, "calc": key_payload},
                        {"inputs": context}, profile, workflow)
         status = "error"
