@@ -116,6 +116,44 @@ def test_released_snapshot_unchanged_by_later_adjustment_and_draft(offer_setup):
     assert (released.input_json, released.result_json, released.gross_total, released.offer_number) == snapshot
 
 
+def test_frozen_retry_precedes_mode_and_current_input_validation(offer_setup):
+    event, actor = offer_setup
+    released = release_offer(event, actor) if build_draft(event, actor) else None
+    snapshot = (released.pk, released.result_json, released.gross_total)
+    AppConfig.objects.update(pricing_engine_mode='legacy')
+    event.pricing_region = 'INVALID'
+    event.save(update_fields=['pricing_region'])
+    retried = release_offer(event, actor)
+    assert (retried.pk, retried.result_json, retried.gross_total) == snapshot
+
+
+def test_newer_draft_still_requires_v2_after_mode_switch(offer_setup):
+    event, actor = offer_setup
+    released = release_offer(event, actor) if build_draft(event, actor) else None
+    add_adjustment(event, 'Later', '5.00', 'Changed offer', actor)
+    build_draft(event, actor)
+    AppConfig.objects.update(pricing_engine_mode='legacy')
+    with pytest.raises(PricingValidationError):
+        release_offer(event, actor)
+
+
+def test_aggregate_adjustments_are_checked_before_revision_save(offer_setup):
+    event, actor = offer_setup
+    add_adjustment(event, 'Large one', '9999999000.00', 'Valid adjustment', actor)
+    add_adjustment(event, 'Large two', '1000.00', 'Valid adjustment', actor)
+    with pytest.raises(PricingValidationError) as error:
+        build_draft(event, actor)
+    assert error.value.code == 'invalid_input' and error.value.field == 'gross_total'
+    assert not PriceCalculationRevision.objects.filter(event=event, kind='draft').exists()
+
+
+def test_total_boundary_is_cents_and_decimal_field_safe(offer_setup):
+    event, actor = offer_setup
+    add_adjustment(event, 'Boundary', '9999999879.99', 'At DecimalField limit', actor)
+    draft = build_draft(event, actor)
+    assert draft.gross_total == Decimal('9999999999.99')
+
+
 def test_event_panel_uses_earliest_estimate_and_current_difference(offer_setup):
     event, actor = offer_setup
     from django.test import Client

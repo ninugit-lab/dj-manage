@@ -12,6 +12,8 @@ from .input import PricingValidationError
 from .result import PricingLine
 from .services import calculate_with_mode, save_revision, update_released_event_total
 
+_MAX_GROSS = Decimal("9999999999.99")
+
 
 def _money(value, field):
     if isinstance(value, (bool, float)):
@@ -23,6 +25,16 @@ def _money(value, field):
     if not amount.is_finite() or amount == 0 or amount.as_tuple().exponent < -2 or abs(amount) >= Decimal("10000000000"):
         raise PricingValidationError("invalid_input", "amount must be finite and nonzero", field)
     return amount.quantize(Decimal("0.01"))
+
+
+def _gross_total(value):
+    try:
+        total = Decimal(value).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise PricingValidationError("invalid_input", "gross total must be a finite cent amount", "gross_total") from exc
+    if not total.is_finite() or total < 0 or total > _MAX_GROSS:
+        raise PricingValidationError("invalid_input", "gross total is outside the Decimal(12,2) range", "gross_total")
+    return total
 
 
 def _v2_result(event, actor):
@@ -65,7 +77,7 @@ def _result_with_adjustments(event, actor):
         snapshot.append({"id": adjustment.pk, "label": adjustment.label,
                          "amount": str(adjustment.amount), "reason": adjustment.reason})
     inputs["admin_adjustments"] = snapshot
-    return replace(result, inputs=inputs, lines=tuple(lines), gross_total=total)
+    return replace(result, inputs=inputs, lines=tuple(lines), gross_total=_gross_total(total))
 
 
 def build_draft(event, actor):
@@ -80,7 +92,6 @@ def build_draft(event, actor):
 
 
 def release_offer(event, actor):
-    _v2_result(event, actor)
     with transaction.atomic():
         locked = Event.objects.select_for_update().get(pk=event.pk)
         current = PriceCalculationRevision.objects.filter(event=locked, kind=PriceCalculationRevision.Kind.DRAFT,
@@ -112,6 +123,10 @@ def release_offer(event, actor):
             if latest_offer:
                 return latest_offer
             raise PricingValidationError("invalid_input", "a current draft is required", "draft")
+        # Only a genuinely new draft reaches the V2 gate/calculation. A retry
+        # of a persisted offer must remain available even if current settings
+        # or live event inputs have since become invalid.
+        _v2_result(locked, actor)
         released = PriceCalculationRevision.objects.filter(event=locked, status=PriceCalculationRevision.Status.RELEASED,
                                                            input_json=current.input_json, result_json=current.result_json).first()
         if released:
