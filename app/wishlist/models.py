@@ -550,6 +550,7 @@ class PriceCalculationRevision(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     sent_at = models.DateTimeField(null=True, blank=True)
     send_claimed_at = models.DateTimeField(null=True, blank=True)
+    send_claim_token = models.UUIDField(null=True, blank=True, editable=False)
 
     class Meta:
         constraints = [

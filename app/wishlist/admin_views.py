@@ -210,10 +210,21 @@ def event_price_send(request, pk):
 @staff_member_required
 @require_POST
 def price_revision_send(request, pk):
-    from .pricing_v2.offers import OfferTemplateError, send_offer
+    from .pricing_v2.offers import OfferTemplateError, recover_stale_send, send_offer
     from .models import PriceCalculationRevision
     revision = get_object_or_404(PriceCalculationRevision, pk=pk)
     try:
+        if request.POST.get('recover_stale') == '1':
+            revision = recover_stale_send(
+                revision,
+                confirm=request.POST.get('confirm') == '1',
+                acknowledge_duplicate_risk=request.POST.get('acknowledge_duplicate_risk') == '1',
+            )
+            return JsonResponse({
+                'success': False,
+                'status': revision.status,
+                'warning': 'Mögliche Doppelzustellung: Gmail bietet hier keine garantierte Idempotenz; manueller Abgleich erforderlich.',
+            }, status=200)
         result = send_offer(revision, retry=request.POST.get('retry') == '1')
     except (ValueError, OfferTemplateError) as exc:
         return JsonResponse({'error': str(exc)}, status=400)

@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from string import Formatter
 from datetime import timedelta
+from uuid import uuid4
 from django.utils import timezone
 
 from django.db import IntegrityError, transaction
@@ -92,16 +93,19 @@ def send_offer(revision, *, retry=False):
         if not subject or not body or not context:
             raise OfferTemplateError("Angebot erneut freigeben: historische Angebots-Mail ist nicht versandfähig")
         now = timezone.now()
+        claim_token = uuid4()
         updated = PriceCalculationRevision.objects.filter(
             pk=claimed.pk,
             status__in=(PriceCalculationRevision.Status.RELEASED,
                         PriceCalculationRevision.Status.SENT,
                         PriceCalculationRevision.Status.SEND_FAILED),
-        ).update(status=PriceCalculationRevision.Status.SENDING, send_claimed_at=now)
+        ).update(status=PriceCalculationRevision.Status.SENDING, send_claimed_at=now,
+                 send_claim_token=claim_token)
         if updated != 1:
             raise ValueError("Versand läuft; stale claims müssen explizit recovered werden")
         claimed.status = PriceCalculationRevision.Status.SENDING
         claimed.send_claimed_at = now
+        claimed.send_claim_token = claim_token
     revision = claimed
     event = claimed.event
     error = ""
@@ -119,6 +123,12 @@ def send_offer(revision, *, retry=False):
         error = "EMAIL_DELIVERY_FAILED"
     with transaction.atomic():
         current = PriceCalculationRevision.objects.select_for_update().get(pk=claimed.pk)
+        if (current.status != PriceCalculationRevision.Status.SENDING
+                or current.send_claim_token != claim_token):
+            caller_revision.status = current.status
+            caller_revision.sent_at = current.sent_at
+            caller_revision.send_claimed_at = current.send_claimed_at
+            return SendResult(False, current, "SEND_CLAIM_LOST")
         log = EmailLog.objects.create(event=event, revision=current, recipient=current.email_recipient,
                                       subject=subject, body=body, success=success, error_message=error)
         if success:
@@ -127,7 +137,8 @@ def send_offer(revision, *, retry=False):
         else:
             current.status = PriceCalculationRevision.Status.SEND_FAILED
         current.send_claimed_at = None
-        current.save(update_fields=["status", "sent_at", "send_claimed_at"])
+        current.send_claim_token = None
+        current.save(update_fields=["status", "sent_at", "send_claimed_at", "send_claim_token"])
     # Keep a caller-held model instance coherent with the committed result;
     # admin callers commonly render the returned revision immediately.
     caller_revision.status = current.status
@@ -136,10 +147,13 @@ def send_offer(revision, *, retry=False):
     return SendResult(success, current, error, log)
 
 
-def recover_stale_send(revision, *, confirm=False, max_age=timedelta(minutes=15)):
+def recover_stale_send(revision, *, confirm=False, acknowledge_duplicate_risk=False,
+                       max_age=timedelta(minutes=15)):
     """Convert an old, manually confirmed claim into a retryable failed attempt."""
     if not confirm:
         raise ValueError("Stale-Versandclaim muss explizit bestätigt werden")
+    if not acknowledge_duplicate_risk:
+        raise ValueError("Doppelzustellung möglich: Gmail-Idempotenz ist nicht garantiert; explizite Bestätigung erforderlich")
     with transaction.atomic():
         current = PriceCalculationRevision.objects.select_for_update().get(pk=revision.pk)
         if current.status != PriceCalculationRevision.Status.SENDING:
@@ -148,7 +162,8 @@ def recover_stale_send(revision, *, confirm=False, max_age=timedelta(minutes=15)
             raise ValueError("Versandclaim ist noch nicht stale")
         current.status = PriceCalculationRevision.Status.SEND_FAILED
         current.send_claimed_at = None
-        current.save(update_fields=["status", "send_claimed_at"])
+        current.send_claim_token = uuid4()
+        current.save(update_fields=["status", "send_claimed_at", "send_claim_token"])
         return current
 
 

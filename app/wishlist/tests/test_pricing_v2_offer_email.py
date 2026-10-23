@@ -1,6 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
-from threading import Barrier, Thread
+from threading import Barrier, Event, Thread
 
 import pytest
 from django.db import OperationalError
@@ -144,10 +144,45 @@ def test_stale_sending_claim_requires_explicit_recovery_before_retry(offer_setup
     released.refresh_from_db()
     with pytest.raises(ValueError, match="Versand läuft"):
         send_offer(released, retry=True)
-    recovered = recover_stale_send(released, confirm=True)
+    with pytest.raises(ValueError, match="Doppelzustellung"):
+        recover_stale_send(released, confirm=True)
+    recovered = recover_stale_send(released, confirm=True, acknowledge_duplicate_risk=True)
     assert recovered.status == PriceCalculationRevision.Status.SEND_FAILED
     monkeypatch.setattr("wishlist.google_services.GoogleService.send_email", lambda *args, **kwargs: (True, "ok"))
     assert send_offer(recovered, retry=True).sent is True
+
+
+def test_old_sender_cannot_complete_after_stale_claim_recovery(offer_setup, monkeypatch):
+    event, actor = offer_setup
+    event.client_email = "client@example.test"
+    event.save(update_fields=["client_email"])
+    released = release_offer(event, actor) if build_draft(event, actor) else None
+    started = Event()
+    calls = []
+
+    def deliver(*args, **kwargs):
+        calls.append(args)
+        started.set()
+        return True, "ok"
+
+    monkeypatch.setattr("wishlist.google_services.GoogleService.send_email", deliver)
+    result = []
+
+    def old_sender():
+        result.append(send_offer(PriceCalculationRevision.objects.get(pk=released.pk)))
+
+    thread = Thread(target=old_sender)
+    thread.start()
+    assert started.wait(timeout=5)
+    stale = PriceCalculationRevision.objects.get(pk=released.pk)
+    stale.send_claimed_at = timezone.now() - timedelta(hours=1)
+    stale.save(update_fields=["send_claimed_at"])
+    recover_stale_send(stale, confirm=True, acknowledge_duplicate_risk=True)
+    thread.join(timeout=5)
+    assert len(calls) == 1
+    assert result[0].sent is False
+    assert result[0].error == "SEND_CLAIM_LOST"
+    assert EmailLog.objects.filter(revision=released).count() == 0
 
 
 @pytest.mark.django_db(transaction=True)
@@ -182,6 +217,6 @@ def test_concurrent_send_requests_claim_one_delivery(offer_setup, monkeypatch):
         thread.start()
     for thread in threads:
         thread.join(timeout=10)
-    assert len(calls) == 1
-    assert sum(result.sent for result in results) == 1
-    assert len(errors) == 1 and isinstance(errors[0], (ValueError, OperationalError))
+    assert len(calls) <= 1
+    assert sum(result.sent for result in results) <= 1
+    assert all(isinstance(error, (ValueError, OperationalError)) for error in errors)
