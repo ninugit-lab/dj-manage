@@ -152,36 +152,53 @@ def test_stale_sending_claim_requires_explicit_recovery_before_retry(offer_setup
     assert send_offer(recovered, retry=True).sent is True
 
 
+@pytest.mark.django_db(transaction=True)
 def test_old_sender_cannot_complete_after_stale_claim_recovery(offer_setup, monkeypatch):
     event, actor = offer_setup
     event.client_email = "client@example.test"
     event.save(update_fields=["client_email"])
     released = release_offer(event, actor) if build_draft(event, actor) else None
     started = Event()
+    finish = Event()
     calls = []
 
     def deliver(*args, **kwargs):
         calls.append(args)
         started.set()
+        finish.wait(timeout=5)
         return True, "ok"
 
     monkeypatch.setattr("wishlist.google_services.GoogleService.send_email", deliver)
     result = []
+    errors = []
 
     def old_sender():
-        result.append(send_offer(PriceCalculationRevision.objects.get(pk=released.pk)))
+        from django.db import close_old_connections
+        close_old_connections()
+        try:
+            result.append(send_offer(PriceCalculationRevision.objects.get(pk=released.pk)))
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            close_old_connections()
 
     thread = Thread(target=old_sender)
     thread.start()
-    assert started.wait(timeout=5)
-    stale = PriceCalculationRevision.objects.get(pk=released.pk)
-    stale.send_claimed_at = timezone.now() - timedelta(hours=1)
-    stale.save(update_fields=["send_claimed_at"])
-    recover_stale_send(stale, confirm=True, acknowledge_duplicate_risk=True)
-    thread.join(timeout=5)
+    try:
+        assert started.wait(timeout=5)
+        stale = PriceCalculationRevision.objects.get(pk=released.pk)
+        stale.send_claimed_at = timezone.now() - timedelta(hours=1)
+        stale.save(update_fields=["send_claimed_at"])
+        recover_stale_send(stale, confirm=True, acknowledge_duplicate_risk=True)
+    finally:
+        finish.set()
+        thread.join(timeout=5)
+    assert not errors
     assert len(calls) == 1
+    assert len(result) == 1
     assert result[0].sent is False
     assert result[0].error == "SEND_CLAIM_LOST"
+    assert result[0].revision.status == PriceCalculationRevision.Status.SEND_FAILED
     assert EmailLog.objects.filter(revision=released).count() == 0
 
 
