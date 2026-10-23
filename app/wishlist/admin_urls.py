@@ -7,6 +7,10 @@ urlpatterns = [
     path('pricing-v2/profile/', pricing_admin_views.profile_page, name='pricing_v2_profile'),
     path('api/pricing-v2/profile/validate/', pricing_admin_views.validate_profile, name='pricing_v2_validate'),
     path('api/pricing-v2/profile/activate/', pricing_admin_views.activate_profile, name='pricing_v2_activate'),
+    path('pricing-v2/packages/', pricing_admin_views.packages_page, name='pricing_v2_packages'),
+    path('api/pricing-v2/packages/<int:pk>/', pricing_admin_views.package_detail, name='pricing_v2_package_detail'),
+    path('pricing-v2/components/', pricing_admin_views.components_page, name='pricing_v2_components'),
+    path('api/pricing-v2/components/<int:pk>/', pricing_admin_views.component_detail, name='pricing_v2_component_detail'),
     path('', admin_views.admin_dashboard, name='dashboard'),
 
     # Wishlist Live View

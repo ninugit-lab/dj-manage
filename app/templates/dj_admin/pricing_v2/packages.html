@@ -1,0 +1,69 @@
+{% extends 'dj_admin/base.html' %}
+{% block title %}Paketverwaltung V2{% endblock %}
+{% block content %}
+<h2>Pakete und Preisfaktoren</h2>
+<nav><a href="{% url 'dj_admin:pricing_v2_profile' %}">Profile</a> · <a href="{% url 'dj_admin:pricing_v2_components' %}">Komponenten</a></nav>
+<form method="get">
+  <label for="profile-id">Profil</label><select name="profile_id" id="profile-id">{% for p in profiles %}<option value="{{ p.pk }}" {% if p.pk == profile.pk %}selected{% endif %}>{{ p.name }} · {{ p.version }} ({{ p.status }})</option>{% endfor %}</select>
+  <label for="package-id">Paket</label><select name="package_id" id="package-id"><option value="">Neu</option>{% for p in packages %}<option value="{{ p.pk }}" {% if p.pk == package.pk %}selected{% endif %}>{{ p.name }} · {{ p.version }}{% if not p.is_public %} · Intern{% endif %}</option>{% endfor %}</select>
+  <button type="submit">Auswählen</button>
+</form>
+{% if profile %}
+<form method="post" action="{% if package %}{% url 'dj_admin:pricing_v2_package_detail' package.pk %}{% else %}{% url 'dj_admin:pricing_v2_packages' %}{% endif %}" id="package-form">
+  {% csrf_token %}
+  <input type="hidden" name="profile_id" value="{{ profile.pk }}">
+  <input type="hidden" name="expected_profile_version" value="{{ profile.version }}">
+  <input type="hidden" name="expected_package_version" value="{% if package %}{{ package.version }}{% else %}null{% endif %}">
+  <label>Name <input name="name" value="{{ package.name|default:'' }}" required></label>
+  <label>Grundpreis <input name="base_price" type="number" min="0" step="0.01" value="{% if package %}{{ package.base_price }}{% else %}0{% endif %}" required></label>
+  <label>Beschreibung <input name="description" value="{{ package.description|default:'' }}"></label>
+  <label>Badge <input name="badge_label" value="{{ package.badge_label|default:'' }}"></label>
+  <label>Badge-Farbe <input name="badge_color" value="{{ package.badge_color|default:'' }}"></label>
+  <label>Aktiv <input type="checkbox" name="is_active" {% if not package or package.is_active %}checked{% endif %}></label>
+  <label>Öffentlich <input type="checkbox" name="is_public" {% if not package or package.is_public %}checked{% endif %}></label>
+  <fieldset><legend>Enthaltene Posten</legend>
+    {% for item in items %}<label><input type="checkbox" name="included_item_ids" value="{{ item.pk }}" {% if package and item in package.included_items.all %}checked{% endif %}>{{ item.name }} — {% if item.is_required %}Pflicht{% elif item.is_default %}Standard{% else %}Optional{% endif %}{% if not item.is_public %} (intern){% endif %}</label>{% endfor %}
+  </fieldset>
+  <fieldset><legend>Faktoren (effektiver Wert und Quelle)</legend>
+  {% for factor in factors %}<div>
+    <label for="{{ factor.key }}-mode">{{ factor.key }}</label>
+    <select id="{{ factor.key }}-mode" name="{{ factor.key }}_mode">
+      <option value="inherit" {% if factor.mode == 'inherit' %}selected{% endif %}>inherit</option>
+      <option value="override" {% if factor.mode == 'override' %}selected{% endif %}>override</option>
+      <option value="disabled" {% if factor.mode == 'disabled' %}selected{% endif %}>disabled</option>
+    </select>
+    <input name="{{ factor.key }}_value" value="{{ factor.value|default_if_none:'' }}" aria-label="{{ factor.key }} Wert">
+    <span>{{ factor.value|default_if_none:'deaktiviert' }} · {{ factor.source }} · Profil {{ factor.profile_version }} · Paket {{ factor.package_version|default:'—' }}</span>
+  </div>{% endfor %}
+  </fieldset>
+  <button type="submit">Paket speichern</button>
+</form>
+<div id="feedback" role="status" aria-live="polite"></div>
+<script>
+document.getElementById('package-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget, data = new FormData(form), factors = {};
+  for (const select of form.querySelectorAll('select[name$="_mode"]')) {
+    const key = select.name.slice(0, -5), mode = select.value;
+    factors[key] = mode === 'override' ? {mode, value: data.get(key + '_value')} : {mode};
+    if (mode === 'override' && ['seasons', 'lead_time_tiers', 'guest_tiers', 'setup_minutes', 'teardown_minutes'].includes(key)) {
+      try { factors[key].value = JSON.parse(factors[key].value); }
+      catch { document.getElementById('feedback').textContent = key + ': Ungültiges JSON'; return; }
+    }
+  }
+  const body = {profile_id: Number(data.get('profile_id')),
+    expected_profile_version: Number(data.get('expected_profile_version')),
+    expected_package_version: data.get('expected_package_version') === 'null' ? null : Number(data.get('expected_package_version')),
+    name: data.get('name'), base_price: data.get('base_price'), description: data.get('description'),
+    badge_label: data.get('badge_label'), badge_color: data.get('badge_color'),
+    is_active: data.has('is_active'), is_public: data.has('is_public'),
+    included_item_ids: data.getAll('included_item_ids').map(Number), overrides_json: factors};
+  const response = await fetch(form.action, {method: body.expected_package_version === null ? 'POST' : 'PUT',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': data.get('csrfmiddlewaretoken')}, body: JSON.stringify(body)});
+  const result = await response.json();
+  document.getElementById('feedback').textContent = response.ok ? 'Gespeichert.' : JSON.stringify(result.errors || result.error);
+  if (response.ok) location.href = '{% url "dj_admin:pricing_v2_packages" %}?profile_id=' + result.profile_id + '&package_id=' + result.id;
+});
+</script>
+{% endif %}
+{% endblock %}

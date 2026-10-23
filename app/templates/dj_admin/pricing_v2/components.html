@@ -1,0 +1,39 @@
+{% extends 'dj_admin/base.html' %}
+{% block title %}Preiskomponenten V2{% endblock %}
+{% block content %}
+<h2>Preiskomponenten</h2>
+<a href="{% url 'dj_admin:pricing_v2_packages' %}">Pakete verwalten</a>
+<h3>Posten</h3><ul>{% for item in items %}<li>{{ item.name }} · {{ item.price }} € · {% if item.is_active %}aktiv{% else %}inaktiv{% endif %}{% if not item.is_public %} · intern{% endif %}</li>{% endfor %}</ul>
+<h3>Regeln</h3><ul>{% for rule in rules %}<li>{{ rule.name }} · {{ rule.effect_type }} · {{ rule.effect_value }} · {% if rule.is_active %}aktiv{% else %}inaktiv{% endif %}</li>{% endfor %}</ul>
+<h3>Formeln</h3><ul>{% for formula in formulas %}<li>{{ formula.name }} · {{ formula.expression }} · {{ formula.mode }} · {% if formula.is_active %}aktiv{% else %}inaktiv{% endif %}</li>{% endfor %}</ul>
+<p>Komponenten können über die JSON-API erstellt, bearbeitet und deaktiviert werden. Vor dem Löschen werden Workflow- und Revisionsreferenzen geprüft.</p>
+<form id="component-form" method="post" action="{% url 'dj_admin:pricing_v2_components' %}">
+  {% csrf_token %}
+  <label>Typ <select name="kind"><option value="items">Posten</option><option value="rules">Regel</option><option value="formulas">Formel</option></select></label>
+  <label>Name <input name="name" required></label>
+  <label>Kategorie <select name="category"><option value="base">Grundpreis</option><option value="tech">Technik</option><option value="equipment">Ausrüstung</option><option value="travel">Anfahrt</option><option value="extra">Extras</option></select></label>
+  <label>Preis <input name="price" type="number" min="0" step="0.01" value="0"></label>
+  <label>Effekt <select name="effect_type"><option value="flat_add">Pauschale hinzu</option><option value="percent_add">Prozent</option><option value="flat_set">Pauschale setzen</option></select></label>
+  <label>Effektwert <input name="effect_value" type="number" min="0" step="0.01" value="0"></label>
+  <label>Bedingungen (JSON) <textarea name="condition_json">[]</textarea></label>
+  <label>Formel <input name="expression" value="base"></label>
+  <label>Modus <select name="mode"><option value="add">add</option><option value="subtract">subtract</option><option value="replace">replace</option></select></label>
+  <button type="submit">Erstellen</button>
+</form>
+<div id="feedback" role="status" aria-live="polite"></div>
+<script>
+document.getElementById('component-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget, data = new FormData(form), kind = data.get('kind');
+  const fields = {items: ['name', 'category', 'price'], rules: ['name', 'effect_type', 'effect_value', 'condition_json'], formulas: ['name', 'expression', 'mode']};
+  const body = {kind};
+  for (const field of fields[kind]) body[field] = data.get(field);
+  try { if (kind === 'rules') body.condition_json = JSON.parse(body.condition_json); }
+  catch { document.getElementById('feedback').textContent = 'Ungültiges JSON'; return; }
+  const response = await fetch(form.action, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': data.get('csrfmiddlewaretoken')}, body: JSON.stringify(body)});
+  const result = await response.json();
+  document.getElementById('feedback').textContent = response.ok ? 'Erstellt.' : JSON.stringify(result.errors || result.error);
+  if (response.ok) location.reload();
+});
+</script>
+{% endblock %}
