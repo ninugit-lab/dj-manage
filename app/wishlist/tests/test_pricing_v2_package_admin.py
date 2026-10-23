@@ -415,11 +415,10 @@ def test_private_package_newly_edited_on_active_profile_stays_private(staff):
     pkg = PricingPackage.objects.create(name='Internal', base_price=100, is_public=False)
     response = call(staff, 'pricing_v2_package_detail', package_payload(active, pkg,
         name='Internal updated', base_price='120', is_public=True), pkg.pk, 'put')
-    assert response.status_code == 200
-    clone = PricingPackage.objects.get(pk=response.json()['id'])
+    assert response.status_code == 400
     pkg.refresh_from_db()
     assert not pkg.is_public and pkg.base_price == 100
-    assert clone.pk != pkg.pk and not clone.is_public
+    assert PricingPackage.objects.count() == 1
 
 
 @pytest.mark.django_db
@@ -497,3 +496,184 @@ def test_active_workflow_required_item_cannot_be_deactivated(staff):
     assert workflow.pk in response.json()['references']['workflows']
     item.refresh_from_db()
     assert item.is_active
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('pin_package', [True, False])
+def test_private_draft_clone_cannot_publish_before_activation_even_with_compatible_workflow(staff, pin_package):
+    active = profile('active')
+    original = PricingPackage.objects.create(name='Live', base_price=100)
+    workflow = PricingWorkflow.objects.create(name='Default', is_default=True,
+        workflow_json=[{'type': 'package', 'config': {'package_id': original.pk}}, {'type': 'items'}])
+    created = call(staff, 'pricing_v2_package_detail', package_payload(active, original,
+        name='Next', base_price='180'), original.pk, 'put')
+    assert created.status_code == 200
+    clone = PricingPackage.objects.get(pk=created.json()['id'])
+    draft = PricingProfile.objects.get(pk=created.json()['profile_id'])
+    if pin_package:
+        workflow.workflow_json = [{'type': 'package', 'config': {'package_id': clone.pk}}, {'type': 'items'}]
+    else:
+        workflow.workflow_json = [{'type': 'package', 'config': {}}, {'type': 'items'}]
+    workflow.save(update_fields=['workflow_json'])
+    denied = call(staff, 'pricing_v2_package_detail', package_payload(draft, clone,
+        name='Next', base_price='180', is_public=True), clone.pk, 'put')
+    assert denied.status_code in (400, 409) and 'aktiv' in str(denied.json()).lower()
+    clone.refresh_from_db()
+    assert clone.pk == created.json()['id'] and not clone.is_public
+    assert PricingPackage.objects.count() == 2
+    original.refresh_from_db()
+    assert original.base_price == 100 and original.is_public
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('pin_package', [True, False])
+def test_publish_same_clone_after_activation_when_default_workflow_compatible(staff, pin_package):
+    from wishlist.models import AppConfig
+    active = profile('active')
+    original = PricingPackage.objects.create(name='Live', base_price=100)
+    event = Event.objects.create(name='Prior offer', date=timezone.localdate())
+    revision = PriceCalculationRevision.objects.create(event=event, kind='offer', status='released',
+        revision_number=1, engine_version='2', package_id_snapshot=original.pk, package_version=1,
+        input_json={}, result_json={'gross_total': '100.00'}, gross_total=100)
+    workflow = PricingWorkflow.objects.create(name='Default', is_default=True,
+        workflow_json=[{'type': 'package', 'config': {'package_id': original.pk}}, {'type': 'items'}])
+    created = call(staff, 'pricing_v2_package_detail', package_payload(active, original,
+        name='Next', base_price='180'), original.pk, 'put')
+    assert created.status_code == 200
+    clone = PricingPackage.objects.get(pk=created.json()['id'])
+    draft = PricingProfile.objects.get(pk=created.json()['profile_id'])
+    workflow.workflow_json = [
+        {'type': 'package', 'config': {'package_id': clone.pk} if pin_package else {}}, {'type': 'items'}]
+    workflow.save(update_fields=['workflow_json'])
+    activation = call(staff, 'pricing_v2_activate', {'profile_id': draft.pk,
+        'expected_profile_id': active.pk, 'expected_version': active.version})
+    assert activation.status_code == 200
+    publish = package_payload(draft, clone, name='Next', base_price='180', is_public=True)
+    response = call(staff, 'pricing_v2_package_detail', publish, clone.pk, 'put')
+    assert response.status_code == 200, response.content
+    clone.refresh_from_db()
+    original.refresh_from_db()
+    assert response.json()['id'] == clone.pk and clone.is_public and clone.version == 3
+    assert original.base_price == 100 and original.version == 1 and original.is_public
+    assert PricingPackage.objects.count() == 2
+    assert call(staff, 'pricing_v2_package_detail', publish, clone.pk, 'put').status_code == 409
+    assert PriceCalculationRevision.objects.get(pk=revision.pk).result_json == {'gross_total': '100.00'}
+    AppConfig.objects.create(pricing_engine_mode='v2')
+    estimate = Client().post('/api/price-estimate/', data=json.dumps({
+        'date': '2026-12-02', 'time_start': '18:00', 'time_end': '21:00',
+        'package_id': clone.pk, 'selected_item_ids': [], 'distance_km': '12',
+    }), content_type='application/json')
+    assert estimate.status_code == 200 and estimate.json()['package']['price'] == '180.00'
+
+
+@pytest.mark.django_db
+def test_publication_rejects_mismatched_default_workflow_without_creating_another_clone(staff):
+    active = profile('active')
+    original = PricingPackage.objects.create(name='Live', base_price=100)
+    PricingWorkflow.objects.create(name='Default', is_default=True,
+        workflow_json=[{'type': 'package', 'config': {'package_id': original.pk}}, {'type': 'items'}])
+    created = call(staff, 'pricing_v2_package_detail', package_payload(active, original,
+        name='Next', base_price='180'), original.pk, 'put')
+    clone = PricingPackage.objects.get(pk=created.json()['id'])
+    draft = PricingProfile.objects.get(pk=created.json()['profile_id'])
+    assert call(staff, 'pricing_v2_activate', {'profile_id': draft.pk,
+        'expected_profile_id': active.pk, 'expected_version': active.version}).status_code == 200
+    denied = call(staff, 'pricing_v2_package_detail', package_payload(draft, clone,
+        name='Next', base_price='180', is_public=True), clone.pk, 'put')
+    assert denied.status_code in (400, 409)
+    assert 'workflow' in str(denied.json()).lower()
+    clone.refresh_from_db()
+    assert not clone.is_public and PricingPackage.objects.count() == 2
+    assert PricingProfile.objects.filter(status='draft').count() == 0
+
+
+@pytest.mark.django_db
+def test_new_package_from_draft_cannot_be_public_before_activation(staff):
+    active = profile('active')
+    draft = PricingProfile.objects.create(name='Global', version=2, status='draft',
+                                          valid_from=timezone.now(), config_json=copy.deepcopy(CONFIG))
+    PricingWorkflow.objects.create(name='Default', is_default=True,
+        workflow_json=[{'type': 'package', 'config': {}}, {'type': 'items'}])
+    response = call(staff, 'pricing_v2_packages', package_payload(draft,
+        name='Draft only', base_price='180', is_public=True))
+    assert response.status_code == 201
+    pkg = PricingPackage.objects.get(pk=response.json()['id'])
+    assert not pkg.is_public
+    denied = call(staff, 'pricing_v2_package_detail', package_payload(draft, pkg,
+        name='Draft only', base_price='180', is_public=True), pkg.pk, 'put')
+    assert denied.status_code in (400, 409)
+    pkg.refresh_from_db()
+    assert not pkg.is_public
+
+
+@pytest.mark.django_db
+def test_publish_rejects_missing_default_workflow_and_price_change(staff):
+    active = profile('active')
+    original = PricingPackage.objects.create(name='Live', base_price=100)
+    created = call(staff, 'pricing_v2_package_detail', package_payload(active, original,
+        name='Next', base_price='180'), original.pk, 'put')
+    clone = PricingPackage.objects.get(pk=created.json()['id'])
+    draft = PricingProfile.objects.get(pk=created.json()['profile_id'])
+    assert call(staff, 'pricing_v2_activate', {'profile_id': draft.pk,
+        'expected_profile_id': active.pk, 'expected_version': active.version}).status_code == 200
+    publish = package_payload(draft, clone, name='Next', base_price='180', is_public=True)
+    missing = call(staff, 'pricing_v2_package_detail', publish, clone.pk, 'put')
+    assert missing.status_code == 400 and 'Workflow' in str(missing.json())
+    PricingWorkflow.objects.create(name='Default', is_default=True,
+        workflow_json=[{'type': 'package', 'config': {'package_id': clone.pk}}, {'type': 'items'}])
+    mixed = call(staff, 'pricing_v2_package_detail', {**publish, 'base_price': '999'}, clone.pk, 'put')
+    assert mixed.status_code == 400
+    clone.refresh_from_db()
+    assert clone.base_price == 180 and not clone.is_public and clone.version == 2
+    original.refresh_from_db()
+    assert original.base_price == 100
+
+
+@pytest.mark.django_db
+def test_private_draft_package_cannot_publish_with_unrelated_active_profile(staff):
+    draft = profile('draft')
+    package = PricingPackage.objects.create(name='Draft only', base_price=180, is_public=False)
+    PricingPackageOverride.objects.create(profile=draft, package=package, overrides_json={})
+    PricingWorkflow.objects.create(name='Default', is_default=True,
+        workflow_json=[{'type': 'package', 'config': {'package_id': package.pk}}, {'type': 'items'}])
+    draft.status = 'retired'
+    draft.save(update_fields=['status'])
+    active = PricingProfile.objects.create(name='Global', version=2, status='active',
+                                           valid_from=timezone.now(), config_json=copy.deepcopy(CONFIG))
+    denied = call(staff, 'pricing_v2_package_detail', package_payload(active, package,
+        name='Draft only', base_price='180', is_public=True), package.pk, 'put')
+    assert denied.status_code in (400, 409)
+    package.refresh_from_db()
+    assert not package.is_public
+
+
+@pytest.mark.django_db
+def test_draft_cannot_publish_existing_private_package_without_change(staff):
+    active = profile('active')
+    draft = PricingProfile.objects.create(name='Global', version=2, status='draft',
+                                          valid_from=timezone.now(), config_json=copy.deepcopy(CONFIG))
+    package = PricingPackage.objects.create(name='Private', base_price=80, is_public=False)
+    request = package_payload(draft, package, name='Private', base_price='80', is_public=True)
+    response = call(staff, 'pricing_v2_package_detail', request, package.pk, 'put')
+    assert response.status_code == 400
+    package.refresh_from_db()
+    assert not package.is_public
+
+
+@pytest.mark.django_db
+def test_publication_rejects_malformed_default_workflow_config(staff):
+    active = profile('active')
+    original = PricingPackage.objects.create(name='Live', base_price=100)
+    created = call(staff, 'pricing_v2_package_detail', package_payload(active, original,
+        name='Next', base_price='180'), original.pk, 'put')
+    clone = PricingPackage.objects.get(pk=created.json()['id'])
+    draft = PricingProfile.objects.get(pk=created.json()['profile_id'])
+    assert call(staff, 'pricing_v2_activate', {'profile_id': draft.pk,
+        'expected_profile_id': active.pk, 'expected_version': active.version}).status_code == 200
+    PricingWorkflow.objects.create(name='Malformed', is_default=True,
+        workflow_json=[{'type': 'package', 'config': None}, {'type': 'items'}])
+    response = call(staff, 'pricing_v2_package_detail', package_payload(draft, clone,
+        name='Next', base_price='180', is_public=True), clone.pk, 'put')
+    assert response.status_code in (400, 409)
+    clone.refresh_from_db()
+    assert not clone.is_public and PricingPackage.objects.count() == 2

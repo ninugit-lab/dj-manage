@@ -311,6 +311,34 @@ def _save_package(request, pk=None):
             latest = _current(PricingProfile.objects.select_for_update())
             if latest.pk != profile.pk:
                 return JsonResponse({'error': STALE}, status=409)
+            publishing = pkg is not None and not pkg.is_public and data.get('is_public') is True
+            if publishing:
+                if profile.status != PricingProfile.Status.ACTIVE:
+                    return _error('is_public', 'Paket erst nach Aktivierung des Profils veröffentlichen.')
+                if (PricingPackageOverride.objects.filter(package=pkg).exists() and
+                        not PricingPackageOverride.objects.filter(package=pkg, profile=profile).exists()):
+                    return _error('is_public', 'Paket gehört zu einem anderen Profil; passendes Profil aktivieren.')
+                if (pkg.name != name or pkg.base_price != price or
+                        set(pkg.included_items.values_list('pk', flat=True)) != set(ids) or
+                        overrides != (previous.overrides_json if previous else {}) or
+                        any(getattr(pkg, field) != data[field] for field in
+                            ('description', 'badge_label', 'badge_color', 'is_active', 'sort_order') if field in data)):
+                    return _error('is_public', 'Veröffentlichung und Preisänderung getrennt speichern.')
+                workflows = list(PricingWorkflow.objects.select_for_update().filter(
+                    is_active=True, is_default=True)[:2])
+                if len(workflows) != 1 or not isinstance(workflows[0].workflow_json, list):
+                    return _error('is_public', 'Aktiven Standard-Workflow zuerst für dieses Paket konfigurieren.')
+                blocks = [block for block in workflows[0].workflow_json
+                          if isinstance(block, dict) and block.get('type') == 'package']
+                if (not blocks or any(not isinstance(block.get('config', {}), dict) or
+                        block.get('config', {}).get('package_id') not in (None, '', pkg.pk, str(pkg.pk))
+                        for block in blocks)):
+                    return _error('is_public', 'Aktiven Standard-Workflow zuerst auf diese Paket-ID umstellen.')
+                pkg.is_public = True
+                pkg.version += 1
+                pkg.full_clean(exclude=['included_items'])
+                pkg.save(update_fields=['is_public', 'version'])
+                return JsonResponse({'id': pkg.pk, 'version': pkg.version, 'profile_id': profile.pk})
             core_changed = pkg is not None and (pkg.name != name or pkg.base_price != price or
                 set(pkg.included_items.values_list('pk', flat=True)) != set(ids) or
                 any(getattr(pkg, field) != data[field] for field in
@@ -352,6 +380,8 @@ def _save_package(request, pk=None):
                     setattr(pkg, field, data[field])
             if clone_package:
                 # Until the workflow explicitly selects this ID, never offer it publicly.
+                pkg.is_public = False
+            if pk is None and profile.status != PricingProfile.Status.ACTIVE:
                 pkg.is_public = False
             pkg.full_clean(exclude=['included_items'])
             pkg.save()
