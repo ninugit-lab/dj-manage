@@ -648,6 +648,48 @@ def test_private_draft_package_cannot_publish_with_unrelated_active_profile(staf
 
 
 @pytest.mark.django_db
+def test_active_profile_cannot_publish_clone_owned_only_by_another_draft(staff):
+    active = profile('active')
+    draft = PricingProfile.objects.create(name='Global', version=2, status='draft',
+                                          valid_from=timezone.now(), config_json=copy.deepcopy(CONFIG))
+    package = PricingPackage.objects.create(name='Draft clone', base_price=180, is_public=False)
+    PricingPackageOverride.objects.create(profile=draft, package=package,
+                                          overrides_json={'km_rate': {'mode': 'override', 'value': '2'}})
+    PricingWorkflow.objects.create(name='Default', is_default=True,
+        workflow_json=[{'type': 'package', 'config': {'package_id': package.pk}}, {'type': 'items'}])
+    response = call(staff, 'pricing_v2_package_detail', package_payload(active, package,
+        name='Draft clone', base_price='180', is_public=True), package.pk, 'put')
+    assert response.status_code in (400, 409)
+    package.refresh_from_db()
+    assert not package.is_public and package.version == 1
+    assert PricingPackage.objects.count() == 1
+    assert PricingPackageOverride.objects.get(profile=draft, package=package).overrides_json == {
+        'km_rate': {'mode': 'override', 'value': '2'}}
+
+
+@pytest.mark.django_db
+def test_unpinned_active_default_workflow_prices_two_public_packages(staff):
+    from wishlist.models import AppConfig
+    active = profile('active')
+    one = PricingPackage.objects.create(name='One', base_price=100)
+    two = PricingPackage.objects.create(name='Two', base_price=200)
+    PricingWorkflow.objects.create(name='Default', is_default=True,
+        workflow_json=[{'type': 'package', 'config': {}}, {'type': 'items'}])
+    AppConfig.objects.create(pricing_engine_mode='v2')
+    client = Client()
+    results = []
+    for package in (one, two):
+        response = client.post('/api/price-estimate/', data=json.dumps({
+            'date': '2026-12-02', 'time_start': '18:00', 'time_end': '21:00',
+            'package_id': package.pk, 'selected_item_ids': [], 'distance_km': '12',
+        }), content_type='application/json')
+        assert response.status_code == 200, response.content
+        results.append(response.json())
+    assert [result['package']['name'] for result in results] == ['One', 'Two']
+    assert [result['package']['price'] for result in results] == ['100.00', '200.00']
+
+
+@pytest.mark.django_db
 def test_draft_cannot_publish_existing_private_package_without_change(staff):
     active = profile('active')
     draft = PricingProfile.objects.create(name='Global', version=2, status='draft',
