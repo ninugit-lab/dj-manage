@@ -73,7 +73,31 @@ def release_offer(event, actor):
         locked = Event.objects.select_for_update().get(pk=event.pk)
         current = PriceCalculationRevision.objects.filter(event=locked, kind=PriceCalculationRevision.Kind.DRAFT,
                                                            status=PriceCalculationRevision.Status.DRAFT).order_by("-revision_number").first()
+        latest_offer = PriceCalculationRevision.objects.filter(
+            event=locked,
+            kind=PriceCalculationRevision.Kind.OFFER,
+            status__in=(PriceCalculationRevision.Status.RELEASED,
+                        PriceCalculationRevision.Status.SENT,
+                        PriceCalculationRevision.Status.SEND_FAILED),
+        ).order_by("-offer_number").first()
+        # save_revision may leave an identical draft created by a harmless
+        # post-release recalculation. It is older than the consumed offer,
+        # so it cannot become a second offer on a retry.
+        if current and latest_offer and (
+                current.revision_number <= latest_offer.revision_number
+                or (current.input_json == latest_offer.input_json
+                    and current.gross_total == latest_offer.gross_total)
+                or (current.gross_total == latest_offer.gross_total
+                    and current.input_json.get("admin_adjustments", [])
+                    == latest_offer.input_json.get("admin_adjustments", []))):
+            return latest_offer
         if current is None:
+            # Repeating the same POST after the draft was consumed is a safe
+            # retry.  Do not manufacture a new offer, and do not use this
+            # fallback when a newer draft exists (the branch above handles
+            # that draft and compares its frozen snapshot).
+            if latest_offer:
+                return latest_offer
             raise PricingValidationError("invalid_input", "a current draft is required", "draft")
         released = PriceCalculationRevision.objects.filter(event=locked, status=PriceCalculationRevision.Status.RELEASED,
                                                            input_json=current.input_json, result_json=current.result_json).first()

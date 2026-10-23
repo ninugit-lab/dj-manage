@@ -56,8 +56,21 @@ def test_release_is_idempotent_and_immutable(offer_setup):
     assert released.offer_number == 1
     assert Event.objects.get(pk=event.pk).status == 'inquiry'
     before = released.result_json
+    # A recalculation after release must not mutate the released snapshot.
     build_draft(event, actor)
     assert PriceCalculationRevision.objects.get(pk=released.pk).result_json == before
+    assert release_offer(event, actor).pk == released.pk
+
+    # A changed draft is a new offer; retrying it must not return the old one.
+    add_adjustment(event, 'Extra', '5', 'Neue Leistung', actor)
+    newer_draft = build_draft(event, actor)
+    newer_offer = release_offer(event, actor)
+    assert newer_offer.pk != released.pk
+    assert newer_offer.offer_number == 2
+    assert newer_offer.gross_total == released.gross_total + Decimal('5.00')
+    assert release_offer(event, actor).pk == newer_offer.pk
+    released.refresh_from_db()
+    assert released.offer_number == 1 and released.result_json == before
 
 
 def test_offer_routes_staff_csrf_and_no_direct_total_override(offer_setup):
