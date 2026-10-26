@@ -168,6 +168,17 @@ class RuleEvaluator:
 FORMULA_VARS = {'base', 'guests', 'hours', 'distance', 'items_total', 'package_price'}
 
 
+def round_trip_travel(event):
+    """The app supplies one-way kilometres; 100 km round trip are included."""
+    if event.distance_km is None:
+        return Decimal('0')
+    distance = Decimal(str(event.distance_km))
+    if not distance.is_finite() or distance < 0:
+        return Decimal('0')
+    extra_km = max(Decimal('0'), distance * 2 - Decimal('100'))
+    return (extra_km * Decimal('0.30')).quantize(Decimal('0.01'))
+
+
 class PriceEngine:
 
     @staticmethod
@@ -304,6 +315,12 @@ class PriceEngine:
             result['grand_total'] = subtotal - result['discount_amount']
         else:
             result['grand_total'] = subtotal
+
+        if subtotal > 0:
+            travel = round_trip_travel(event)
+            if travel:
+                result['custom_items'].append({'name': 'Anfahrt (Hin- und Rückfahrt)', 'price': travel})
+                result['grand_total'] += travel
 
         return result
 
@@ -524,6 +541,14 @@ class PriceEngine:
                 step['amount'] = Decimal('0')
 
             result['steps'].append(step)
+
+        if subtotal > 0:
+            travel = round_trip_travel(event)
+            if travel:
+                result['custom_items'].append({'name': 'Anfahrt (Hin- und Rückfahrt)', 'price': travel})
+                result['steps'].append({'type': 'travel', 'label': 'Anfahrt (Hin- und Rückfahrt)',
+                                        'amount': travel, 'detail': 'Kilometer über 100 km Hin- und Rückfahrt'})
+                subtotal += travel
 
         result['subtotal'] = subtotal + result['discount_amount']
         result['grand_total'] = subtotal
