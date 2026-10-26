@@ -13,7 +13,7 @@ class SearchSectionParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if tag == 'section':
-            self.sections.append(attrs.get('class', '').split())
+            self.sections.append(attrs)
         if attrs.get('id') == 'search-results' and self.sections:
             self.search_section = self.sections[-1]
 
@@ -31,4 +31,4 @@ def test_song_search_dropdown_stacks_above_wishlist(client):
     parser = SearchSectionParser()
     parser.feed(response.content.decode())
     assert parser.search_section is not None
-    assert 'z-20' in parser.search_section
+    assert parser.search_section['style'] == 'z-index:20'
