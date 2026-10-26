@@ -65,9 +65,9 @@ function initCalendar() {
         },
         height: 'auto'
       });
+      el.classList.remove('hidden');
       cal.render();
       document.getElementById('cal-loading').style.display = 'none';
-      el.classList.remove('hidden');
     })
     .catch(function(e) {
       document.getElementById('cal-loading').textContent = 'Kalender konnte nicht geladen werden.';

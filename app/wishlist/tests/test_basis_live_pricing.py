@@ -71,7 +71,7 @@ def test_submission_saves_the_same_quote_and_sound_selection(client, basis):
     body = dict(name='Party', date=day, time_start='18:00', time_end='00:30',
         location='Ort', client_name='Max', client_email='max@example.com', privacy_consent=True,
         package_id=basis.pk, selected_items=[], guest_count=51, distance_km='60', with_sound=False)
-    with patch('wishlist.views.threading.Thread'):
+    with patch('wishlist.views.GoogleService.check_date_available', return_value=(True, [])), patch('wishlist.views.threading.Thread'):
         response = client.post('/api/submit-event/', data=json.dumps(body),
             content_type='application/json', HTTP_X_FORWARDED_PROTO='https')
     assert response.status_code == 200
@@ -99,7 +99,7 @@ def test_incomplete_basis_submission_keeps_inquiry_without_final_price(client, b
         time_start=None, time_end=None, location='Ort', client_name='Max',
         client_email='max@example.com', privacy_consent=True, package_id=basis.pk,
         selected_items=[], guest_count=51, distance_km='60', with_sound=True)
-    with patch('wishlist.views.threading.Thread'):
+    with patch('wishlist.views.GoogleService.check_date_available', return_value=(True, [])), patch('wishlist.views.threading.Thread'):
         response = client.post('/api/submit-event/', data=json.dumps(body),
             content_type='application/json', HTTP_X_FORWARDED_PROTO='https')
     assert response.status_code == 200

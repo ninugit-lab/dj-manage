@@ -17,6 +17,35 @@ _lock_file = None
 _scheduler = None
 
 
+def activate_upcoming_wishlist(now=None):
+    """Activate a confirmed event in the hour before its scheduled start."""
+    from datetime import datetime, timedelta
+    from django.db import transaction
+    from django.utils import timezone
+    from .models import Event, EventStatus
+
+    now = timezone.localtime(now or timezone.now())
+    with transaction.atomic():
+        candidates = Event.objects.filter(
+            status=EventStatus.CONFIRMED,
+            date__in=(now.date(), (now + timedelta(hours=1)).date()),
+            time_start__isnull=False,
+            is_active=False,
+        ).order_by('date', 'time_start', 'pk')
+        for event in candidates:
+            start = timezone.make_aware(datetime.combine(event.date, event.time_start))
+            if start - timedelta(hours=1) <= now < start + timedelta(hours=1):
+                if Event.objects.filter(is_active=True, status=EventStatus.CONFIRMED,
+                                        date=event.date, time_start__gt=now.time(),
+                                        time_start__lte=event.time_start).exists():
+                    return None
+                event.is_active = True
+                event.save(update_fields=['is_active'])
+                logger.info('Wishlist activated for event %s', event.pk)
+                return event.pk
+    return None
+
+
 def _acquire_lock():
     """True, wenn dieser Prozess der Scheduler-Prozess sein darf."""
     global _lock_file
@@ -57,6 +86,16 @@ def start():
         send_review_requests,
         CronTrigger(hour=10, minute=0),
         id='send_review_requests',
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=3600,
+    )
+    from apscheduler.triggers.interval import IntervalTrigger
+    _scheduler.add_job(
+        activate_upcoming_wishlist,
+        IntervalTrigger(minutes=1),
+        id='activate_upcoming_wishlist',
         replace_existing=True,
         max_instances=1,
         coalesce=True,

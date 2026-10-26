@@ -8,6 +8,7 @@ Spotify Service — robust version with:
 - Structured error logging
 """
 import base64
+import hashlib
 import logging
 import threading
 import time
@@ -68,17 +69,32 @@ class SpotifyService:
     # ── Credentials / Auth URL ───────────────────────────────────────────────
 
     @staticmethod
-    def _b64_credentials():
-        raw = f"{settings.SPOTIFY_CLIENT_ID}:{settings.SPOTIFY_CLIENT_SECRET}"
+    def _credentials():
+        from .models import AppConfig
+        config = AppConfig.load()
+        values = (config.spotify_client_id.strip(), config.spotify_client_secret.strip(),
+                  config.spotify_redirect_uri.strip())
+        if any(values):
+            if not all(values):
+                raise ValueError("Spotify configuration incomplete")
+            return values
+        return (settings.SPOTIFY_CLIENT_ID, settings.SPOTIFY_CLIENT_SECRET,
+                settings.SPOTIFY_REDIRECT_URI)
+
+    @staticmethod
+    def _b64_credentials(credentials=None):
+        client_id, secret, _ = credentials or SpotifyService._credentials()
+        raw = f"{client_id}:{secret}"
         return base64.b64encode(raw.encode()).decode()
 
     @staticmethod
     def get_auth_url(state=None):
         from urllib.parse import urlencode
+        client_id, _, redirect_uri = SpotifyService._credentials()
         params = {
-            "client_id": settings.SPOTIFY_CLIENT_ID,
+            "client_id": client_id,
             "response_type": "code",
-            "redirect_uri": settings.SPOTIFY_REDIRECT_URI,
+            "redirect_uri": redirect_uri,
             "scope": SpotifyService.SCOPES,
         }
         if state:
@@ -88,14 +104,15 @@ class SpotifyService:
     @staticmethod
     def exchange_code(code):
         try:
+            credentials = SpotifyService._credentials()
             resp = _request_with_retry(
                 "POST", SpotifyService.TOKEN_URL,
                 data={
                     "grant_type": "authorization_code",
                     "code": code,
-                    "redirect_uri": settings.SPOTIFY_REDIRECT_URI,
+                    "redirect_uri": credentials[2],
                 },
-                headers={"Authorization": f"Basic {SpotifyService._b64_credentials()}"},
+                headers={"Authorization": f"Basic {SpotifyService._b64_credentials(credentials)}"},
             )
             if resp.status_code != 200:
                 logger.error("Spotify exchange_code %s: %s", resp.status_code, resp.text[:200])
@@ -115,10 +132,11 @@ class SpotifyService:
         Deletes token on invalid_grant (user revoked access).
         """
         try:
+            credentials = SpotifyService._credentials()
             resp = _request_with_retry(
                 "POST", SpotifyService.TOKEN_URL,
                 data={"grant_type": "refresh_token", "refresh_token": token.refresh_token},
-                headers={"Authorization": f"Basic {SpotifyService._b64_credentials()}"},
+                headers={"Authorization": f"Basic {SpotifyService._b64_credentials(credentials)}"},
             )
             try:
                 data = resp.json()
@@ -179,23 +197,30 @@ class SpotifyService:
     # Cache the client credentials token to avoid fetching one per search
     _cc_token = None
     _cc_expires_at = 0  # unix timestamp
+    _cc_credentials_hash = None
 
     @staticmethod
     def _get_client_credentials_token():
         now = time.time()
-        if SpotifyService._cc_token and now < SpotifyService._cc_expires_at - EXPIRY_BUFFER:
-            return SpotifyService._cc_token
         try:
+            credentials = SpotifyService._credentials()
+            credentials_hash = hashlib.sha256(repr(credentials).encode()).hexdigest()
+            if (SpotifyService._cc_token and SpotifyService._cc_credentials_hash == credentials_hash
+                    and now < SpotifyService._cc_expires_at - EXPIRY_BUFFER):
+                return SpotifyService._cc_token
+            SpotifyService._cc_token = None
+            SpotifyService._cc_credentials_hash = None
             resp = _request_with_retry(
                 "POST", SpotifyService.TOKEN_URL,
                 data={"grant_type": "client_credentials"},
-                headers={"Authorization": f"Basic {SpotifyService._b64_credentials()}"},
+                headers={"Authorization": f"Basic {SpotifyService._b64_credentials(credentials)}"},
             )
             if resp.status_code != 200:
                 logger.error("Spotify client_credentials failed %s: %s", resp.status_code, resp.text[:200])
                 return None
             data = resp.json()
             SpotifyService._cc_token = data.get("access_token")
+            SpotifyService._cc_credentials_hash = credentials_hash
             SpotifyService._cc_expires_at = now + data.get("expires_in", 3600)
             return SpotifyService._cc_token
         except Exception as e:
@@ -206,7 +231,12 @@ class SpotifyService:
 
     @staticmethod
     def search_tracks(query, limit=8, types="track"):
-        if not settings.SPOTIFY_CLIENT_ID or not settings.SPOTIFY_CLIENT_SECRET:
+        try:
+            client_id, secret, _ = SpotifyService._credentials()
+        except ValueError:
+            logger.warning("Spotify credentials incomplete")
+            return []
+        if not client_id or not secret:
             logger.warning("Spotify credentials not configured")
             return []
 
@@ -393,15 +423,11 @@ class SpotifyService:
         Create a new playlist for the authenticated user.
         Returns (playlist_id, playlist_url) on success, (None, error_msg) on failure.
         """
-        user_id = SpotifyService.get_user_id()
-        if not user_id:
-            return None, "Spotify User-ID nicht gefunden. Bitte neu einloggen."
-
         token = SpotifyService.get_valid_token()
         if not token:
             return None, "Kein Spotify-Token."
 
-        url = f"{SpotifyService.API_BASE}/users/{user_id}/playlists"
+        url = f"{SpotifyService.API_BASE}/me/playlists"
         body = {"name": name, "description": description, "public": public}
 
         def _post(tok):

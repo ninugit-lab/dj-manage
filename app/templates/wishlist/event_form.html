@@ -401,8 +401,8 @@ document.getElementById('f-date').addEventListener('change', async function() {
       dateAvailable = false;
     }
   } catch(e) {
-    s.className = 'date-status checking'; s.textContent = 'Prüfung nicht möglich – Formular trotzdem nutzbar';
-    dateAvailable = true;
+    s.className = 'date-status unavailable'; s.textContent = 'Prüfung nicht möglich – bitte erneut versuchen';
+    dateAvailable = false;
   }
   if (dateAvailable) {
     btn.disabled = false; btn.removeAttribute('aria-disabled');

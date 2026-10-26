@@ -57,7 +57,6 @@ urlpatterns = [
 
     # Client Blocking
     path('api/blocked-frame/', admin_views.blocked_clients_frame, name='blocked_frame'),
-    path('api/block/', admin_views.block_client, name='block_client'),
     path('api/unblock/<int:block_id>/', admin_views.unblock_client, name='unblock_client'),
     path('wishes/<int:wish_id>/block/', admin_views.block_wish_client, name='block_wish_client'),
 

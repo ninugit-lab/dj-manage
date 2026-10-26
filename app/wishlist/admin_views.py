@@ -283,7 +283,9 @@ def _save_event_from_post(request, config, event=None):
     requested_status = request.POST.get('status', event.status)
     # Storno und Wiederherstellung dürfen nur über ihre dedizierten Workflows
     # laufen, damit Kalender, E-Mail, Sheets und Metadaten konsistent bleiben.
-    if event.status == EventStatus.CANCELLED:
+    if event.status == EventStatus.INQUIRY and requested_status == EventStatus.CONFIRMED:
+        event.status = EventStatus.INQUIRY
+    elif event.status == EventStatus.CANCELLED:
         event.status = EventStatus.CANCELLED
     elif requested_status != EventStatus.CANCELLED:
         event.status = requested_status
@@ -330,32 +332,6 @@ def _save_event_from_post(request, config, event=None):
         event.cover_image = request.FILES['cover_image']
 
     event.save()
-
-    # Auto-create Spotify playlists for new events
-    if is_new:
-        from .spotify import SpotifyService
-        date_str = event.date.strftime('%d.%m.%Y') if event.date else ''
-        try:
-            if not event.spotify_playlist_id:
-                pid, url = SpotifyService.create_playlist(
-                    f"🎵 Wishlist — {event.name} ({date_str})",
-                    description=f"Wunschliste für {event.name}"
-                )
-                if pid:
-                    event.spotify_playlist_id = pid
-                    logger.info("Created Wishlist playlist %s for event %s", pid, event.pk)
-            if not event.spotify_preselection_playlist_id:
-                pid2, url2 = SpotifyService.create_playlist(
-                    f"🎧 Vorauswahl — {event.name} ({date_str})",
-                    description=f"DJ Vorauswahl für {event.name}"
-                )
-                if pid2:
-                    event.spotify_preselection_playlist_id = pid2
-                    logger.info("Created Vorauswahl playlist %s for event %s", pid2, event.pk)
-            if event.spotify_playlist_id or event.spotify_preselection_playlist_id:
-                event.save(update_fields=['spotify_playlist_id', 'spotify_preselection_playlist_id'])
-        except Exception as e:
-            logger.warning("Spotify playlist creation failed for event %s: %s", event.pk, e)
 
     try:
         GoogleService.backup_event_to_sheets(event)
@@ -468,6 +444,21 @@ def event_confirm(request, pk):
     event.status = EventStatus.CONFIRMED
     event.save()
     errors = []
+    if not event.spotify_playlist_id:
+        from .spotify import SpotifyService
+        try:
+            playlist_id, playlist_result = SpotifyService.create_playlist(
+                f'{event.name} ({event.date:%d.%m.%Y})',
+                description=f'Wunschliste für {event.name}',
+            )
+            if playlist_id:
+                event.spotify_playlist_id = playlist_id
+                event.save(update_fields=['spotify_playlist_id'])
+            else:
+                errors.append(f'Spotify: {playlist_result}')
+        except Exception:
+            logger.exception('Spotify playlist creation failed for event %s', event.pk)
+            errors.append('Spotify: Playlist konnte nicht erstellt werden; bitte erneut versuchen.')
     if not event.google_calendar_event_id:
         cal_id, err = GoogleService.create_calendar_event(event)
         if cal_id:
@@ -630,9 +621,17 @@ def event_set_active(request, pk):
 @staff_member_required
 def admin_wishlist_frame(request, pk):
     event = get_object_or_404(Event, pk=pk)
-    wishes_pending = event.wishes.filter(played=False).order_by('-created_at')
-    wishes_played = event.wishes.filter(played=True).order_by('-created_at')
-    blocked = BlockedClient.objects.filter(is_active=True, event=event)
+    from django.db.models import Q
+    wishes_pending = list(event.wishes.filter(played=False).order_by('-created_at'))
+    wishes_played = list(event.wishes.filter(played=True).order_by('-created_at'))
+    blocked = list(BlockedClient.objects.filter(is_active=True, event=event).filter(
+        Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())))
+    for wish in wishes_pending + wishes_played:
+        wish.client_blocked = any(
+            (block.session_key and block.session_key == wish.session_key)
+            or (block.ip_address and block.ip_address == wish.ip_address)
+            for block in blocked
+        )
     return render(request, 'dj_admin/_wishlist_frame.html', {
         'event': event, 'wishes_pending': wishes_pending,
         'wishes_played': wishes_played, 'blocked_clients': blocked,
@@ -794,49 +793,6 @@ def blocked_clients_frame(request):
 
 @staff_member_required
 @require_POST
-def block_client(request):
-    try:
-        data = json.loads(request.body)
-    except (json.JSONDecodeError, ValueError):
-        data = request.POST
-    session_key = data.get('session_key', '')
-    ip_address = data.get('ip_address', '')
-    reason = data.get('reason', 'Vom Admin blockiert')
-    public_message = data.get('public_message', 'Du wurdest für diese Wishlist gesperrt.')
-    event_id = data.get('event_id')
-    try:
-        hours = int(data.get('hours', 0) or 0)
-    except (ValueError, TypeError):
-        return JsonResponse({'success': False, 'error': 'Ungültiger Wert für "hours"'}, status=400)
-    if not session_key and not ip_address:
-        return JsonResponse({'success': False, 'error': 'Session oder IP benötigt'}, status=400)
-    event = Event.objects.filter(pk=event_id).first() if event_id else None
-    expires_at = timezone.now() + timedelta(hours=hours) if hours > 0 else None
-
-    existing = BlockedClient.objects.filter(
-        session_key=session_key or '', ip_address=ip_address or None, event=event
-    ).first()
-
-    if existing:
-        existing.is_active = True
-        existing.reason = reason
-        existing.public_message = public_message
-        existing.expires_at = expires_at
-        existing.save()
-        BlockedClient.objects.filter(
-            session_key=session_key or '', ip_address=ip_address or None, event=event
-        ).exclude(pk=existing.pk).delete()
-        block_id = existing.pk
-    else:
-        block = BlockedClient.objects.create(
-            session_key=session_key or '', ip_address=ip_address or None, event=event,
-            reason=reason, public_message=public_message,
-            expires_at=expires_at, is_active=True)
-        block_id = block.pk
-    return JsonResponse({'success': True, 'block_id': block_id})
-
-@staff_member_required
-@require_POST
 def unblock_client(request, block_id):
     """Unblock: deactivate this block AND all other active blocks with the same IP/session."""
     block = get_object_or_404(BlockedClient, pk=block_id)
@@ -860,6 +816,8 @@ def unblock_client(request, block_id):
 @require_POST
 def block_wish_client(request, wish_id):
     wish = get_object_or_404(SongWish, pk=wish_id)
+    if not wish.session_key and not wish.ip_address:
+        return JsonResponse({'success': False, 'error': 'Client nicht identifizierbar'}, status=400)
     reason = ''
     public_message = ''
     hours = 0
@@ -883,7 +841,7 @@ def block_wish_client(request, wish_id):
     # Find existing block (handles duplicates gracefully)
     existing = BlockedClient.objects.filter(
         session_key=wish.session_key or '',
-        ip_address=wish.ip_address,
+        ip_address=None if wish.session_key else wish.ip_address,
         event=wish.event,
     ).first()
 
@@ -896,13 +854,13 @@ def block_wish_client(request, wish_id):
         # Clean up duplicates
         BlockedClient.objects.filter(
             session_key=wish.session_key or '',
-            ip_address=wish.ip_address,
+            ip_address=None if wish.session_key else wish.ip_address,
             event=wish.event,
         ).exclude(pk=existing.pk).delete()
     else:
         BlockedClient.objects.create(
             session_key=wish.session_key or '',
-            ip_address=wish.ip_address,
+            ip_address=None if wish.session_key else wish.ip_address,
             event=wish.event,
             reason=f"{reason} (Wunsch: {wish.track_name})",
             public_message=public_message,

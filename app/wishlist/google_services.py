@@ -324,30 +324,40 @@ class GoogleService:
             time_min = timezone.now().isoformat()
         if not time_max:
             time_max = (timezone.now() + timedelta(days=90)).isoformat()
-        resp = GoogleService._api_call(
-            "GET", f"{GoogleService.CALENDAR_API}/calendars/primary/events",
-            params={
+        params = {
                 "timeMin": time_min,
                 "timeMax": time_max,
                 "maxResults": max_results,
                 "singleEvents": "true",
                 "orderBy": "startTime",
-            },
-        )
-        if resp is None:
-            return []
-        if resp.status_code == 200:
-            return resp.json().get("items", [])
-        logger.error("Calendar events error %s: %s", resp.status_code, resp.text[:200])
-        return []
+            }
+        items = []
+        while True:
+            resp = GoogleService._api_call(
+                "GET", f"{GoogleService.CALENDAR_API}/calendars/primary/events",
+                params=params,
+            )
+            if resp is None:
+                raise RuntimeError("Google Kalender nicht erreichbar")
+            if resp.status_code != 200:
+                logger.error("Calendar events error %s: %s", resp.status_code, resp.text[:200])
+                raise RuntimeError("Google Kalender nicht erreichbar")
+            data = resp.json()
+            items.extend(data.get("items", []))
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                return items
+            params["pageToken"] = page_token
 
     @staticmethod
     def check_date_available(date_str):
-        time_min = f"{date_str}T00:00:00Z"
-        time_max = f"{date_str}T23:59:59Z"
+        from datetime import datetime, timedelta
+        day = datetime.strptime(date_str, '%Y-%m-%d').date()
+        time_min = timezone.make_aware(datetime.combine(day, datetime.min.time())).isoformat()
+        time_max = timezone.make_aware(datetime.combine(day + timedelta(days=1), datetime.min.time())).isoformat()
         events = GoogleService.get_calendar_events(time_min=time_min, time_max=time_max)
         # Als "Frei" markierte Termine (transparency == 'transparent') blockieren nicht
-        blocking = [ev for ev in events if ev.get("transparency") != "transparent"]
+        blocking = [ev for ev in events if ev.get("status") != "cancelled" and ev.get("transparency") != "transparent"]
         return len(blocking) == 0, blocking
 
     @staticmethod

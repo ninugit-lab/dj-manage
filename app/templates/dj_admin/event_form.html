@@ -184,7 +184,7 @@
           <label class="form-label">Status</label>
           <select name="status" class="form-input appearance-auto">
             <option value="inquiry" {% if event.status == 'inquiry' %}selected{% endif %}>Angefragt</option>
-            <option value="confirmed" {% if event.status == 'confirmed' %}selected{% endif %}>Bestätigt</option>
+            {% if event.status == 'confirmed' %}<option value="confirmed" selected>Bestätigt</option>{% endif %}
             <option value="past" {% if event.status == 'past' %}selected{% endif %}>Vergangen</option>
             {% if event.status == 'cancelled' %}<option value="cancelled" selected>Storniert</option>{% endif %}
           </select>
@@ -561,6 +561,29 @@ details > summary::marker { display: none; }
 
 {% block extra_scripts %}
 <script>
+document.addEventListener('turbo:frame-missing', function(event) {
+  if (event.target.id !== 'event-wishlist') return;
+  event.preventDefault();
+  if (event.detail.response.redirected || [401, 403].includes(event.detail.response.status)) {
+    window.location.href = '{% url "login" %}?next=' + encodeURIComponent(window.location.pathname);
+    return;
+  }
+  event.target.innerHTML = '<div class="text-center p-4 text-muted" role="alert">Wünsche konnten nicht geladen werden. Bitte Seite neu laden.</div>';
+});
+async function blockWishlistClient(wishId) {
+  if (!confirm('Client für dieses Event 24 Stunden sperren?')) return;
+  try {
+    const response = await fetch('/dj-admin/wishes/' + wishId + '/block/', {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrfToken(), 'Content-Type': 'application/json'},
+      body: JSON.stringify({hours: 24})
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Sperren fehlgeschlagen');
+    showToast('Client blockiert');
+    refreshWishlist();
+  } catch (error) { showToast(error.message, true); }
+}
 // ── Kalkulator Tab switcher ──
 function switchCalcTab(tab) {
   var panels = ['manual', 'offer', 'formula'];

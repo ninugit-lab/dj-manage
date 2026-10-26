@@ -44,7 +44,7 @@ def payload(stock, **changes):
 
 
 def post(client, body):
-    with patch('wishlist.views.threading.Thread'):
+    with patch('wishlist.views.GoogleService.check_date_available', return_value=(True, [])), patch('wishlist.views.threading.Thread'):
         return client.post(reverse('submit_event'), data=json.dumps(body), content_type='application/json')
 
 
@@ -212,7 +212,7 @@ def test_google_task_runs_only_after_saved_pricing(client, stock):
                 observed.append((event.total_price, event.price_revisions.count()))
         return Thread()
 
-    with patch('wishlist.views.threading.Thread', side_effect=immediate_thread):
+    with patch('wishlist.views.GoogleService.check_date_available', return_value=(True, [])), patch('wishlist.views.threading.Thread', side_effect=immediate_thread):
         response = client.post(reverse('submit_event'), data=json.dumps(payload(stock)), content_type='application/json')
     assert response.status_code == 200
     assert observed == [(Decimal('150.00'), 1)]

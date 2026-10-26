@@ -304,9 +304,8 @@ def check_date_availability(request):
             return JsonResponse({'available': True})
         return JsonResponse({'available': False, 'reason': 'An diesem Datum ist bereits ein Termin im Kalender.'})
     except Exception:
-        # If Google not connected, just check internal
-        return JsonResponse({'available': not internal_conflict})
-
+        logger.warning('Google calendar availability check failed', exc_info=True)
+        return JsonResponse({'available': False, 'reason': 'Kalenderprüfung derzeit nicht möglich. Bitte später erneut versuchen.'}, status=503)
 
 @require_POST
 def submit_event_form(request):
@@ -438,6 +437,16 @@ def submit_event_form(request):
     selected_item_ids = list(dict.fromkeys([*selected_item_ids, *required_ids]))
     basis_incomplete = (package is not None and package.name == 'Basis-Paket' and
                         (guest_count is None or guest_count < 1 or parsed_time_start is None or parsed_time_end is None))
+
+    if Event.objects.filter(date=parsed_date, status=EventStatus.CONFIRMED).exists():
+        return JsonResponse({'success': False, 'error': 'An diesem Datum ist bereits ein Event geplant.'}, status=409)
+    try:
+        available, _ = GoogleService.check_date_available(parsed_date.isoformat())
+    except Exception:
+        logger.warning('Google calendar availability check failed on submit', exc_info=True)
+        return JsonResponse({'success': False, 'error': 'Kalenderprüfung derzeit nicht möglich. Bitte später erneut versuchen.'}, status=503)
+    if not available:
+        return JsonResponse({'success': False, 'error': 'An diesem Datum ist bereits ein Termin im Kalender.'}, status=409)
 
     with transaction.atomic():
         event = Event.objects.create(

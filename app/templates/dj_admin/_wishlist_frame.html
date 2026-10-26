@@ -2,7 +2,7 @@
 {% if wishes_pending or wishes_played %}
 
 {% if wishes_pending %}
-<div class="section-divider">🎵 Gewünscht ({{ wishes_pending.count }})</div>
+<div class="section-divider">🎵 Gewünscht ({{ wishes_pending|length }})</div>
 {% for wish in wishes_pending %}
 <div class="wish-item" id="wish-{{ wish.pk }}">
   {% if wish.album_cover_url %}
@@ -17,6 +17,7 @@
   <div class="wish-item-meta">
     {% if wish.guest_name %}{{ wish.guest_name }} · {% endif %}{{ wish.created_at|time:"H:i" }}
     {% if wish.ip_address %}<br><span class="text-[.6rem] opacity-50">{{ wish.ip_address }}</span>{% endif %}
+    {% if wish.client_blocked %}<br><span class="text-danger">Client gesperrt</span>{% endif %}
   </div>
   <div class="wish-item-actions">
     <button type="button" class="btn btn-ghost btn-sm !min-w-[44px] !px-2" data-turbo="false"
@@ -29,11 +30,11 @@
             onclick="(async function(b){b.disabled=true;try{await fetch('/dj-admin/wishes/{{ wish.pk }}/toggle/',{method:'POST',headers:{'X-CSRFToken':csrfToken()}});if(typeof refreshWishlist==='function')refreshWishlist();}catch(e){console.error(e)}b.disabled=false})(this)">
       <span aria-hidden="true">✓</span>
     </button>
-    <button type="button" class="btn btn-danger btn-sm !min-w-[44px] !px-2" data-turbo="false"
-            aria-label="Blockieren"
-            onclick="if(typeof openBlockDialog==='function')openBlockDialog({{ wish.pk }});else alert('Block-Dialog nicht verfügbar auf dieser Seite')">
+    {% if not wish.client_blocked %}<button type="button" class="btn btn-danger btn-sm !min-w-[44px] !px-2" data-turbo="false"
+            aria-label="Client für diesen Wunsch blockieren"
+            onclick="blockWishlistClient({{ wish.pk }})">
       <span aria-hidden="true">🚫</span>
-    </button>
+    </button>{% endif %}
     <button type="button" class="btn btn-ghost btn-sm !min-w-[44px] !px-2" data-turbo="false"
             aria-label="Wunsch löschen"
             onclick="(async function(b){if(!confirm('Löschen?'))return;b.disabled=true;await fetch('/dj-admin/wishes/{{ wish.pk }}/delete/',{method:'POST',headers:{'X-CSRFToken':csrfToken()}});if(typeof refreshWishlist==='function')refreshWishlist();})(this)">
@@ -45,7 +46,7 @@
 {% endif %}
 
 {% if wishes_played %}
-<div class="section-divider">✅ Gespielt ({{ wishes_played.count }})</div>
+<div class="section-divider">✅ Gespielt ({{ wishes_played|length }})</div>
 {% for wish in wishes_played %}
 <div class="wish-item opacity-50" id="wish-{{ wish.pk }}">
   {% if wish.album_cover_url %}<img src="{{ wish.album_cover_url }}" alt="">{% else %}
@@ -54,13 +55,18 @@
     <div class="wish-item-title">{{ wish.track_name }}</div>
     <div class="wish-item-artist">{{ wish.artist_name }}</div>
   </div>
-  <div class="wish-item-meta">{% if wish.guest_name %}{{ wish.guest_name }} · {% endif %}{{ wish.created_at|time:"H:i" }}</div>
+  <div class="wish-item-meta">{% if wish.guest_name %}{{ wish.guest_name }} · {% endif %}{{ wish.created_at|time:"H:i" }}{% if wish.client_blocked %}<br><span class="text-danger">Client gesperrt</span>{% endif %}</div>
   <div class="wish-item-actions">
     <button type="button" class="btn btn-ghost btn-sm !min-w-[44px] !px-2" data-turbo="false"
-            aria-label="Als ungespielt markieren"
-            onclick="(async function(b){b.disabled=true;await fetch('/dj-admin/wishes/{{ wish.pk }}/toggle/',{method:'POST',headers:{'X-CSRFToken':csrfToken()}});if(typeof refreshWishlist==='function')refreshWishlist();b.disabled=false})(this)">
+             aria-label="Als ungespielt markieren"
+             onclick="(async function(b){b.disabled=true;await fetch('/dj-admin/wishes/{{ wish.pk }}/toggle/',{method:'POST',headers:{'X-CSRFToken':csrfToken()}});if(typeof refreshWishlist==='function')refreshWishlist();b.disabled=false})(this)">
       <span aria-hidden="true">↩</span>
     </button>
+    {% if not wish.client_blocked %}<button type="button" class="btn btn-danger btn-sm !min-w-[44px] !px-2" data-turbo="false"
+            aria-label="Client für diesen Wunsch blockieren"
+            onclick="blockWishlistClient({{ wish.pk }})">
+      <span aria-hidden="true">🚫</span>
+    </button>{% endif %}
   </div>
 </div>
 {% endfor %}
