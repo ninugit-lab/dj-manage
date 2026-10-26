@@ -178,13 +178,13 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
         <div class="mb-4">
           <label for="f-guest-count" class="field-label">Gästeanzahl</label>
-          <input type="number" id="f-guest-count" name="f-guest-count" class="field-input" placeholder="ca." min="1">
+          <input type="number" id="f-guest-count" name="f-guest-count" class="field-input" placeholder="ca." min="1" oninput="updatePrice()">
         </div>
         <div class="mb-4">
           <p class="field-label">Uhrzeit</p>
           <div class="flex gap-2">
-            <input type="time" id="f-time-start" name="f-time-start" class="field-input" aria-label="Beginn" step="1800">
-            <input type="time" id="f-time-end" name="f-time-end" class="field-input" aria-label="Ende" step="1800">
+            <input type="time" id="f-time-start" name="f-time-start" class="field-input" aria-label="Beginn" step="1800" onchange="updatePrice()">
+            <input type="time" id="f-time-end" name="f-time-end" class="field-input" aria-label="Ende" step="1800" onchange="updatePrice()">
           </div>
         </div>
       </div>
@@ -214,13 +214,20 @@
             <div class="font-medium text-sm">{{ pkg.name }}{% if pkg.badge_label %} <span class="ml-1 text-[0.6rem] bg-purple-500/15 text-purple-300 px-2 py-0.5 rounded-full">{{ pkg.badge_label }}</span>{% endif %}</div>
             {% if pkg.description %}<div class="text-xs text-subtle mt-0.5">{{ pkg.description|truncatewords:15 }}</div>{% endif %}
           </div>
-          <div class="font-mono text-sm text-purple-300 flex-shrink-0">{{ pkg.base_price }} €</div>
+          <div class="font-mono text-sm text-purple-300 flex-shrink-0">{% if pkg.name == 'Basis-Paket' %}ab 580,00 € / 6 Std. (ohne Tontechnik){% else %}{{ pkg.base_price }} €{% endif %}</div>
         </label>
         {% endfor %}
       </div>
       {% else %}
       <p class="text-subtle text-sm">Kein Paket verfügbar – einzelne Posten wählen.</p>
       {% endif %}
+
+      <fieldset class="mb-5" aria-label="Tontechnik">
+        <legend class="field-label">Tontechnik</legend>
+        <label class="addon-label"><input type="radio" name="f-with-sound" value="yes" checked onchange="updatePrice()"> Mit Tontechnik (Tonanlage, Lichttechnik und Mikrofone)</label>
+        <label class="addon-label"><input type="radio" name="f-with-sound" value="no" onchange="updatePrice()"> Ohne Tontechnik (Lichttechnik und Mikrofone inklusive, geeignete Tonanlage vor Ort erforderlich)</label>
+        <p class="text-xs text-subtle">Basis-Paket: bis 50 Gäste 660 € mit / 580 € ohne Tontechnik; ab 51 Gästen 750 € mit / 670 € ohne Tontechnik. 6 Stunden inklusive, jede weitere angefangene Stunde 60 €. Anfahrt: 100 km Hin- und Rückfahrt inklusive, danach 0,30 € pro weiterem km. Nebelmaschine inklusive, sofern die Location ihren Einsatz erlaubt.</p>
+      </fieldset>
 
       <div class="mt-6 flex justify-between">
         <button type="button" onclick="goStep(3)" class="btn-ghost min-h-[44px] px-5">&lsaquo; Zurück</button>
@@ -475,7 +482,8 @@ function doUpdatePrice(sequence) {
     time_end: document.getElementById('f-time-end').value || null,
     package_id: pkgId,
     selected_item_ids: itemIds,
-    distance_km: eventDistanceKm
+    distance_km: eventDistanceKm,
+    with_sound: document.querySelector('input[name="f-with-sound"]:checked')?.value !== 'no'
   };
   var controller = new AbortController();
   _priceController = controller;
@@ -540,6 +548,7 @@ async function submitForm() {
         client_company: document.getElementById('f-client-company').value.trim(),
         guest_count: document.getElementById('f-guest-count').value || null,
         distance_km: eventDistanceKm,
+        with_sound: document.querySelector('input[name="f-with-sound"]:checked')?.value !== 'no',
         privacy_consent: document.getElementById('f-privacy-consent').checked,
         selected_items: items,
         package_id: (function() { var p = document.querySelector('input[name="f-package"]:checked'); return p ? (parseInt(p.value) || null) : null; })()

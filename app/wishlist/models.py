@@ -72,6 +72,7 @@ class Event(models.Model):
     total_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="Gesamtpreis")
     price_notes = models.TextField(blank=True, verbose_name="Preis-Notizen")
     guest_count = models.PositiveIntegerField(null=True, blank=True, verbose_name="Gästeanzahl")
+    with_sound = models.BooleanField(default=True, verbose_name="Tontechnik dabei")
     special_requests = models.TextField(blank=True, verbose_name="Sonderwünsche")
     distance_km = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True, verbose_name="Entfernung (km)")
     admin_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)

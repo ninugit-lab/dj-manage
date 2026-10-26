@@ -64,7 +64,8 @@ def _legacy_calculate(payload, event, *, public=False):
         event = Event(date=parsed(payload.get("event_date"), date),
                        time_start=parsed(payload.get("start_time"), time),
                        time_end=parsed(payload.get("end_time"), time), guest_count=payload.get("guest_count"),
-                       distance_km=payload.get("distance_km"), event_type=payload.get("event_type", ""))
+                       distance_km=payload.get("distance_km"), event_type=payload.get("event_type", ""),
+                       with_sound=payload.get("with_sound", True))
     elif payload is not None:
         # Preview an unsaved form against the saved event's offer/selections without
         # allowing its stale fields to override the current form economics.
@@ -75,7 +76,7 @@ def _legacy_calculate(payload, event, *, public=False):
             if payload_key in payload:
                 value = payload[payload_key]
                 setattr(event, field, kind.fromisoformat(value) if isinstance(value, str) else value)
-        for field in ("guest_count", "distance_km", "event_type"):
+        for field in ("guest_count", "distance_km", "event_type", "with_sound"):
             if field in payload:
                 setattr(event, field, payload[field])
     if payload is None:

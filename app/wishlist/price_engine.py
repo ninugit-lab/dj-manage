@@ -168,6 +168,27 @@ class RuleEvaluator:
 FORMULA_VARS = {'base', 'guests', 'hours', 'distance', 'items_total', 'package_price'}
 
 
+def basis_adjustments(event, package):
+    """Price adjustments for the public Basis-Paket, independent of weekday."""
+    if package.name != 'Basis-Paket':
+        return []
+    adjustments = []
+    if event.guest_count is not None and event.guest_count > 50:
+        adjustments.append(('Gäste ab 51', Decimal('90')))
+    if not event.with_sound:
+        adjustments.append(('Ohne Tontechnik', Decimal('-80')))
+    if event.time_start is not None and event.time_end is not None:
+        start = event.time_start.hour * 60 + event.time_start.minute
+        end = event.time_end.hour * 60 + event.time_end.minute
+        if end <= start:
+            end += 24 * 60
+        extra_minutes = max(0, end - start - 360)
+        extra_hours = (extra_minutes + 59) // 60
+        if extra_hours:
+            adjustments.append((f'Zusatzstunden ({extra_hours} x 60 EUR)', Decimal(extra_hours * 60)))
+    return adjustments
+
+
 def round_trip_travel(event):
     """The app supplies one-way kilometres; 100 km round trip are included."""
     if event.distance_km is None:
@@ -305,6 +326,11 @@ class PriceEngine:
             except ValueError as e:
                 logger.warning("Formula evaluation error: %s", e)
                 result['formula_result'] = None
+
+        if result['package']:
+            for label, amount in basis_adjustments(event, pkg):
+                result['custom_items'].append({'name': label, 'price': amount})
+                subtotal += amount
 
         result['subtotal'] = subtotal
 
@@ -541,6 +567,13 @@ class PriceEngine:
                 step['amount'] = Decimal('0')
 
             result['steps'].append(step)
+
+        if pkg and result['package']:
+            for label, amount in basis_adjustments(event, pkg):
+                result['custom_items'].append({'name': label, 'price': amount})
+                result['steps'].append({'type': 'basis_adjustment', 'label': label,
+                                        'amount': amount, 'detail': label})
+                subtotal += amount
 
         if subtotal > 0:
             travel = round_trip_travel(event)

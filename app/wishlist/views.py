@@ -405,6 +405,10 @@ def submit_event_form(request):
     except (InvalidOperation, ValueError, TypeError):
         return invalid()
 
+    with_sound = data.get('with_sound', True)
+    if not isinstance(with_sound, bool):
+        return invalid()
+
     selected_item_ids = data.get('selected_items', [])
     package_id = data.get('package_id')
     def valid_id(value):
@@ -432,6 +436,8 @@ def submit_event_form(request):
             return invalid()
     required_ids = PriceItem.objects.filter(is_active=True, is_public=True, is_required=True).values_list('pk', flat=True)
     selected_item_ids = list(dict.fromkeys([*selected_item_ids, *required_ids]))
+    basis_incomplete = (package is not None and package.name == 'Basis-Paket' and
+                        (guest_count is None or guest_count < 1 or parsed_time_start is None or parsed_time_end is None))
 
     with transaction.atomic():
         event = Event.objects.create(
@@ -450,6 +456,7 @@ def submit_event_form(request):
         client_phone=data.get('client_phone', ''),
         client_company=data.get('client_company', ''),
         guest_count=guest_count,
+        with_sound=with_sound,
         distance_km=distance,
         special_requests=data.get('special_requests', ''),
         status=EventStatus.INQUIRY,
@@ -481,7 +488,7 @@ def submit_event_form(request):
                 else:
                     result = PriceEngine.calculate(**calc_kwargs)
                 calc.calculation_snapshot = (json.loads(json.dumps(result, default=str))
-                                             if event.distance_km is not None else {'status': 'individual_review'})
+                                             if event.distance_km is not None and not basis_incomplete else {'status': 'individual_review'})
                 active_rule_ids = [r['rule_id'] for r in result.get('rules_applied', []) if r.get('rule_id')]
                 if active_rule_ids:
                     calc.applied_rules.set(PricingRule.objects.filter(pk__in=active_rule_ids))
@@ -490,7 +497,7 @@ def submit_event_form(request):
             except Exception:
                 logger.warning("PriceEngine calculation failed for event %s, using legacy total", event.pk, exc_info=True)
                 event.total_price = calc.total
-            if event.distance_km is None:
+            if event.distance_km is None or basis_incomplete:
                 event.total_price = None
             event.save(update_fields=['total_price'])
             if mode == 'shadow':
@@ -743,6 +750,9 @@ def api_price_estimate(request):
             return failure()
         required = PriceItem.objects.filter(is_active=True, is_public=True, is_required=True).values_list('pk', flat=True)
         selected = list(dict.fromkeys([*selected, *required]))
+        with_sound = data.get('with_sound', True)
+        if not isinstance(with_sound, bool):
+            return failure()
         guest_count = data.get('guest_count')
         if guest_count not in (None, ''):
             guest_count = int(guest_count)
@@ -759,15 +769,18 @@ def api_price_estimate(request):
                    'end_time': data.get('time_end'),
                    'package_id': str(package_id) if package_id is not None else None,
                    'selected_item_ids': [str(i) for i in selected], 'guest_count': guest_count,
-                   'event_type': data.get('event_type', ''), 'distance_km': str(distance) if distance is not None else None}
+                   'event_type': data.get('event_type', ''), 'with_sound': with_sound,
+                   'distance_km': str(distance) if distance is not None else None}
         decision = calculate_with_mode(payload, public=True)
         result = decision.visible_result
         lines = result.to_dict()['lines']
+        basis = package_id is not None and PricingPackage.objects.filter(pk=package_id, name='Basis-Paket').exists()
+        missing_basis = basis and (guest_count < 1 or not data.get('time_start') or not data.get('time_end'))
         missing_distance = distance is None
         warnings = ['Entfernung unbekannt – Preis wird individuell geprüft'] if missing_distance else []
-        gross = None if missing_distance else str(result.gross_total.quantize(Decimal('0.01')))
+        gross = None if missing_distance or missing_basis else str(result.gross_total.quantize(Decimal('0.01')))
         response = {'ok': True, 'engine_version': str(result.engine_version),
-                    'status': 'individual_review' if missing_distance else result.status,
+                    'status': 'individual_review' if missing_distance or missing_basis else result.status,
                     'lines': lines, 'gross_total': gross, 'warnings': warnings,
                     # Retain V1 response keys; money is always transported as decimal text.
                     'grand_total': gross,
