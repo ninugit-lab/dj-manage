@@ -11,6 +11,7 @@ urlpatterns = [
     # Public Event Form
     path('buchen/', views.event_form_view, name='event_form'),
     path('api/check-date/', views.check_date_availability, name='check_date'),
+    path('api/address-search/', views.address_search, name='address_search'),
     path('api/submit-event/', views.submit_event_form, name='submit_event'),
     path('api/price-estimate/', views.api_price_estimate, name='price_estimate'),
 

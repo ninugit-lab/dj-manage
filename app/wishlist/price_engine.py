@@ -2,6 +2,7 @@ import ast
 import operator
 import logging
 from decimal import Decimal, InvalidOperation
+from .formula_functions import FUNCTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,16 @@ class SafeFormulaEvaluator:
         if isinstance(node, ast.Name):
             if node.id not in self.allowed_vars:
                 raise ValueError(f"Unbekannte Variable: {node.id}")
+        elif isinstance(node, ast.Call):
+            if (not isinstance(node.func, ast.Name) or node.func.id not in FUNCTIONS
+                    or node.keywords):
+                raise ValueError('Unerlaubter Funktionsaufruf')
+            _, low, high = FUNCTIONS[node.func.id]
+            if not low <= len(node.args) <= high:
+                raise ValueError('Ungültige Anzahl Funktionsargumente')
+            for arg in node.args:
+                self._validate(arg)
+            return
         elif isinstance(node, ast.Constant):
             if not isinstance(node.value, (int, float)) or isinstance(node.value, bool):
                 raise ValueError(f"Unerlaubte Konstante: {node.value!r}")
@@ -70,6 +81,8 @@ class SafeFormulaEvaluator:
             self._validate(child)
 
     def _eval_node(self, node, variables):
+        if isinstance(node, ast.Call):
+            return FUNCTIONS[node.func.id][0](*(self._eval_node(arg, variables) for arg in node.args))
         if isinstance(node, ast.Expression):
             return self._eval_node(node.body, variables)
         if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
@@ -125,7 +138,7 @@ class RuleEvaluator:
             end_dt = datetime.combine(event.date or datetime.today(), event.time_end)
             if end_dt <= start_dt:
                 end_dt += timedelta(days=1)
-            duration = Decimal(str(round((end_dt - start_dt).total_seconds() / 3600, 1)))
+            duration = Decimal(str((end_dt - start_dt).total_seconds())) / Decimal('3600')
 
         guest_count = 0
         if offer and offer.guest_count:
@@ -135,7 +148,9 @@ class RuleEvaluator:
 
         return {
             'guest_count': guest_count,
-            'duration_hours': float(duration),
+            'duration_hours': duration,
+            'duration_minutes': duration * 60,
+            'with_sound': getattr(event, 'with_sound', True),
             'date_weekday': event.date.weekday() if event.date else 0,
             'event_type': event.event_type or '',
             'distance_km': float(event.distance_km or 0),
@@ -165,28 +180,7 @@ class RuleEvaluator:
         return True
 
 
-FORMULA_VARS = {'base', 'guests', 'hours', 'distance', 'items_total', 'package_price'}
-
-
-def basis_adjustments(event, package):
-    """Price adjustments for the public Basis-Paket, independent of weekday."""
-    if package.name != 'Basis-Paket':
-        return []
-    adjustments = []
-    if event.guest_count is not None and event.guest_count > 50:
-        adjustments.append(('Gäste ab 51', Decimal('90')))
-    if not event.with_sound:
-        adjustments.append(('Ohne Tontechnik', Decimal('-80')))
-    if event.time_start is not None and event.time_end is not None:
-        start = event.time_start.hour * 60 + event.time_start.minute
-        end = event.time_end.hour * 60 + event.time_end.minute
-        if end <= start:
-            end += 24 * 60
-        extra_minutes = max(0, end - start - 360)
-        extra_hours = (extra_minutes + 59) // 60
-        if extra_hours:
-            adjustments.append((f'Zusatzstunden ({extra_hours} x 60 EUR)', Decimal(extra_hours * 60)))
-    return adjustments
+FORMULA_VARS = {'base', 'guests', 'hours', 'distance', 'items_total', 'package_price', 'duration_minutes'}
 
 
 def round_trip_travel(event):
@@ -207,6 +201,13 @@ class PriceEngine:
                   formula_id=None, custom_items=None, discount_percent=0,
                   offer_data=None, context_override=None):
         from .models import PriceItem, PricingPackage, PricingFormula, PricingRule
+        linked = PricingPackage.objects.filter(pk=package_id, is_active=True).first() if package_id else None
+        if linked and linked.workflow_id:
+            if not linked.workflow.is_active:
+                raise ValueError('Paket-Workflow ist inaktiv')
+            return PriceEngine.calculate_workflow(event, linked.workflow_id, package_id=package_id,
+                selected_item_ids=selected_item_ids, formula_id=formula_id, custom_items=custom_items,
+                discount_percent=discount_percent, offer_data=offer_data, context_override=context_override)
 
         result = {
             'package': None,
@@ -271,6 +272,8 @@ class PriceEngine:
 
         # 5. PricingRules
         context = RuleEvaluator.build_context(event, offer)
+        context['package_id'] = int(package_id) if result['package'] else None
+        context['workflow_id'] = None
         if context_override:
             context.update(context_override)
         rules = PricingRule.objects.filter(is_active=True).order_by('sort_order')
@@ -314,6 +317,7 @@ class PriceEngine:
                     'base': float(pre_rules_subtotal),
                     'guests': context['guest_count'],
                     'hours': context['duration_hours'],
+                    'duration_minutes': context['duration_minutes'],
                     'distance': context['distance_km'],
                     'items_total': float(sum(i['price'] for i in result['items'])),
                     'package_price': float(result['package']['price']) if result['package'] else 0,
@@ -326,11 +330,6 @@ class PriceEngine:
             except ValueError as e:
                 logger.warning("Formula evaluation error: %s", e)
                 result['formula_result'] = None
-
-        if result['package']:
-            for label, amount in basis_adjustments(event, pkg):
-                result['custom_items'].append({'name': label, 'price': amount})
-                subtotal += amount
 
         result['subtotal'] = subtotal
 
@@ -366,6 +365,8 @@ class PriceEngine:
                         offer_data=offer_data, context_override=context_override)
 
         blocks = workflow.workflow_json or []
+        if not blocks and PricingPackage.objects.filter(pk=package_id, workflow=workflow).exists():
+            raise ValueError('Paket-Workflow ist leer')
         if not blocks:
             return PriceEngine.calculate(event, package_id=package_id,
                         selected_item_ids=selected_item_ids, formula_id=formula_id,
@@ -409,9 +410,12 @@ class PriceEngine:
             items_qs = calc.selected_items.filter(is_active=True)
 
         context = RuleEvaluator.build_context(event, offer)
+        context['package_id'] = pkg.pk if pkg else None
+        context['workflow_id'] = workflow.pk
         if context_override:
             context.update(context_override)
         package_item_ids = set(pkg.included_items.values_list('pk', flat=True)) if pkg else set()
+        strict_workflow = bool(pkg and pkg.workflow_id == workflow.pk)
 
         subtotal = Decimal('0')
         result = {
@@ -449,7 +453,8 @@ class PriceEngine:
                     try:
                         formula = PricingFormula.objects.get(pk=block_formula_id, is_active=True)
                     except PricingFormula.DoesNotExist:
-                        pass
+                        if strict_workflow:
+                            raise ValueError('Workflow-Formel fehlt oder ist inaktiv')
 
             if btype == 'package' and pkg:
                 step['amount'] = pkg.base_price
@@ -495,8 +500,10 @@ class PriceEngine:
                 pre_rules = subtotal
                 rule_qs = PricingRule.objects.filter(is_active=True).order_by('sort_order')
                 selected_ids = block.get('config', {}).get('rule_ids')
-                if selected_ids:
+                if selected_ids is not None:
                     rule_qs = rule_qs.filter(pk__in=selected_ids)
+                    if strict_workflow and rule_qs.count() != len(set(selected_ids)):
+                        raise ValueError('Workflow-Regel fehlt oder ist inaktiv')
                 # flat_set setzt den Preis EINMALIG (nicht stapelbar). Bei
                 # mehreren zutreffenden flat_set-Regeln gewinnt die letzte
                 # (hoechste sort_order) — konsistent zu PriceEngine.calculate().
@@ -508,7 +515,14 @@ class PriceEngine:
                             continue
                         amount = Decimal('0')
                         if rule.effect_type == 'percent_add':
-                            amount = pre_rules * rule.effect_value / Decimal('100')
+                            rule_base = pre_rules
+                            if strict_workflow and rule.applies_to != 'subtotal':
+                                if rule.applies_to in ('base', 'package'):
+                                    rule_base = pkg.base_price if result['package'] else Decimal('0')
+                                else:
+                                    category = 'extra' if rule.applies_to == 'extras' else rule.applies_to
+                                    rule_base = sum((i['price'] for i in result['items'] if i.get('category') == category), Decimal('0'))
+                            amount = rule_base * rule.effect_value / Decimal('100')
                         elif rule.effect_type == 'flat_add':
                             amount = rule.effect_value
                         result['rules_applied'].append({
@@ -537,6 +551,7 @@ class PriceEngine:
                     'base': float(subtotal),
                     'guests': context['guest_count'],
                     'hours': context['duration_hours'],
+                    'duration_minutes': context['duration_minutes'],
                     'distance': context['distance_km'],
                     'items_total': float(sum(i['price'] for i in result['items'])),
                     'package_price': float(pkg.base_price) if pkg else 0,
@@ -546,8 +561,16 @@ class PriceEngine:
                     step['amount'] = formula_val
                     step['detail'] = formula.name
                     result['formula_result'] = formula_val
-                    subtotal = formula_val
-                except ValueError:
+                    # Existing V1 workflows historically replace the subtotal.
+                    # Explicitly linked booking workflows honor the stored mode.
+                    mode = formula.mode if strict_workflow else 'replace'
+                    amount = formula_val if mode == 'add' else -formula_val if mode == 'subtract' else formula_val - subtotal
+                    subtotal += amount
+                    step['amount'] = amount
+                    result['custom_items'].append({'name': formula.name, 'price': amount})
+                except (ValueError, SyntaxError):
+                    if strict_workflow:
+                        raise
                     step['amount'] = Decimal('0')
 
             elif btype == 'discount':
@@ -568,14 +591,7 @@ class PriceEngine:
 
             result['steps'].append(step)
 
-        if pkg and result['package']:
-            for label, amount in basis_adjustments(event, pkg):
-                result['custom_items'].append({'name': label, 'price': amount})
-                result['steps'].append({'type': 'basis_adjustment', 'label': label,
-                                        'amount': amount, 'detail': label})
-                subtotal += amount
-
-        if subtotal > 0:
+        if subtotal > 0 and not (pkg and pkg.workflow_id == workflow.pk):
             travel = round_trip_travel(event)
             if travel:
                 result['custom_items'].append({'name': 'Anfahrt (Hin- und Rückfahrt)', 'price': travel})

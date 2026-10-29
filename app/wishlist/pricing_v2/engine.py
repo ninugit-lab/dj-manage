@@ -150,7 +150,7 @@ class PricingEngineV2:
                     if type(rule.get("sort_order", 0)) is not int:
                         _invalid("rule sort order must be an integer", "rules")
                     selected.append(rule)
-                result = apply_rules(request, current, lines, tuple(selected), event_type=request.event_type)
+                result = apply_rules(request, current, lines, tuple(selected), event_type=request.event_type, workflow_id=workflow.id)
             elif name == "formula":
                 identity = block.get("formula_id")
                 formulas = catalog.get("formulas", {})

@@ -16,6 +16,7 @@ from decimal import Decimal, DecimalException
 from .blocks import BlockResult, _decimal
 from .input import PricingInput, PricingValidationError
 from .result import PricingLine
+from wishlist.formula_functions import FUNCTIONS
 
 
 ZERO = Decimal("0")
@@ -65,6 +66,8 @@ def _context(request, event_type):
     if end <= start:
         end += 86400
     return {"guest_count": request.guest_count, "duration_hours": Decimal(end - start) / Decimal(3600),
+            "duration_minutes": Decimal(end - start) / 60, "with_sound": request.with_sound,
+            "package_id": int(request.package_id) if request.package_id.isdigit() else None,
             "date_weekday": request.event_date.weekday(), "event_type": event_type,
             "distance_km": request.distance_km if request.distance_km is not None else ZERO,
             "date_month": request.event_date.month}
@@ -102,7 +105,7 @@ def _matches(conditions, context):
 
 
 def apply_rules(request: PricingInput, subtotal: Decimal, prior_lines: tuple[PricingLine, ...],
-                rules: tuple[Mapping, ...], *, event_type: str = "") -> BlockResult:
+                 rules: tuple[Mapping, ...], *, event_type: str = "", workflow_id=None) -> BlockResult:
     """Evaluate active rules in sort order; percent bases use trusted preceding lines."""
     current = _decimal(subtotal, "subtotal")
     prior = _lines(prior_lines)
@@ -110,6 +113,7 @@ def apply_rules(request: PricingInput, subtotal: Decimal, prior_lines: tuple[Pri
         _error("invalid_input", "rules must be snapshot mappings", "rules")
     amounts, seen = _category_amounts(prior)
     context = _context(request, event_type)
+    context['workflow_id'] = workflow_id
     additions = []
     for rule in sorted(rules, key=lambda item: item.get("sort_order", 0) if isinstance(item, Mapping) else 0):
         if not isinstance(rule, Mapping):
@@ -151,8 +155,20 @@ def _evaluate(expression, variables):
         _error("calculation_error", "invalid formula expression", "expression")
     try:
         tree = ast.parse(expression, mode="eval")
+        from wishlist.price_engine import SafeFormulaEvaluator
+        try:
+            SafeFormulaEvaluator(variables)._validate(tree.body)
+        except ValueError as exc:
+            _error('calculation_error', str(exc), 'expression')
 
         def walk(node):
+            if isinstance(node, ast.Call):
+                if (not isinstance(node.func, ast.Name) or node.func.id not in FUNCTIONS or node.keywords):
+                    _error('calculation_error', 'unsupported formula function', 'expression')
+                fn, low, high = FUNCTIONS[node.func.id]
+                if not low <= len(node.args) <= high:
+                    _error('calculation_error', 'invalid function arity', 'expression')
+                return fn(*(walk(arg) for arg in node.args))
             if isinstance(node, ast.Name):
                 if node.id not in variables:
                     _error("calculation_error", "undefined formula variable", "expression")
@@ -174,6 +190,8 @@ def _evaluate(expression, variables):
             _error("calculation_error", "unsupported formula syntax", "expression")
 
         result = walk(tree.body)
+        if type(result) is bool:
+            result = Decimal(int(result))
         if not result.is_finite() or result < 0:
             _error("calculation_error", "formula must produce a finite nonnegative price", "expression")
         return result
@@ -197,6 +215,7 @@ def apply_formula(request: PricingInput, subtotal: Decimal, prior_lines: tuple[P
         _error("invalid_input", "unsupported formula mode", "mode")
     context = _context(request, "")
     variables = {"base": base, "guests": Decimal(context["guest_count"]),
+                  "duration_minutes": context['duration_minutes'],
                  "hours": context["duration_hours"], "distance": context["distance_km"],
                  "items_total": amounts["tech"] + amounts["extras"], "package_price": amounts["package"],
                  "subtotal": base, "package": amounts["package"], "tech": amounts["tech"],

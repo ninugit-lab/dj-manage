@@ -47,7 +47,7 @@ const script = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
   .map(m => m[1]).find(s => s.includes('function updatePrice()'));
 assert.ok(script, 'rendered price script missing');
 class Element {
-  constructor() { this.children = []; this._text = ''; this.value = ''; this.dataset = {}; this.classList = {add(){},remove(){}}; this.style = {}; }
+  constructor() { this.children = []; this._text = ''; this.value = ''; this.dataset = {}; this.classList = {add(){},remove(){}}; this.style = {display:undefined, setProperty(name,value){this[name]=value}, removeProperty(name){delete this[name]}}; }
   set textContent(value) { this.children = []; this._text = String(value); }
   get textContent() { return this._text + this.children.map(c => c.textContent).join(''); }
   set innerHTML(value) { throw Error('unsafe innerHTML write: ' + value); }
@@ -77,21 +77,39 @@ timers.length = 0; // Ignore the form's initial debounce before supplying test i
 get('f-date').value = '2026-12-02';
 get('f-time-start').value = '18:00';
 get('f-time-end').value = '21:00';
+get('f-guest-count').value = '70';
+get('f-event-type').value = 'Hochzeit';
+get('f-street').value = 'Teststraße 2';
+get('f-zip').value = '45127';
+get('f-city').value = 'Essen';
 const flush = async () => { for (let n = 0; n < 8; n++) await Promise.resolve(); };
 const result = (name, total) => ({ok:true, engine_version:'2', status:'ok', gross_total:total,
   lines:[{label:name, amount:total, unit_price:total}], warnings:[]});
 (async () => {
   sandbox.updatePrice(); timers.shift()();
   assert.equal(pending.length, 1);
+  const first = JSON.parse(pending[0].options.body);
+  assert.equal(first.guest_count, '70');
+  assert.equal(first.event_type, 'Hochzeit');
+  assert.equal(first.time_start, '18:00');
+  assert.equal(first.time_end, '21:00');
+  assert.equal(first.address_street, 'Teststraße 2');
+  assert.equal(first.address_zip, '45127');
+  assert.equal(first.address_city, 'Essen');
   packageId = '2'; sandbox.updatePrice(); timers.shift()();
   assert.equal(pending[0].options.signal.aborted, true);
   pending[1].resolve({json:async () => result('<img src=x onerror=alert(1)>', '230.00')});
   await flush();
   assert.match(get('price-total').textContent, /230/);
+  assert.match(get('package-price-total').textContent, /230/);
+  assert.equal(get('package-price-review').hidden, false);
+  assert.equal(get('price-review').hidden, false);
+  assert.equal(get('package-price-breakdown').children[0].textContent.includes('<img src=x onerror=alert(1)>'), true);
   assert.equal(get('price-breakdown').children[0].textContent.includes('<img src=x onerror=alert(1)>'), true);
   pending[0].resolve({json:async () => result('stale', '900.00')});
   await flush();
   assert.doesNotMatch(get('price-total').textContent, /900/);
+  assert.doesNotMatch(get('package-price-total').textContent, /900/);
   packageId = '';
   sandbox.updatePrice();
   assert.doesNotMatch(get('price-total').textContent, /230/);
@@ -104,6 +122,9 @@ const result = (name, total) => ({ok:true, engine_version:'2', status:'ok', gros
   pending[3].resolve({json:async () => ({ok:false,status:'individual_review',message:'Preis wird individuell geprüft'})});
   await flush();
   assert.match(get('price-total').textContent, /individuell geprüft/);
+  assert.match(get('package-price-total').textContent, /individuell geprüft/);
+  assert.equal(get('package-price-review').hidden, true);
+  assert.equal(get('price-review').hidden, true);
   pending[3].resolve({json:async () => result('late', '999.00')});
   await flush();
   assert.doesNotMatch(get('price-total').textContent, /999/);
@@ -126,6 +147,8 @@ const result = (name, total) => ({ok:true, engine_version:'2', status:'ok', gros
   pending[6].resolve({json:async () => result('Required', '20.00')});
   await flush();
   assert.match(get('price-total').textContent, /20,00/);
+  sandbox.goStep(4);
+  assert.equal(get('sticky-price').style.display, undefined);
 })().catch(err => { console.error(err); process.exitCode = 1; });
 """
 

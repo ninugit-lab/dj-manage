@@ -280,6 +280,10 @@
           </div>
           <div class="form-group"><label class="form-label">Beschreibung</label><input type="text" id="pkg-desc" class="form-input" placeholder="Kurzbeschreibung für Kunden"></div>
           <div class="form-group">
+            <label class="form-label" for="pkg-workflow">Buchungs-Workflow</label>
+            <input id="pkg-workflow" type="number" min="1" class="form-input" placeholder="Workflow-ID; leer = Standard">
+          </div>
+          <div class="form-group">
             <label class="form-label">Enthaltene Posten <span class="font-normal text-[.68rem] text-muted">— Diese Posten sind im Paketpreis inbegriffen und werden nicht zusätzlich berechnet</span></label>
             <div class="flex flex-wrap gap-1.5">
               {% for item in price_items %}<label class="text-[.78rem] flex items-center gap-1 px-2 py-0.5 bg-card rounded cursor-pointer"><input type="checkbox" class="pkg-item-cb" value="{{ item.pk }}"> {{ item.name }} ({{ item.price }} €)</label>{% endfor %}
@@ -292,7 +296,7 @@
         </div>
         <div id="pkg-list">
           {% for pkg in pricing_packages %}
-          <div class="wb-comp-row" id="pkg-row-{{ pkg.pk }}" data-base-price="{{ pkg.base_price|unlocalize }}">
+          <div class="wb-comp-row" id="pkg-row-{{ pkg.pk }}" data-base-price="{{ pkg.base_price|unlocalize }}" data-workflow-id="{{ pkg.workflow_id|default_if_none:'' }}">
             <div class="flex-1">
               <span class="pkg-display">
                 <strong>{{ pkg.name }}</strong>{% if pkg.badge_label %} <span class="badge badge-inquiry">{{ pkg.badge_label }}</span>{% endif %}
@@ -340,6 +344,8 @@
           <div class="form-row-3">
             <div class="form-group"><label class="form-label">Feld</label>
               <select id="rule-cond-field" class="form-input appearance-auto">
+                <option value="with_sound">Mit Tontechnik (1 = ja, 0 = nein)</option>
+                <option value="duration_minutes">Spielzeit (Minuten)</option>
                 <option value="guest_count">Gästeanzahl</option>
                 <option value="duration_hours">Dauer (Std.)</option>
                 <option value="date_weekday">Wochentag (0=Mo … 6=So)</option>
@@ -433,14 +439,17 @@
           <div class="form-group">
             <label class="form-label">Formel-Ausdruck</label>
             <input type="text" id="formula-expr" class="form-input font-mono" placeholder="z.B. base + (guests * 5) + (hours * 50)">
+            <label class="form-label" for="formula-mode">Verrechnung</label>
+            <select id="formula-mode" class="form-input"><option value="replace">Zwischensumme ersetzen</option><option value="add">Hinzufügen</option><option value="subtract">Abziehen</option></select>
             <div class="text-[.68rem] text-muted mt-1.5 leading-relaxed">
               <strong>Variablen:</strong>
               <code>base</code> = bisherige Zwischensumme,
               <code>guests</code> = Gästeanzahl,
-              <code>hours</code> = Dauer in Stunden,
+               <code>hours</code> = Dauer in Stunden,
+               <code>duration_minutes</code> = exakte Spielzeit in Minuten,
               <code>distance</code> = Entfernung in km,
               <code>items_total</code> = Summe aller Posten,
-              <code>package_price</code> = Paketpreis<br>
+               <code>package_price</code> = Paketpreis; Funktionen: <code>ceil(x)</code>, <code>max(a, b)</code><br>
               <strong>Operatoren:</strong> <code>+</code> <code>-</code> <code>*</code> <code>/</code> <code>%</code> — Vergleiche: <code>></code> <code><</code> <code>==</code><br>
               <strong>Beispiel:</strong> <code>base + (guests * 3) + (distance > 50) * 75</code> = Basis + 3 € pro Gast + 75 € Zuschlag ab 50 km
             </div>
@@ -452,7 +461,7 @@
         </div>
         <div id="formula-list">
           {% for f in pricing_formulas %}
-          <div class="wb-comp-row" id="formula-row-{{ f.pk }}">
+          <div class="wb-comp-row" id="formula-row-{{ f.pk }}" data-mode="{{ f.mode }}">
             <div class="flex-1">
               <span class="formula-display">
                 <strong>{{ f.name }}</strong>
@@ -489,7 +498,9 @@ var steps=[];
 var wfContext=null;
 
 var editingComponent={};
+var editingRuleScope = [];
 function closeComponentForm(type){
+  if(type==='rule')editingRuleScope=[];
   document.getElementById(type+'-add').style.display='none';
   document.getElementById(type+'-save').textContent='Speichern';
   delete editingComponent[type];
@@ -500,7 +511,10 @@ function closeComponentForm(type){
   });
   document.getElementById(type+'-add').querySelectorAll('select').forEach(function(el){el.selectedIndex=0});
   if(type==='item')document.getElementById('item-category').value='extra';
-  if(type==='pkg')document.querySelectorAll('.pkg-item-cb').forEach(function(el){el.checked=false});
+  if(type==='pkg'){
+    document.querySelectorAll('.pkg-item-cb').forEach(function(el){el.checked=false});
+    document.getElementById('pkg-workflow').value='';
+  }
 }
 function toggleForm(id){
   var type=id.split('-')[0];
@@ -520,6 +534,7 @@ function openEdit(type,pk){
   }else if(type==='pkg'){
     value('pkg-name','name');value('pkg-desc','description');value('pkg-badge','badge_label');
     document.getElementById('pkg-price').value=row.dataset.basePrice;
+    document.getElementById('pkg-workflow').value=row.dataset.workflowId;
     var ids=new Set(Array.from(row.querySelectorAll('.pkg-edit-item-'+pk+':checked'),function(el){return el.value}));
     document.querySelectorAll('.pkg-item-cb').forEach(function(el){el.checked=ids.has(el.value)});
   }else if(type==='rule'){
@@ -527,6 +542,8 @@ function openEdit(type,pk){
     document.getElementById('rule-effect-val').value=row.dataset.effectValue;
     value('rule-sort','sort_order');
     var conditions=JSON.parse(row.querySelector('script[type="application/json"]').textContent);
+    editingRuleScope=conditions.filter(function(c){return c.field==='workflow_id'});
+    conditions=conditions.filter(function(c){return c.field!=='workflow_id'});
     var condition=conditions[0];
     function hasOption(id,v){return Array.from(document.getElementById(id).options).some(function(o){return o.value===v})}
     if(conditions.length!==1 || !condition || !hasOption('rule-cond-field',condition.field) ||
@@ -540,6 +557,7 @@ function openEdit(type,pk){
     document.getElementById('rule-cond-val').value=Array.isArray(condition.value)?condition.value.join(','):String(condition.value??'');
   }else if(type==='formula'){
     value('formula-name','name');value('formula-desc','description');value('formula-expr','expression');
+    document.getElementById('formula-mode').value=row.dataset.mode;
   }
   editingComponent[type]=pk;
   document.getElementById(type+'-save').textContent='Änderungen speichern';
@@ -875,6 +893,7 @@ function savePkg(){
     name:document.getElementById('pkg-name').value,
     description:document.getElementById('pkg-desc').value,
     base_price:parseFloat(document.getElementById('pkg-price').value)||0,
+    workflow_id:document.getElementById('pkg-workflow').value ? Number(document.getElementById('pkg-workflow').value) : null,
     badge_label:document.getElementById('pkg-badge').value,
     included_item_ids:items,
   }).then(function(d){if(d.success){showToast('Paket gespeichert');location.reload()}else showToast(d.error||'Fehler',true)}).catch(function(){showToast('Fehler beim Speichern',true)});
@@ -888,11 +907,12 @@ function saveRule(){
   var op=document.getElementById('rule-cond-op').value;
   var parsedVal=val;
   if(op==='in') parsedVal=val.split(',').map(function(v){return isNaN(v.trim())?v.trim():parseFloat(v.trim())});
+  else if(document.getElementById('rule-cond-field').value==='with_sound') parsedVal=val==='1'||val==='true';
   else if(op!=='is_weekend') parsedVal=isNaN(val)?val:parseFloat(val);
   pFetch('api/price/rules/'+(pk?pk+'/':''),pk?'PUT':'POST',{
     name:document.getElementById('rule-name').value,
     description:document.getElementById('rule-desc').value,
-    condition_json:[{field:document.getElementById('rule-cond-field').value,op:op,value:parsedVal}],
+    condition_json:editingRuleScope.concat([{field:document.getElementById('rule-cond-field').value,op:op,value:parsedVal}]),
     effect_type:document.getElementById('rule-effect-type').value,
     effect_value:parseFloat(document.getElementById('rule-effect-val').value)||0,
     sort_order:parseInt(document.getElementById('rule-sort').value)||0,
@@ -906,6 +926,7 @@ function saveFormula(){
   pFetch('api/price/formulas/'+(pk?pk+'/':''),pk?'PUT':'POST',{
     name:document.getElementById('formula-name').value,
     expression:document.getElementById('formula-expr').value,
+    mode:document.getElementById('formula-mode').value,
     description:document.getElementById('formula-desc').value,
   }).then(function(d){if(d.success){showToast('Formel gespeichert');location.reload()}else showToast(d.error||'Fehler',true)}).catch(function(){showToast('Fehler beim Speichern',true)});
 }

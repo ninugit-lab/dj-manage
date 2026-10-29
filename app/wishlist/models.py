@@ -51,9 +51,6 @@ class Event(models.Model):
     client_notes = models.TextField(blank=True, verbose_name="Kundennotizen")
     spotify_playlist_id = models.CharField(max_length=100, blank=True, verbose_name="Spotify Wishlist Playlist",
         help_text="ID oder URL — wird automatisch gekürzt")
-    spotify_preselection_playlist_id = models.CharField(max_length=100, blank=True,
-        verbose_name="Spotify Vorauswahl Playlist",
-        help_text="Automatisch erstellt bei Event-Erstellung")
     max_wishes_per_session = models.PositiveIntegerField(default=3, verbose_name="Max. Wünsche pro Session")
     wishlist_show_cover = models.BooleanField(default=True, verbose_name="Cover anzeigen")
     wishlist_show_artist = models.BooleanField(default=True, verbose_name="Künstler anzeigen")
@@ -129,8 +126,6 @@ class Event(models.Model):
         # Auto-parse Spotify URL to ID
         if self.spotify_playlist_id:
             self.spotify_playlist_id = _extract_spotify_id(self.spotify_playlist_id)
-        if self.spotify_preselection_playlist_id:
-            self.spotify_preselection_playlist_id = _extract_spotify_id(self.spotify_preselection_playlist_id)
         if self.date and self.is_past and self.status not in (EventStatus.PAST, EventStatus.CANCELLED):
             self.status = EventStatus.PAST
         if self.is_active:
@@ -339,6 +334,12 @@ class AppConfig(models.Model):
         return obj
 
 
+class LocationApiBudget(models.Model):
+    """Shared conservative counters across web workers; no addresses or secrets."""
+    key = models.CharField(max_length=80, primary_key=True)
+    used = models.PositiveIntegerField(default=0)
+
+
 class PriceItem(models.Model):
     CATEGORY_CHOICES = [
         ('base', 'Grundpreis'), ('tech', 'Technik'), ('equipment', 'Ausrüstung'),
@@ -396,6 +397,8 @@ class PricingPackage(models.Model):
     version = models.PositiveIntegerField(default=1)
     description = models.TextField(blank=True, verbose_name="Beschreibung")
     base_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Grundpreis (€)")
+    workflow = models.ForeignKey('PricingWorkflow', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='booking_packages', verbose_name='Buchungs-Workflow')
     included_items = models.ManyToManyField('PriceItem', blank=True, verbose_name="Enthaltene Posten")
     badge_label = models.CharField(max_length=50, blank=True, verbose_name="Badge")
     badge_color = models.CharField(max_length=20, blank=True, verbose_name="Badge-Farbe")

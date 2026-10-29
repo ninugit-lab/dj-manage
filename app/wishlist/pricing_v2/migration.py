@@ -149,6 +149,7 @@ def _payload(event, workflow):
         "discount_percent": calc.discount_percent,
         "custom_items": calc.custom_items_json or [],
         "event_type": event.event_type,
+        "with_sound": event.with_sound,
         "workflow_id": str(workflow.pk),
     }
     if event.pricing_region and event.pricing_region != Event._meta.get_field("pricing_region").default:
@@ -194,6 +195,7 @@ def _frozen_context(event, profile, workflow, payload):
     package_snapshot = None if package is None else {
         "id": package.pk, "version": package.version, "name": package.name,
         "description": package.description, "base_price": package.base_price,
+        "workflow_id": package.workflow_id,
         "badge_label": package.badge_label, "badge_color": package.badge_color,
         "is_active": package.is_active, "is_public": package.is_public,
         "included_item_ids": sorted(included_item_ids),

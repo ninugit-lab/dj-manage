@@ -28,9 +28,28 @@
     border: 1.5px solid #1e1e30; border-radius: 8px; cursor: pointer;
     transition: border-color .2s; min-height: 44px; }
   .pkg-label:has(input:checked) { border-color: rgb(var(--color-accent2)); }
+  .pkg-label { display: grid; grid-template-columns: 1rem minmax(0, 1fr); align-items: start; }
+  .pkg-copy, .addon-label > div, .addon-label > span { min-width: 0; overflow-wrap: anywhere; }
+  .pkg-price { grid-column: 2; font-size: .9rem; overflow-wrap: anywhere; }
+  .pkg-terms { margin: .5rem 0 0; padding-left: 1rem; font-size: .8rem; color: #a0a0b8; }
+  .price-summary { min-width: 0; overflow-wrap: anywhere; }
+  #price-total, #package-price-total { display: block; font-family: inherit; font-size: 1.1rem; line-height: 1.5; }
+  #price-total.has-price, #package-price-total.has-price { font-size: 1.75rem; font-weight: 600; }
+  .price-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .75rem; }
+  .price-row > :first-child { overflow-wrap: anywhere; min-width: 0; }
+  .price-row > :last-child { white-space: nowrap; }
+  .booking-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+  @media (max-width: 480px) {
+    .step-panel { padding: 1rem; min-width: 0; }
+    .booking-actions > button { flex: 1 1 8rem; padding-left: .75rem; padding-right: .75rem; }
+    .addon-label { align-items: start; }
+    .addon-label > div:last-child:not(:first-child) { flex-shrink: 1; }
+    input[type="time"] { min-width: 0; }
+    #toast { width: calc(100vw - 2rem); overflow-wrap: anywhere; }
+  }
 
   /* Checkbox add-on items */
-  .addon-label { display: flex; align-items: center; gap: .75rem; padding: .5rem;
+  .addon-label { display: flex; align-items: start; gap: .75rem; padding: .5rem;
     border-radius: 6px; transition: background .15s; cursor: pointer; min-height: 44px; }
   .addon-label:hover { background: rgba(168,85,247,.05); }
   .addon-label input[type="checkbox"] { accent-color: rgb(var(--color-accent)); width: 18px; height: 18px;
@@ -125,7 +144,7 @@
         {% include "components/form_field.html" with id="f-client-phone" label="Telefon" name="f-client-phone" type="tel" placeholder="+49 …" %}
         {% include "components/form_field.html" with id="f-client-company" label="Firma" name="f-client-company" type="text" placeholder="Optional" %}
       </div>
-      <div class="mt-6 flex justify-between">
+      <div class="booking-actions mt-6 justify-between">
         <button type="button" onclick="goStep(1)" class="btn-ghost min-h-[44px] px-5">&lsaquo; Zurück</button>
         <button type="button" id="btn-next-2" onclick="stepValidate(2)"
           class="btn-primary min-h-[44px] px-6">Weiter &rsaquo;</button>
@@ -140,7 +159,7 @@
         {% include "components/form_field.html" with id="f-name" label="Event Name" name="f-name" type="text" required=True placeholder="z.B. Hochzeit Meyer" %}
         <div class="mb-4">
           <label for="f-event-type" class="field-label">Art des Events</label>
-          <select id="f-event-type" name="f-event-type" class="field-input">
+          <select id="f-event-type" name="f-event-type" class="field-input" onchange="updatePrice()">
             <option value="">— Auswählen —</option>
             <option value="Hochzeit">Hochzeit</option>
             <option value="Firmenfeier">Firmenfeier</option>
@@ -158,6 +177,7 @@
         <label for="f-addr-search" class="field-label">Adresse suchen</label>
         <input type="text" id="f-addr-search" class="field-input" placeholder="Adresse oder Ort eingeben…" autocomplete="off">
         <div id="f-addr-results"></div>
+        <p class="text-xs text-subtle mt-1">Adresssuche und Fahrstrecke: <a href="https://www.geoapify.com/">Powered by Geoapify</a>, Daten © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap-Mitwirkende</a>.</p>
       </div>
 
       {% include "components/form_field.html" with id="f-location" label="Veranstaltungsort" name="f-location" type="text" required=True placeholder="z.B. Schloss Heidelberg, Festsaal Mayer" %}
@@ -194,7 +214,7 @@
         <textarea id="f-description" name="f-description" class="field-input min-h-[80px] resize-y" placeholder="Erzähle etwas über dein Event…"></textarea>
       </div>
 
-      <div class="mt-6 flex justify-between">
+      <div class="booking-actions mt-6 justify-between">
         <button type="button" onclick="goStep(2)" class="btn-ghost min-h-[44px] px-5">&lsaquo; Zurück</button>
         <button type="button" id="btn-next-3" onclick="stepValidate(3)"
           class="btn-primary min-h-[44px] px-6">Weiter &rsaquo;</button>
@@ -210,11 +230,16 @@
         {% for pkg in pricing_packages %}
         <label class="pkg-label">
           <input type="radio" name="f-package" value="{{ pkg.pk }}" {% if forloop.first %}checked {% endif %}class="accent-purple-500 w-4 h-4 flex-shrink-0" onchange="updatePrice()">
-          <div class="flex-1">
+          <div class="pkg-copy">
             <div class="font-medium text-sm">{{ pkg.name }}{% if pkg.badge_label %} <span class="ml-1 text-[0.6rem] bg-purple-500/15 text-purple-300 px-2 py-0.5 rounded-full">{{ pkg.badge_label }}</span>{% endif %}</div>
-            {% if pkg.description %}<div class="text-xs text-subtle mt-0.5">{{ pkg.description|truncatewords:15 }}</div>{% endif %}
+            {% if pkg.description %}<div class="text-xs text-subtle mt-0.5">{{ pkg.description }}</div>{% endif %}
+            {% if pkg.included_items.all %}
+            <ul class="pkg-terms">
+              {% for item in pkg.included_items.all %}{% if item.is_active and item.is_public %}<li>{{ item.name }} inklusive</li>{% endif %}{% endfor %}
+            </ul>
+            {% endif %}
           </div>
-          <div class="font-mono text-sm text-purple-300 flex-shrink-0">{% if pkg.name == 'Basis-Paket' %}ab 580,00 € / 6 Std. (ohne Tontechnik){% else %}{{ pkg.base_price }} €{% endif %}</div>
+          <div class="pkg-price font-mono text-purple-300">Grundpreis {{ pkg.base_price }} €</div>
         </label>
         {% endfor %}
       </div>
@@ -224,53 +249,40 @@
 
       <fieldset class="mb-5" aria-label="Tontechnik">
         <legend class="field-label">Tontechnik</legend>
-        <label class="addon-label"><input type="radio" name="f-with-sound" value="yes" checked onchange="updatePrice()"> Mit Tontechnik (Tonanlage, Lichttechnik und Mikrofone)</label>
-        <label class="addon-label"><input type="radio" name="f-with-sound" value="no" onchange="updatePrice()"> Ohne Tontechnik (Lichttechnik und Mikrofone inklusive, geeignete Tonanlage vor Ort erforderlich)</label>
-        <p class="text-xs text-subtle">Basis-Paket: bis 50 Gäste 660 € mit / 580 € ohne Tontechnik; ab 51 Gästen 750 € mit / 670 € ohne Tontechnik. 6 Stunden inklusive, jede weitere angefangene Stunde 60 €. Anfahrt: 100 km Hin- und Rückfahrt inklusive, danach 0,30 € pro weiterem km. Nebelmaschine inklusive, sofern die Location ihren Einsatz erlaubt.</p>
+        <label class="addon-label"><input type="radio" name="f-with-sound" value="yes" checked onchange="updatePrice()"><span>Mit Tontechnik (Tonanlage, Lichttechnik und Mikrofone)</span></label>
+        <label class="addon-label"><input type="radio" name="f-with-sound" value="no" onchange="updatePrice()"><span>Ohne Tontechnik (Lichttechnik und Mikrofone inklusive, geeignete Tonanlage vor Ort erforderlich)</span></label>
       </fieldset>
 
-      <div class="mt-6 flex justify-between">
+      <section class="price-summary glass rounded-lg p-4 mb-4" aria-label="Preiskalkulator">
+        <h3 class="font-medium text-sm mb-3">Deine Preisberechnung</h3>
+        <p id="package-distance-info" class="text-xs text-subtle mb-3">Die Fahrstrecke wird aus deiner Veranstaltungsadresse ermittelt.</p>
+        <div id="package-price-breakdown" class="text-sm mb-3 space-y-1"></div>
+        <div id="package-rules-info" class="text-xs text-subtle mb-2"></div>
+        <div class="pt-2 border-t border-border">
+          <span class="text-accent" id="package-price-total" aria-live="polite">Preis wird individuell geprüft</span>
+          <p id="package-price-review" class="text-sm text-subtle mt-2" hidden>Preis wird individuell geprüft</p>
+          <p class="text-xs text-subtle mt-2">Unverbindliche Preisangabe – der endgültige Preis wird nach Prüfung deiner Anfrage bestätigt.</p>
+        </div>
+      </section>
+
+      <div class="booking-actions mt-6 justify-between">
         <button type="button" onclick="goStep(3)" class="btn-ghost min-h-[44px] px-5">&lsaquo; Zurück</button>
         <button type="button" onclick="goStep(5)" class="btn-primary min-h-[44px] px-6">Weiter &rsaquo;</button>
       </div>
     </div>
 
-    {# ══ STEP 5: Add-Ons + Preis + Absenden ══ #}
+    {# ══ STEP 5: Preis + Abschluss ══ #}
     <div class="step-panel glass rounded-xl p-6" id="step-5" role="group" aria-labelledby="step5-title">
-      <h2 id="step5-title" class="font-display text-2xl tracking-wide mb-5">Zusatzoptionen</h2>
-
-      {% if price_items %}
-      <div id="price-section">
-        <div id="price-items-container" class="mb-6">
-          {% regroup price_items by get_category_display as categories %}
-          {% for cat in categories %}
-          <div class="mb-4">
-            <div class="text-[0.65rem] font-mono tracking-widest uppercase text-subtle mb-2">{{ cat.grouper }}</div>
-            {% for item in cat.list %}
-            <label class="addon-label">
-              <input type="checkbox" value="{{ item.pk }}" data-price="{{ item.price }}"
-                {% if item.is_required %}checked disabled{% elif item.is_default %}checked{% endif %}
-                onchange="updatePrice()" class="price-checkbox">
-              <div class="flex-1">
-                <div class="text-sm font-medium">{{ item.name }}</div>
-                {% if item.description %}<div class="text-xs text-subtle">{{ item.description }}</div>{% endif %}
-              </div>
-              <div class="font-mono text-sm text-accent flex-shrink-0">{{ item.price }} €</div>
-            </label>
-            {% endfor %}
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
+      <h2 id="step5-title" class="font-display text-2xl tracking-wide mb-5">Anfrage abschließen</h2>
 
       {# Price breakdown #}
-      <div class="glass rounded-lg p-4 mb-4">
+      <div class="price-summary glass rounded-lg p-4 mb-4">
         <div id="price-breakdown" class="text-sm mb-3 space-y-1"></div>
         <div id="rules-info" class="text-xs text-subtle mb-2"></div>
-        <div class="flex justify-between items-center pt-2 border-t border-border">
-          <span class="font-display text-xl tracking-wide">Gesamt</span>
-          <span class="font-display text-3xl text-accent" id="price-total" aria-live="polite">Preis wird individuell geprüft</span>
+        <div class="pt-2 border-t border-border">
+          <span class="text-accent" id="price-total" aria-live="polite">Preis wird individuell geprüft</span>
+          <p id="price-review" class="text-sm text-subtle mt-2" hidden>Preis wird individuell geprüft</p>
+          <p class="text-xs text-subtle mt-2">Unverbindliche Preisangabe – der endgültige Preis wird nach Prüfung deiner Anfrage bestätigt.</p>
         </div>
       </div>
 
@@ -284,7 +296,7 @@
         </span>
       </label>
 
-      <div class="mt-6 flex justify-between">
+      <div class="booking-actions mt-6 justify-between">
         <button type="button" onclick="goStep(4)" class="btn-ghost min-h-[44px] px-5">&lsaquo; Zurück</button>
         <button type="button" id="submit-btn" onclick="submitForm()"
           class="btn-primary min-h-[44px] px-6 opacity-40 cursor-not-allowed" disabled aria-disabled="true">
@@ -306,8 +318,8 @@
 
 {# ── Sticky price bar (mobile) ── #}
 <div id="sticky-price" class="bg-surface/90 backdrop-blur border-t border-border px-4 py-2 sm:hidden" style="display:none!important" aria-hidden="true">
-  <div class="flex justify-between items-center max-w-xl mx-auto">
-    <span class="text-xs text-subtle">Gesamt</span>
+  <div class="max-w-xl mx-auto" style="overflow-wrap:anywhere">
+    <span class="text-xs text-subtle">Unverbindliche Preisangabe</span>
     <span class="font-mono text-accent font-semibold" id="sticky-total">Preis wird individuell geprüft</span>
   </div>
 </div>
@@ -323,17 +335,13 @@ var eventDistanceKm = null;
 var currentStep = 1;
 var TOTAL_STEPS = 5;
 
-/* ── Haversine ── */
-function haversineKm(lat1, lon1, lat2, lon2) {
-  var R = 6371, toRad = Math.PI / 180;
-  var dLat = (lat2 - lat1) * toRad, dLon = (lon2 - lon1) * toRad;
-  var a = Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*toRad)*Math.cos(lat2*toRad)*Math.sin(dLon/2)*Math.sin(dLon/2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-function setEventCoords(lat, lon) {
-  if (DJ_HOME.lat === null || DJ_HOME.lon === null || lat === null) { eventDistanceKm = null; return; }
-  eventDistanceKm = Math.round(haversineKm(DJ_HOME.lat, DJ_HOME.lon, lat, lon) * 1.3);
-}
+/* Distances are resolved server-side from the current structured address. */
+['f-street', 'f-zip', 'f-city'].forEach(function(id) {
+  document.getElementById(id).addEventListener('input', function() {
+    eventDistanceKm = null;
+    updatePrice();
+  });
+});
 
 /* ── Step navigation ── */
 function goStep(n) {
@@ -343,6 +351,7 @@ function goStep(n) {
   updateProgressUI();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (n === 5) updateSubmitButton();
+  if (n === 4) updatePrice();
 }
 
 function updateProgressUI() {
@@ -423,29 +432,47 @@ var _priceTimer;
 var _priceSequence = 0;
 var _priceController = null;
 function showPriceReview(message) {
+  ['price-review', 'package-price-review'].forEach(function(id) { document.getElementById(id).hidden = true; });
   var text = message || 'Preis wird individuell geprüft';
-  document.getElementById('price-total').textContent = text;
+  ['price-total', 'package-price-total'].forEach(function(id) {
+    document.getElementById(id).textContent = text;
+    document.getElementById(id).classList.remove('has-price');
+  });
   document.getElementById('sticky-total').textContent = text;
-  document.getElementById('price-breakdown').replaceChildren();
-  document.getElementById('rules-info').textContent = '';
+  ['price-breakdown', 'package-price-breakdown'].forEach(function(id) { document.getElementById(id).replaceChildren(); });
+  showPriceWarnings([]);
+}
+function showPriceWarnings(warnings) {
+  ['rules-info', 'package-rules-info'].forEach(function(id) {
+    document.getElementById(id).textContent = (warnings || []).join(', ');
+  });
 }
 function formatPrice(value) {
   return new Intl.NumberFormat('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(Number(value)) + ' €';
 }
 function showPriceResult(data) {
+  eventDistanceKm = data.distance_km == null ? null : String(data.distance_km);
+  document.getElementById('package-distance-info').textContent = eventDistanceKm === null
+    ? 'Fahrstrecke nicht ermittelbar. Bitte vollständige Adresse in Schritt 3 prüfen.'
+    : 'Einfache Fahrstrecke: ' + new Intl.NumberFormat('de-DE', {maximumFractionDigits: 1}).format(Number(eventDistanceKm)) + ' km. Hin- und Rückfahrt werden im Kalkulator berücksichtigt.';
   if (!data.ok || data.status !== 'ok' || data.gross_total == null) {
     showPriceReview();
-    document.getElementById('rules-info').textContent = (data.warnings || []).join(', ');
+    showPriceWarnings(data.warnings);
     return;
   }
-  var price = 'Unverbindliche Schätzung: ca. ' + formatPrice(data.gross_total) + ' brutto';
-  document.getElementById('price-total').textContent = price;
+  var price = formatPrice(data.gross_total) + ' brutto';
+  ['price-review', 'package-price-review'].forEach(function(id) { document.getElementById(id).hidden = false; });
+  ['price-total', 'package-price-total'].forEach(function(id) {
+    document.getElementById(id).textContent = price;
+    document.getElementById(id).classList.add('has-price');
+  });
   document.getElementById('sticky-total').textContent = price;
-  var breakdown = document.getElementById('price-breakdown');
+  ['price-breakdown', 'package-price-breakdown'].forEach(function(id) {
+  var breakdown = document.getElementById(id);
   breakdown.replaceChildren();
   (data.lines || []).forEach(function(line) {
     var row = document.createElement('div');
-    row.className = 'flex justify-between';
+    row.className = 'price-row';
     var label = document.createElement('span');
     label.textContent = line.label;
     var amount = document.createElement('span');
@@ -455,7 +482,8 @@ function showPriceResult(data) {
     row.appendChild(amount);
     breakdown.appendChild(row);
   });
-  document.getElementById('rules-info').textContent = (data.warnings || []).join(', ');
+  });
+  showPriceWarnings(data.warnings);
 }
 function updatePrice() {
   ++_priceSequence;
@@ -483,6 +511,9 @@ function doUpdatePrice(sequence) {
     package_id: pkgId,
     selected_item_ids: itemIds,
     distance_km: eventDistanceKm,
+    address_street: document.getElementById('f-street').value.trim(),
+    address_zip: document.getElementById('f-zip').value.trim(),
+    address_city: document.getElementById('f-city').value.trim(),
     with_sound: document.querySelector('input[name="f-with-sound"]:checked')?.value !== 'no'
   };
   var controller = new AbortController();
@@ -587,9 +618,11 @@ function showToast(m, e) {
     var q = this.value.trim();
     if (q.length < 3) { rb.style.display = 'none'; return; }
     dt = setTimeout(function() {
-      fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=de,at,ch&q=' + encodeURIComponent(q))
+      fetch('/api/address-search/', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF}, body: JSON.stringify({query: q})})
         .then(function(r) { return r.json(); })
-        .then(function(data) {
+        .then(function(response) {
+          if (si.value.trim() !== q) return;
+          var data = response.results || [];
           if (!data.length) { rb.style.display = 'none'; return; }
           rb.innerHTML = '';
           data.forEach(function(item) {
@@ -608,7 +641,7 @@ function showToast(m, e) {
               document.getElementById('f-street').value = street;
               document.getElementById('f-zip').value = zip;
               document.getElementById('f-city').value = city;
-              setEventCoords(parseFloat(item.lat), parseFloat(item.lon));
+              eventDistanceKm = null;
               updatePrice();
               si.value = ''; rb.style.display = 'none';
               updateSubmitButton();
@@ -625,12 +658,12 @@ function showToast(m, e) {
   });
 })();
 
-/* ── Show sticky price bar on step 5 ── */
+/* ── Show sticky price bar while choosing package or reviewing quote ── */
 var _origGoStep = goStep;
 goStep = function(n) {
   _origGoStep(n);
   var sp = document.getElementById('sticky-price');
-  if (n === 5) { sp.style.removeProperty('display'); }
+  if (n === 4 || n === 5) { sp.style.removeProperty('display'); }
   else { sp.style.setProperty('display', 'none', 'important'); }
 };
 

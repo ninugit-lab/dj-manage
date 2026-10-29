@@ -94,6 +94,11 @@ def _legacy_calculate(payload, event, *, public=False):
                       discount_percent=payload.get("discount_percent", 0),
                       offer_data=payload.get("offer_data"), context_override=payload.get("context_override"))
         workflow_id = payload.get("workflow_id")
+    package = PricingPackage.objects.filter(pk=params['package_id']).first() if params['package_id'] else None
+    if package and package.workflow_id and (public or workflow_id is None):
+        if not package.workflow.is_active:
+            raise PricingValidationError('reference_error', 'inactive package workflow', 'workflow')
+        workflow_id = package.workflow_id
     if workflow_id is None:
         workflow_id = PricingWorkflow.objects.filter(is_default=True, is_active=True).values_list("pk", flat=True).first()
     # A public individual-items request must not inherit a workflow's configured
@@ -175,6 +180,9 @@ def calculate_with_mode(payload=None, *, event=None, public=False, actor=None,
     if comparison_scope not in (None, "submission"):
         raise PricingValidationError("invalid_input", "unknown comparison scope", "comparison_scope")
     if public and payload is not None:
+        booking_package = PricingPackage.objects.filter(pk=payload.get('package_id'), workflow__isnull=False).first() if str(payload.get('package_id', '')).isdigit() else None
+        if booking_package:
+            payload = {**payload, 'selected_item_ids': []}
         selected = payload.get("selected_item_ids", ())
         if not isinstance(selected, (list, tuple)) or any(
                 isinstance(identity, bool) or not isinstance(identity, (str, int))
@@ -185,6 +193,8 @@ def calculate_with_mode(payload=None, *, event=None, public=False, actor=None,
                       .values_list("pk", flat=True)):
             _reference("item", "selected_item_ids")
         required = PriceItem.objects.filter(is_active=True, is_public=True, is_required=True).values_list("pk", flat=True)
+        if booking_package:
+            required = []
         payload = {**payload, "selected_item_ids": [str(identity) for identity in dict.fromkeys(
             [*(int(identity) for identity in selected), *required])]}
         if payload.get("package_id") in (None, ""):
@@ -339,7 +349,10 @@ def _calculate(payload, *, public, actor=None):
         pk=package_id, is_active=True, **({"is_public": True} if public else {})).first()
     if package is None and not individual:
         _reference("package", "package_id")
-    workflow = resolve_workflow(payload.get("workflow_id"), public=public)
+    if package and package.workflow_id and (public or not payload.get('workflow_id')):
+        workflow = resolve_workflow(package.workflow_id, public=False)
+    else:
+        workflow = resolve_workflow(payload.get("workflow_id"), public=public)
     override = PricingPackageOverride.objects.filter(profile=profile, package=package).first() if package else None
     resolved = resolve_pricing_config(profile, None if individual else SimpleNamespace(
         id=package.pk, version=package.version,
@@ -348,6 +361,8 @@ def _calculate(payload, *, public, actor=None):
     included = () if individual else tuple(str(item.pk) for item in package.included_items.all())
     required = tuple(str(item.pk) for item in PriceItem.objects.filter(is_active=True, is_required=True,
                       **({"is_public": True} if public else {})))
+    if public and package and package.workflow_id:
+        required = ()
     ids = set(selected + included + required)
     available = PriceItem.objects.filter(pk__in=ids, is_active=True,
                                          **({"is_public": True} if public else {}))
@@ -371,6 +386,7 @@ def _calculate(payload, *, public, actor=None):
         "base_price": "0.00" if individual else str(package.base_price),
         "version": "individual" if individual else package.version,
         "description": "" if individual else package.description, "included_item_ids": included,
+        "workflow_id": None if individual else package.workflow_id,
         "required_item_ids": required, "is_active": True if individual else package.is_active,
         "is_public": True if individual else package.is_public}},
         "items": items, "rules": rules, "formulas": formulas}
@@ -421,6 +437,7 @@ def calculate_event(event, *, actor=None):
             "setup_minutes": event.setup_minutes, "teardown_minutes": event.teardown_minutes,
             "discount_percent": calc.discount_percent, "custom_items": custom,
              "event_type": event.event_type,
+             "with_sound": event.with_sound,
              "workflow_id": str(calc.workflow_id) if calc.workflow_id else None}
     # The model's default NW is not a user-selected override of the profile.
     if event.pricing_region and event.pricing_region != Event._meta.get_field("pricing_region").default:

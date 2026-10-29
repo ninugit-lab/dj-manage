@@ -425,14 +425,7 @@
         <a href="https://open.spotify.com/playlist/{{ event.spotify_playlist_id }}" target="_blank" class="text-xs mt-1 inline-block text-accent">&#128279; Auf Spotify öffnen</a>
         {% endif %}
       </div>
-      <div class="form-group">
-        <label class="form-label">Vorauswahl Playlist</label>
-        <input type="text" name="spotify_preselection_playlist_id" class="form-input" value="{{ event.spotify_preselection_playlist_id|default:'' }}" placeholder="URL oder ID — wird automatisch erstellt">
-        {% if event.spotify_preselection_playlist_id %}
-        <a href="https://open.spotify.com/playlist/{{ event.spotify_preselection_playlist_id }}" target="_blank" class="text-xs mt-1 inline-block text-accent2">&#128279; Auf Spotify öffnen</a>
-        {% endif %}
-      </div>
-      {% if not event.spotify_playlist_id and not event.spotify_preselection_playlist_id %}
+      {% if not event.spotify_playlist_id %}
       <p class="text-xs text-muted mt-1">Playlists werden automatisch beim Erstellen eines neuen Events angelegt (Spotify-Verbindung nötig).</p>
       {% endif %}
     </div>

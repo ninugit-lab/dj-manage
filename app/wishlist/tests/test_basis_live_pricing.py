@@ -12,18 +12,19 @@ from wishlist.models import AppConfig, Event, PricingPackage, PricingWorkflow
 
 @pytest.fixture
 def basis(db):
-    pkg = PricingPackage.objects.create(name='Basis-Paket', base_price=Decimal('660'))
-    PricingWorkflow.objects.create(name='Basis', is_default=True,
-        workflow_json=[{'type': 'package', 'config': {'package_id': pkg.pk}}])
-    return pkg
+    from django.core.management import call_command
+    call_command('setup_basis_package')
+    return PricingPackage.objects.get(name='Basis-Paket')
 
 
 def estimate(client, pkg, *, guests, sound, start='18:00', end='00:00', distance='50', day='2026-11-02'):
-    return client.post('/api/price-estimate/', data=json.dumps({
-        'date': day, 'time_start': start, 'time_end': end, 'guest_count': guests,
-        'package_id': pkg.pk, 'selected_item_ids': [], 'distance_km': distance,
-        'with_sound': sound,
-    }), content_type='application/json', HTTP_X_FORWARDED_PROTO='https')
+    with patch('wishlist.booking_distance.resolve_booking_distance', return_value=Decimal(distance) if distance is not None else None):
+        return client.post('/api/price-estimate/', data=json.dumps({
+            'date': day, 'time_start': start, 'time_end': end, 'guest_count': guests,
+            'package_id': pkg.pk, 'selected_item_ids': [], 'distance_km': distance,
+            'address_street': 'Teststraße 1', 'address_zip': '45127', 'address_city': 'Essen',
+            'with_sound': sound,
+        }), content_type='application/json', HTTP_X_FORWARDED_PROTO='https')
 
 
 @pytest.mark.django_db
@@ -69,9 +70,10 @@ def test_submission_saves_the_same_quote_and_sound_selection(client, basis):
     day = (timezone.now().date() + timedelta(days=40)).isoformat()
     preview = estimate(client, basis, guests=51, sound=False, end='00:30', distance='60', day=day).json()
     body = dict(name='Party', date=day, time_start='18:00', time_end='00:30',
+        address_street='Teststraße 1', address_zip='45127', address_city='Essen',
         location='Ort', client_name='Max', client_email='max@example.com', privacy_consent=True,
         package_id=basis.pk, selected_items=[], guest_count=51, distance_km='60', with_sound=False)
-    with patch('wishlist.views.GoogleService.check_date_available', return_value=(True, [])), patch('wishlist.views.threading.Thread'):
+    with patch('wishlist.booking_distance.resolve_booking_distance', return_value=Decimal('60')), patch('wishlist.views.GoogleService.check_date_available', return_value=(True, [])), patch('wishlist.views.threading.Thread'):
         response = client.post('/api/submit-event/', data=json.dumps(body),
             content_type='application/json', HTTP_X_FORWARDED_PROTO='https')
     assert response.status_code == 200
@@ -87,7 +89,7 @@ def test_public_booking_form_shows_tech_selection_and_sends_it_to_both_endpoints
     html = page.content.decode()
     assert 'name="f-with-sound"' in html
     assert 'Ohne Tontechnik' in html
-    assert 'ab 580,00' in html or 'ab 580.00' in html
+    assert 'Grundpreis 660' in html
     assert 'Nebelmaschine inklusive' in html
     assert html.count('with_sound:') == 2
 

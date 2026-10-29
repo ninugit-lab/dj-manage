@@ -249,6 +249,32 @@ def wishes_stream(request):
 
 # ── Public Event Booking Form ────────────────────────────────────────────────
 
+@require_POST
+def address_search(request):
+    from .booking_distance import search_booking_addresses
+    from .models import LocationApiBudget
+    from django.db import transaction
+    from django.db.models import F
+    import hashlib
+    try:
+        body = json.loads(request.body)
+        query = body.get('query') if isinstance(body, dict) else None
+    except (ValueError, TypeError):
+        query = None
+    if isinstance(query, str) and 3 <= len(query.strip()) <= 300:
+        client_key = hashlib.sha256((_get_client_ip(request) or 'unknown').encode()).hexdigest()
+        key = f'address-search:{timezone.now().date().isoformat()}:{client_key}'
+        try:
+            with transaction.atomic():
+                LocationApiBudget.objects.get_or_create(key=key)
+                permitted = LocationApiBudget.objects.filter(key=key, used__lt=10).update(used=F('used') + 1)
+            if not permitted:
+                return JsonResponse({'results': []}, status=429)
+        except Exception:
+            return JsonResponse({'results': []}, status=503)
+    return JsonResponse({'results': search_booking_addresses(query)})
+
+
 def event_form_view(request):
     config = AppConfig.load()
     if not config.event_form_enabled:
@@ -256,15 +282,13 @@ def event_form_view(request):
 
     from .models import PricingPackage
     import json as _json
-    price_items = PriceItem.objects.filter(is_active=True, is_public=True)
-    pricing_packages = PricingPackage.objects.filter(is_active=True, is_public=True).order_by('sort_order')
+    pricing_packages = PricingPackage.objects.filter(is_active=True, is_public=True).prefetch_related('included_items').order_by('sort_order')
     dj_coords_json = _json.dumps({
         'lat': float(config.dj_home_lat) if config.dj_home_lat is not None else None,
         'lon': float(config.dj_home_lon) if config.dj_home_lon is not None else None,
     })
     response = render(request, 'wishlist/event_form.html', {
         'config': config,
-        'price_items': price_items,
         'pricing_packages': pricing_packages,
         'dj_coords_json': dj_coords_json,
         'embed': request.GET.get('embed') == '1',
@@ -404,6 +428,10 @@ def submit_event_form(request):
     except (InvalidOperation, ValueError, TypeError):
         return invalid()
 
+    if any(data.get(key) for key in ('address_street', 'address_zip', 'address_city')):
+        from .booking_distance import resolve_booking_distance
+        distance = resolve_booking_distance(data)
+
     with_sound = data.get('with_sound', True)
     if not isinstance(with_sound, bool):
         return invalid()
@@ -434,9 +462,14 @@ def submit_event_form(request):
         if package is None:
             return invalid()
     required_ids = PriceItem.objects.filter(is_active=True, is_public=True, is_required=True).values_list('pk', flat=True)
+    if package and package.workflow_id:
+        selected_item_ids = []
+        required_ids = []
     selected_item_ids = list(dict.fromkeys([*selected_item_ids, *required_ids]))
-    basis_incomplete = (package is not None and package.name == 'Basis-Paket' and
+    basis_incomplete = (package is not None and bool(package.workflow_id) and
                         (guest_count is None or guest_count < 1 or parsed_time_start is None or parsed_time_end is None))
+    if package and package.workflow_id and not all(data.get(key) for key in ('address_street', 'address_zip', 'address_city')):
+        distance = None
 
     if Event.objects.filter(date=parsed_date, status=EventStatus.CONFIRMED).exists():
         return JsonResponse({'success': False, 'error': 'An diesem Datum ist bereits ein Event geplant.'}, status=409)
@@ -477,12 +510,13 @@ def submit_event_form(request):
         wishlist_require_name=config.default_require_name,
         )
 
-        default_wf = PricingWorkflow.objects.filter(is_default=True, is_active=True).first()
+        default_wf = package.workflow if package and package.workflow_id else PricingWorkflow.objects.filter(is_default=True, is_active=True).first()
         calc = EventPriceCalculation.objects.create(event=event, package=package, workflow=default_wf)
         calc.selected_items.set(selected_item_ids)
         pricing_payload = {
             'event_date': event.date, 'start_time': event.time_start, 'end_time': event.time_end,
             'guest_count': event.guest_count or 0, 'event_type': event.event_type,
+            'with_sound': event.with_sound,
             'distance_km': (event.distance_km.quantize(Decimal('0.1')) if event.distance_km is not None else None),
             'package_id': str(package.pk) if package else None,
             'selected_item_ids': [str(i) for i in selected_item_ids],
@@ -505,7 +539,10 @@ def submit_event_form(request):
                 event.total_price = result.get('grand_total', calc.total)
             except Exception:
                 logger.warning("PriceEngine calculation failed for event %s, using legacy total", event.pk, exc_info=True)
-                event.total_price = calc.total
+                event.total_price = None if package and package.workflow_id else calc.total
+                if package and package.workflow_id:
+                    calc.calculation_snapshot = {'status': 'individual_review'}
+                    calc.save(update_fields=['calculation_snapshot'])
             if event.distance_km is None or basis_incomplete:
                 event.total_price = None
             event.save(update_fields=['total_price'])
@@ -758,6 +795,9 @@ def api_price_estimate(request):
         if set(selected) != available:
             return failure()
         required = PriceItem.objects.filter(is_active=True, is_public=True, is_required=True).values_list('pk', flat=True)
+        if package_id and PricingPackage.objects.filter(pk=package_id, workflow__isnull=False).exists():
+            selected = []
+            required = []
         selected = list(dict.fromkeys([*selected, *required]))
         with_sound = data.get('with_sound', True)
         if not isinstance(with_sound, bool):
@@ -774,6 +814,9 @@ def api_price_estimate(request):
                 return failure()
         else:
             distance = None
+        if any(data.get(key) for key in ('address_street', 'address_zip', 'address_city')):
+            from .booking_distance import resolve_booking_distance
+            distance = resolve_booking_distance(data)
         payload = {'event_date': data.get('date'), 'start_time': data.get('time_start'),
                    'end_time': data.get('time_end'),
                    'package_id': str(package_id) if package_id is not None else None,
@@ -783,12 +826,15 @@ def api_price_estimate(request):
         decision = calculate_with_mode(payload, public=True)
         result = decision.visible_result
         lines = result.to_dict()['lines']
-        basis = package_id is not None and PricingPackage.objects.filter(pk=package_id, name='Basis-Paket').exists()
+        basis = package_id is not None and bool(PricingPackage.objects.get(pk=package_id).workflow_id)
+        if basis and not all(data.get(key) for key in ('address_street', 'address_zip', 'address_city')):
+            distance = None
         missing_basis = basis and (guest_count < 1 or not data.get('time_start') or not data.get('time_end'))
         missing_distance = distance is None
         warnings = ['Entfernung unbekannt – Preis wird individuell geprüft'] if missing_distance else []
         gross = None if missing_distance or missing_basis else str(result.gross_total.quantize(Decimal('0.01')))
         response = {'ok': True, 'engine_version': str(result.engine_version),
+                    'distance_km': str(distance) if distance is not None else None,
                     'status': 'individual_review' if missing_distance or missing_basis else result.status,
                     'lines': lines, 'gross_total': gross, 'warnings': warnings,
                     # Retain V1 response keys; money is always transported as decimal text.

@@ -205,6 +205,9 @@ def _money(value, field):
 
 
 def _validate_package(data, profile, pkg=None):
+    if 'workflow_id' in data and data['workflow_id'] is not None:
+        if type(data['workflow_id']) is not int or not PricingWorkflow.objects.filter(pk=data['workflow_id'], is_active=True).exists():
+            raise ValidationError({'workflow_id': 'Aktiver Workflow erforderlich.'})
     name = data.get('name', pkg.name if pkg else None)
     if not isinstance(name, str) or not name.strip() or len(name) > 200:
         raise ValidationError({'name': 'Name erforderlich.'})
@@ -324,7 +327,7 @@ def _save_package(request, pk=None):
                         set(pkg.included_items.values_list('pk', flat=True)) != set(ids) or
                         overrides != (previous.overrides_json if previous else {}) or
                         any(getattr(pkg, field) != data[field] for field in
-                            ('description', 'badge_label', 'badge_color', 'is_active', 'sort_order') if field in data)):
+                            ('description', 'badge_label', 'badge_color', 'is_active', 'sort_order', 'workflow_id') if field in data)):
                     return _error('is_public', 'Veröffentlichung und Preisänderung getrennt speichern.')
                 workflows = list(PricingWorkflow.objects.select_for_update().filter(
                     is_active=True, is_default=True)[:2])
@@ -344,7 +347,7 @@ def _save_package(request, pk=None):
             core_changed = pkg is not None and (pkg.name != name or pkg.base_price != price or
                 set(pkg.included_items.values_list('pk', flat=True)) != set(ids) or
                 any(getattr(pkg, field) != data[field] for field in
-                    ('description', 'badge_label', 'badge_color', 'is_active', 'is_public', 'sort_order')
+                    ('description', 'badge_label', 'badge_color', 'is_active', 'is_public', 'sort_order', 'workflow_id')
                     if field in data))
             references = _references('packages', pkg.pk) if pkg else None
             shared = pkg is not None and ((pkg.is_public and pkg.is_active and
@@ -382,7 +385,7 @@ def _save_package(request, pk=None):
                 return JsonResponse({'id': pkg.pk, 'version': pkg.version,
                                      'profile_id': profile.pk})
             pkg.name, pkg.base_price = name, price
-            for field in ('description', 'badge_label', 'badge_color', 'is_active', 'is_public', 'sort_order'):
+            for field in ('description', 'badge_label', 'badge_color', 'is_active', 'is_public', 'sort_order', 'workflow_id'):
                 if field in data:
                     setattr(pkg, field, data[field])
             if clone_package:
@@ -413,6 +416,7 @@ def package_detail(request, pk):
         return _save_package(request, pk)
     if request.method == 'GET':
         return JsonResponse({'id': pkg.pk, 'name': pkg.name, 'version': pkg.version,
+                             'workflow_id': pkg.workflow_id,
                              'base_price': str(pkg.base_price), 'is_public': pkg.is_public,
                              'is_active': pkg.is_active,
                              'included_item_ids': list(pkg.included_items.values_list('pk', flat=True))})
@@ -501,7 +505,7 @@ def _references(kind, pk):
 
 def _valid_conditions(value):
     from .price_engine import CONDITION_OPS
-    fields = {'guest_count', 'duration_hours', 'date_weekday', 'event_type',
+    fields = {'guest_count', 'duration_hours', 'duration_minutes', 'with_sound', 'package_id', 'workflow_id', 'date_weekday', 'event_type',
               'distance_km', 'date_month'}
     if not isinstance(value, list):
         return False
@@ -533,7 +537,16 @@ def _validate_component(kind, data, instance=None):
     if kind == 'items':
         instance.price = _money(instance.price, 'price')
     if kind == 'rules':
-        instance.effect_value = _money(instance.effect_value, 'effect_value') if instance.effect_type != 'percent_add' else instance.effect_value
+        if instance.effect_type == 'flat_add':
+            try:
+                value = Decimal(str(instance.effect_value))
+                if not value.is_finite():
+                    raise ValueError()
+                instance.effect_value = value
+            except (ValueError, InvalidOperation):
+                raise ValidationError({'effect_value': 'Endlicher Betrag erforderlich.'})
+        elif instance.effect_type != 'percent_add':
+            instance.effect_value = _money(instance.effect_value, 'effect_value')
         if instance.effect_type == 'percent_add':
             instance.effect_value = _money(instance.effect_value, 'effect_value')
             if instance.effect_value > 100:

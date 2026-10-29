@@ -279,7 +279,6 @@ def _save_event_from_post(request, config, event=None):
     event.cover_image_url = request.POST.get('cover_image_url', '')
     # Spotify URL → ID (auto-parsed in model.save())
     event.spotify_playlist_id = request.POST.get('spotify_playlist_id', '')
-    event.spotify_preselection_playlist_id = request.POST.get('spotify_preselection_playlist_id', '') or event.spotify_preselection_playlist_id
     requested_status = request.POST.get('status', event.status)
     # Storno und Wiederherstellung dürfen nur über ihre dedizierten Workflows
     # laufen, damit Kalender, E-Mail, Sheets und Metadaten konsistent bleiben.
@@ -962,9 +961,13 @@ def api_price_calculate(request):
 
     workflow_id = data.get('workflow_id')
     if not workflow_id:
-        default_wf = PricingWorkflow.objects.filter(is_default=True, is_active=True).first()
-        if default_wf:
-            workflow_id = default_wf.pk
+        package = PricingPackage.objects.filter(pk=data.get('package_id')).first() if str(data.get('package_id', '')).isdigit() else None
+        if package and package.workflow_id:
+            workflow_id = package.workflow_id
+        else:
+            default_wf = PricingWorkflow.objects.filter(is_default=True, is_active=True).first()
+            if default_wf:
+                workflow_id = default_wf.pk
 
     ALLOWED_CONTEXT_KEYS = {'guest_count', 'duration_hours', 'distance_km',
                             'date_weekday', 'date_month', 'event_type'}
@@ -982,6 +985,7 @@ def api_price_calculate(request):
                    guest_count=data.get('guest_count', event.guest_count if event else 0) or 0,
                    distance_km=data.get('distance_km', event.distance_km if event else None),
                    event_type=data.get('event_type', event.event_type if event else ''),
+                   with_sound=data.get('with_sound', event.with_sound if event else True),
                    package_id=data.get('package_id'),
                    selected_item_ids=[str(identity) for identity in selection],
                    formula_id=data.get('formula_id'), custom_items=data.get('custom_items', []),
@@ -1138,7 +1142,7 @@ def api_pricing_packages(request):
         pkgs = PricingPackage.objects.all().order_by('sort_order')
         return JsonResponse({'packages': [
             {'id': p.pk, 'name': p.name, 'description': p.description,
-             'base_price': float(p.base_price),
+             'base_price': float(p.base_price), 'workflow_id': p.workflow_id,
              'included_item_ids': list(p.included_items.values_list('pk', flat=True)),
              'badge_label': p.badge_label, 'badge_color': p.badge_color,
              'is_active': p.is_active, 'is_public': p.is_public, 'sort_order': p.sort_order}
@@ -1151,10 +1155,14 @@ def api_pricing_packages(request):
         base_price, err = _parse_decimal(data.get('base_price', 0), 'base_price')
         if err:
             return err
+        workflow_id = data.get('workflow_id')
+        if workflow_id is not None and (type(workflow_id) is not int or not PricingWorkflow.objects.filter(pk=workflow_id, is_active=True).exists()):
+            return JsonResponse({'error': 'Aktiver Workflow erforderlich.'}, status=400)
         pkg = PricingPackage.objects.create(
             name=data.get('name', ''),
             description=data.get('description', ''),
             base_price=base_price,
+            workflow_id=workflow_id,
             badge_label=data.get('badge_label', ''),
             badge_color=data.get('badge_color', ''),
             is_active=data.get('is_active', True),
@@ -1174,6 +1182,11 @@ def api_pricing_package_detail(request, pk):
         data, err = _parse_json_body(request)
         if err:
             return err
+        if 'workflow_id' in data:
+            workflow_id = data['workflow_id']
+            if workflow_id is not None and (type(workflow_id) is not int or not PricingWorkflow.objects.filter(pk=workflow_id, is_active=True).exists()):
+                return JsonResponse({'error': 'Aktiver Workflow erforderlich.'}, status=400)
+            pkg.workflow_id = workflow_id
         for field in ('name', 'description', 'badge_label', 'badge_color', 'is_active', 'is_public', 'sort_order'):
             if field in data:
                 setattr(pkg, field, data[field])
@@ -1212,6 +1225,7 @@ def api_pricing_formulas(request):
         formula = PricingFormula.objects.create(
             name=data.get('name', ''),
             expression=expression,
+            mode=data.get('mode', 'replace'),
             description=data.get('description', ''),
             is_active=data.get('is_active', True),
         )
@@ -1242,7 +1256,9 @@ def api_pricing_formula_detail(request, pk):
             err = _validate_formula_expression(data['expression'])
             if err:
                 return err
-        for field in ('name', 'expression', 'description', 'is_active'):
+        if 'mode' in data and data['mode'] not in dict(PricingFormula.MODE_CHOICES):
+            return JsonResponse({'error': 'Ungültiger Formelmodus'}, status=400)
+        for field in ('name', 'expression', 'description', 'is_active', 'mode'):
             if field in data:
                 setattr(formula, field, data[field])
         formula.save()

@@ -159,9 +159,12 @@ class PricingInput:
     discount_amount: Decimal | None = None
     custom_items: tuple[Any, ...] = ()
     event_type: str = ""
+    with_sound: bool = True
     pricing_region_explicit: bool = field(default=False, init=False)
 
     def __post_init__(self):
+        if type(self.with_sound) is not bool:
+            _error('with_sound', 'must be a boolean')
         if not isinstance(self.event_type, str):
             _error("event_type", "must be a string")
         object.__setattr__(self, "event_type", self.event_type.strip().lower())
@@ -204,4 +207,5 @@ class PricingInput:
             discount_amount=None if data.get("discount_amount") is None else _decimal(data["discount_amount"], "discount_amount"),
             custom_items=_custom_items(data.get("custom_items", ())),
             event_type=event_type.strip().lower(),
+            with_sound=data.get('with_sound', True),
         )

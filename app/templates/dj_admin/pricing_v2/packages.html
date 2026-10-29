@@ -17,6 +17,7 @@
   <label>Name <input name="name" value="{{ package.name|default:'' }}" required></label>
   <label>Grundpreis <input name="base_price" type="number" min="0" step="0.01" value="{% if package %}{{ package.base_price }}{% else %}0{% endif %}" required></label>
   <label>Beschreibung <input name="description" value="{{ package.description|default:'' }}"></label>
+  <label>Buchungs-Workflow <input name="workflow_id" type="number" min="1" value="{{ package.workflow_id|default_if_none:'' }}" placeholder="Workflow-ID; leer = Standard"></label>
   <label>Badge <input name="badge_label" value="{{ package.badge_label|default:'' }}"></label>
   <label>Badge-Farbe <input name="badge_color" value="{{ package.badge_color|default:'' }}"></label>
   <label>Aktiv <input type="checkbox" name="is_active" {% if not package or package.is_active %}checked{% endif %}></label>
@@ -58,6 +59,7 @@ document.getElementById('package-form').addEventListener('submit', async event =
     badge_label: data.get('badge_label'), badge_color: data.get('badge_color'),
     is_active: data.has('is_active'), is_public: data.has('is_public'),
     included_item_ids: data.getAll('included_item_ids').map(Number), overrides_json: factors};
+  body.workflow_id = data.get('workflow_id') ? Number(data.get('workflow_id')) : null;
   const response = await fetch(form.action, {method: body.expected_package_version === null ? 'POST' : 'PUT',
     headers: {'Content-Type': 'application/json', 'X-CSRFToken': data.get('csrfmiddlewaretoken')}, body: JSON.stringify(body)});
   const result = await response.json();
