@@ -213,6 +213,13 @@ def test_calculated_amount_has_separate_review_notice_in_both_steps(client, basi
         assert 'Preis wird individuell geprüft' in notice
 
 
+def test_step_four_quote_is_above_tech_options_in_embedded_form(client, basis):
+    html = client.get('/buchen/?embed=1').content.decode()
+    step = html.split('id="step-4"', 1)[1].split('id="step-5"', 1)[0]
+    assert step.index('id="package-price-total"') < step.index('aria-label="Tontechnik"')
+    assert step.index('id="package-price-total"') < step.index('id="package-price-breakdown"')
+
+
 def test_unused_preselection_playlist_is_not_exposed_in_event_or_admin_form(client, db):
     from wishlist.models import Event
     assert 'spotify_preselection_playlist_id' not in [field.name for field in Event._meta.fields]

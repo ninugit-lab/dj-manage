@@ -225,6 +225,20 @@
     <div class="step-panel glass rounded-xl p-6" id="step-4" role="group" aria-labelledby="step4-title">
       <h2 id="step4-title" class="font-display text-2xl tracking-wide mb-5">Paket wählen</h2>
 
+      <section class="price-summary glass rounded-lg p-4 mb-4" aria-label="Preiskalkulator">
+        <h3 class="font-medium text-sm mb-3">Deine Preisberechnung</h3>
+        <div class="pt-2 border-t border-border">
+          <span class="text-accent" id="package-price-total" aria-live="polite">Preis wird individuell geprüft</span>
+          <p id="package-price-review" class="text-sm text-subtle mt-2" hidden>Preis wird individuell geprüft</p>
+          <p class="text-xs text-subtle mt-2">Unverbindliche Preisangabe – der endgültige Preis wird nach Prüfung deiner Anfrage bestätigt.</p>
+        </div>
+        <p id="package-distance-info" class="text-xs text-subtle mt-3">Die Fahrstrecke wird aus deiner Veranstaltungsadresse ermittelt.</p>
+        <div id="package-rules-info" class="text-xs text-subtle mt-2"></div>
+        <details class="mt-3 text-xs text-subtle"><summary class="cursor-pointer">Preisaufschlüsselung anzeigen</summary>
+          <div id="package-price-breakdown" class="text-sm mt-2 space-y-1"></div>
+        </details>
+      </section>
+
       {% if pricing_packages %}
       <div class="flex flex-col gap-3 mb-2">
         {% for pkg in pricing_packages %}
@@ -252,18 +266,6 @@
         <label class="addon-label"><input type="radio" name="f-with-sound" value="yes" checked onchange="updatePrice()"><span>Mit Tontechnik (Tonanlage, Lichttechnik und Mikrofone)</span></label>
         <label class="addon-label"><input type="radio" name="f-with-sound" value="no" onchange="updatePrice()"><span>Ohne Tontechnik (Lichttechnik und Mikrofone inklusive, geeignete Tonanlage vor Ort erforderlich)</span></label>
       </fieldset>
-
-      <section class="price-summary glass rounded-lg p-4 mb-4" aria-label="Preiskalkulator">
-        <h3 class="font-medium text-sm mb-3">Deine Preisberechnung</h3>
-        <p id="package-distance-info" class="text-xs text-subtle mb-3">Die Fahrstrecke wird aus deiner Veranstaltungsadresse ermittelt.</p>
-        <div id="package-price-breakdown" class="text-sm mb-3 space-y-1"></div>
-        <div id="package-rules-info" class="text-xs text-subtle mb-2"></div>
-        <div class="pt-2 border-t border-border">
-          <span class="text-accent" id="package-price-total" aria-live="polite">Preis wird individuell geprüft</span>
-          <p id="package-price-review" class="text-sm text-subtle mt-2" hidden>Preis wird individuell geprüft</p>
-          <p class="text-xs text-subtle mt-2">Unverbindliche Preisangabe – der endgültige Preis wird nach Prüfung deiner Anfrage bestätigt.</p>
-        </div>
-      </section>
 
       <div class="booking-actions mt-6 justify-between">
         <button type="button" onclick="goStep(3)" class="btn-ghost min-h-[44px] px-5">&lsaquo; Zurück</button>
