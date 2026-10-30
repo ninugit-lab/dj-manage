@@ -135,6 +135,46 @@ def test_status_reports_missing_required_scopes(staff_client, db):
     ])
 
 
+def test_get_valid_token_without_refresh_token_skips_google_call(db):
+    token = GoogleToken.objects.create(
+        access_token="",
+        refresh_token="",
+        expires_at=timezone.now() - timedelta(minutes=5),
+        scopes=GoogleService.SCOPES,
+        connection_state="reauthorization_required",
+        reauthorization_required=True,
+    )
+
+    with patch("wishlist.google_services._request_with_retry") as request_mock:
+        result = GoogleService.get_valid_token()
+
+    request_mock.assert_not_called()
+    assert result is None
+    token.refresh_from_db()
+    assert token.connection_state == "reauthorization_required"
+    assert token.reauthorization_required is True
+    assert token.refresh_token == ""
+
+
+def test_status_stays_reauthorization_required_when_refresh_token_missing(staff_client, db):
+    GoogleToken.objects.create(
+        access_token="",
+        refresh_token="",
+        expires_at=timezone.now() - timedelta(minutes=5),
+        scopes=GoogleService.SCOPES,
+        connection_state="reauthorization_required",
+        reauthorization_required=True,
+    )
+
+    with patch("wishlist.google_services._request_with_retry") as request_mock:
+        result = staff_client.get(reverse("google_status"))
+
+    request_mock.assert_not_called()
+    assert result.status_code == 200
+    assert result.json()["connected"] is False
+    assert result.json()["state"] == "reauthorization_required"
+
+
 def test_refresh_uses_database_row_lock(expired_google_token):
     response = FakeResponse(200, {
         "access_token": "fresh-access", "expires_in": 3600,

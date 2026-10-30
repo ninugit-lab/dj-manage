@@ -211,6 +211,14 @@ class GoogleService:
                 if not token:
                     return None
 
+                if not token.refresh_token:
+                    # No refresh token to send: calling Google would fail with
+                    # "Missing required parameter: refresh_token" (invalid_request),
+                    # which the generic error branch below would then mistake for a
+                    # transient failure and overwrite the correct
+                    # reauthorization_required state. Skip the call entirely.
+                    return None
+
                 needs_refresh = force_refresh or token.is_expired or \
                     (token.expires_at - timezone.now()).total_seconds() < EXPIRY_BUFFER
 
