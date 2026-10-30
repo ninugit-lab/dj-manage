@@ -5,6 +5,8 @@
 
 {% block extra_head %}
 <style>
+  /* Prevent scroll anchoring from restoring the old step inside the iframe. */
+  html, body { overflow-anchor: none; }
   /* Step visibility */
   .step-panel { display: none; }
   .step-panel.active { display: block; }
@@ -351,7 +353,10 @@ function goStep(n) {
   currentStep = n;
   document.getElementById('step-' + currentStep).classList.add('active');
   updateProgressUI();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  // The booking form is embedded in a fixed-height iframe. Smooth scrolling
+  // leaves the next step's quote outside its visible viewport while it runs.
+  window.scrollTo({ top: 0, behavior: 'instant' });
+  document.documentElement.scrollTop = 0;
   if (n === 5) updateSubmitButton();
   if (n === 4) updatePrice();
 }

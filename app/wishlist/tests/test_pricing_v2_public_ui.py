@@ -65,12 +65,13 @@ const selected = [];
 const pending = [];
 const timers = [];
 const document = {
+  documentElement: {scrollTop: 123},
   getElementById: get, createElement: () => new Element(), addEventListener() {},
   querySelector: selector => selector === 'input[name="f-package"]:checked' ? {value: packageId} : null,
   querySelectorAll: selector => selector === '.price-checkbox:checked' ? selected.filter(item => item.checked) : []
 };
 const sandbox = {document, console, AbortController, setTimeout: f => {timers.push(f); return timers.length;}, clearTimeout: () => {},
-  window: {scrollTo(){}}, fetch: (url, options) => new Promise(resolve => pending.push({resolve, options}))};
+  window: {scrollTo(options){this.lastScroll=options}}, fetch: (url, options) => new Promise(resolve => pending.push({resolve, options}))};
 vm.createContext(sandbox);
 vm.runInContext(script, sandbox);
 timers.length = 0; // Ignore the form's initial debounce before supplying test inputs.
@@ -149,6 +150,9 @@ const result = (name, total) => ({ok:true, engine_version:'2', status:'ok', gros
   assert.match(get('price-total').textContent, /20,00/);
   sandbox.goStep(4);
   assert.equal(get('sticky-price').style.display, undefined);
+  assert.equal(sandbox.window.lastScroll?.top, 0);
+  assert.equal(sandbox.window.lastScroll?.behavior, 'instant');
+  assert.equal(document.documentElement.scrollTop, 0);
 })().catch(err => { console.error(err); process.exitCode = 1; });
 """
 
