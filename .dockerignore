@@ -1,0 +1,10 @@
+.git
+.serena
+.playwright-mcp
+__pycache__
+*.pyc
+app/theme/static_src/node_modules
+app/db.sqlite3
+app/db.sqlite3-shm
+app/db.sqlite3-wal
+app/db.sqlite3.bak-*
