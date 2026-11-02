@@ -332,7 +332,23 @@ def resolve_workflow(workflow_id=None, *, public=False):
     return workflow
 
 
+def _normalize_json_decimals(payload):
+    """Convert floats from JSON bodies into their exact string form.
+
+    The pricing core rejects floats so binary float error never reaches money,
+    but json.loads has no Decimal, so clients cannot honour that on their own.
+    Decimal(str(40.5)) is exact, so this preserves what the caller sent.
+    `type(...) is float` keeps bools and ints on their existing strict paths,
+    and nan/inf survive as strings that _decimal still rejects as nonfinite.
+    """
+    converted = {field: str(payload[field]) for field in ("distance_km", "discount_percent",
+                                                          "discount_amount")
+                 if type(payload.get(field)) is float}
+    return {**payload, **converted} if converted else payload
+
+
 def _calculate(payload, *, public, actor=None):
+    payload = _normalize_json_decimals(payload)
     # Strip browser-calculated values; never copy a caller-supplied price into the catalog.
     if public and payload.get("custom_items"):
         raise PricingValidationError("invalid_input", "custom items require an administrator", "custom_items")

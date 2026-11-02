@@ -241,6 +241,22 @@ def test_explicit_package_refuses_individual_selection(catalog, staff):
 
 
 @pytest.mark.django_db
+def test_test_lab_names_the_failing_reference_instead_of_a_generic_message(catalog, staff):
+    """Without this the lab hides which reference is missing, so V2 cannot be diagnosed."""
+    package, item, _, _ = catalog
+    workflow = PricingWorkflow.objects.create(name='Pinned', workflow_json=blocks(catalog),
+                                              is_active=True)
+    PricingProfile.objects.all().delete()
+    result = post(staff, 'pricing_v2_workflow_test', {
+        'workflow_id': workflow.pk, 'event_date': '2026-12-02', 'start_time': '18:00',
+        'end_time': '21:00', 'package_id': package.pk, 'selected_item_ids': [item.pk],
+        'guest_count': 5, 'distance_km': '12'}).json()
+    assert result['v2']['code'] == 'reference_error', result
+    assert result['v2']['field'] == 'profile', result
+    assert 'profile' in result['v2']['diagnostic'], result
+
+
+@pytest.mark.django_db
 def test_test_lab_does_not_leak_exception_text(catalog, staff):
     workflow = PricingWorkflow.objects.create(name='Draft', is_active=True,
         workflow_json=[{'type': 'package'}, {'type': 'items'}])

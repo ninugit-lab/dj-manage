@@ -891,8 +891,15 @@ def test_workflow(request):
                 output[name]['subtotals'] = serialized['block_subtotals']
                 output[name]['warnings'] = serialized['warnings']
         except (PricingValidationError, ValueError, TypeError, KeyError) as exc:
-            output[name] = {'diagnostic': 'Berechnung nicht möglich: Eingabe oder Referenz ungültig.',
-                            'code': exc.code if isinstance(exc, PricingValidationError) else 'invalid_input'}
+            # Validation messages are authored for this page and name the failing
+            # reference, so they are shown. Any other exception may carry internals,
+            # so only the generic shape is reported.
+            validation = isinstance(exc, PricingValidationError)
+            output[name] = {'diagnostic': exc.message if validation
+                            else 'Berechnung nicht möglich: Eingabe oder Referenz ungültig.',
+                            'code': exc.code if validation else 'invalid_input'}
+            if validation and exc.field:
+                output[name]['field'] = exc.field
     output['difference'] = (str(Decimal(output['v2']['gross_total']) - Decimal(output['v1']['gross_total']))
                             if 'gross_total' in output['v1'] and 'gross_total' in output['v2'] else None)
     return JsonResponse(output)
